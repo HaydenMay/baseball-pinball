@@ -32,6 +32,11 @@ export class GameRules {
     this.ballScore += points;
   }
 
+  /** A mechanism put another ball in play (multiball). */
+  addBall() {
+    if (this.phase === 'live') this.ballsLive++;
+  }
+
   batHit() {
     if (this.phase === 'live') this.hits++;
   }

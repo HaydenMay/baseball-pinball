@@ -4,11 +4,13 @@
  */
 import * as P from 'planck';
 import { config } from '../config.ts';
+import { buildRampPath, type GateDef, type RampPath, type ScoopDef, type SplitterDef } from '../machines/mechanisms.ts';
+import type { Preset } from '../machines/presets.ts';
 
 export type Pt = { x: number; y: number };
-export type MachineKind = 'bumper' | 'target' | 'jackpot' | 'post' | 'sling' | 'wall' | 'lane' | 'rail';
+export type MachineKind = 'bumper' | 'target' | 'jackpot' | 'post' | 'sling' | 'wall' | 'lane' | 'rail' | 'ramp' | 'scoop' | 'splitter' | 'gate' | 'multiball';
 
-export type Bumper = { id: string; kind: 'bumper'; x: number; y: number; r: number; style: 'ball' | 'glove' };
+export type Bumper = { id: string; kind: 'bumper'; x: number; y: number; r: number; style: 'ball' | 'glove' | 'bonus'; points?: number; kick?: number };
 /** Side lane: a rail parallel to the outer wall with a rollover sensor that scores and lights the lane. */
 export type Lane = { id: string; kind: 'lane'; rail: [Pt, Pt]; sensor: Pt; dir: Pt };
 export type RoundTarget = { id: string; kind: 'target'; x: number; y: number; r: number };
@@ -117,11 +119,67 @@ export function targetPoly(t: BoxTarget): Pt[] {
 
 export type FixtureData = { kind: MachineKind; id: string; ref?: unknown };
 
+/** Everything physical on one table: the factory base plus any installed mechanisms. */
+export type Layout = {
+  bumpers: Bumper[];
+  roundTargets: RoundTarget[];
+  boxTargets: BoxTarget[];
+  posts: Post[];
+  lanes: Lane[];
+  slings: Sling[];
+  ramps: RampPath[];
+  scoops: ScoopDef[];
+  splitters: SplitterDef[];
+  gates: GateDef[];
+};
+
+/** The factory table every map shares. */
+export function baseLayout(): Layout {
+  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [] };
+}
+
+/** Base table minus the preset's displaced parts, plus its mechanisms. */
+export function layoutFor(preset?: Preset): Layout {
+  const l = baseLayout();
+  if (!preset) return l;
+  const keep = <T extends { id: string }>(xs: T[]) => xs.filter(x => !preset.removeBase.includes(x.id));
+  l.bumpers = keep(l.bumpers);
+  l.roundTargets = keep(l.roundTargets);
+  l.boxTargets = keep(l.boxTargets);
+  l.posts = keep(l.posts);
+  for (const m of preset.mechanisms) {
+    if (m.type === 'ramp') l.ramps.push(buildRampPath(m));
+    else if (m.type === 'scoop') l.scoops.push(m);
+    else if (m.type === 'splitter') l.splitters.push(m);
+    else if (m.type === 'gate') l.gates.push(m);
+    else if (m.type === 'bumper') l.bumpers.push({ id: m.id, kind: 'bumper', x: m.x, y: m.y, r: m.r, style: 'bonus', points: m.points, kick: m.kick });
+  }
+  return l;
+}
+
+/** Polygon for a splitter's standup target (faces down toward the batter, peaked top so nothing rests on it). */
+export function splitterPoly(s: SplitterDef): Pt[] {
+  return [{ x: s.x - s.hw, y: s.y - s.hh }, { x: s.x, y: s.y - s.hh - 0.35 }, { x: s.x + s.hw, y: s.y - s.hh }, { x: s.x + s.hw, y: s.y + s.hh }, { x: s.x - s.hw, y: s.y + s.hh }];
+}
+
+/** Cup wall points for a scoop: an arc around the center that leaves the mouth open. */
+export function scoopArc(s: ScoopDef, r = s.cupR): Pt[] {
+  const start = s.mouthAngle + s.mouthHalf, end = s.mouthAngle - s.mouthHalf + Math.PI * 2;
+  const pts: Pt[] = [];
+  const n = 16;
+  for (let i = 0; i <= n; i++) {
+    const a = start + ((end - start) * i) / n;
+    pts.push({ x: s.x + Math.cos(a) * r, y: s.y + Math.sin(a) * r });
+  }
+  return pts;
+}
+
 /** Build all static collision bodies into a planck world. */
-export function buildBoard(world: P.World) {
+export function buildBoard(world: P.World, layout: Layout = baseLayout()) {
   const body = world.createBody();
   const chain = body.createFixture(P.Chain(OUTER_WALL.map(p => P.Vec2(p.x, p.y)), false), { restitution: config.wall.restitution, friction: 0 });
   chain.setUserData({ kind: 'wall', id: 'wall' } satisfies FixtureData);
+  const { bumpers: BUMPERS, roundTargets: ROUND_TARGETS, boxTargets: BOX_TARGETS, posts: POSTS, lanes: LANES, slings: SLINGS } = layout;
 
   for (const b of BUMPERS) {
     body.createFixture(P.Circle(P.Vec2(b.x, b.y), b.r), { restitution: config.bumper.restitution, friction: 0 }).setUserData({ kind: 'bumper', id: b.id, ref: b } satisfies FixtureData);
@@ -141,6 +199,20 @@ export function buildBoard(world: P.World) {
   }
   for (const s of SLINGS) {
     body.createFixture(P.Polygon(s.poly.map(p => P.Vec2(p.x, p.y))), { restitution: config.sling.restitution, friction: 0 }).setUserData({ kind: 'sling', id: s.id, ref: s } satisfies FixtureData);
+  }
+  // ── mechanisms ──
+  for (const r of layout.ramps) {
+    // Only the mouth posts are on the floor; the raised ride itself never collides with floor balls.
+    for (const p of r.posts) body.createFixture(P.Circle(P.Vec2(p.x, p.y), 0.22), { restitution: config.post.restitution, friction: 0 }).setUserData({ kind: 'post', id: r.def.id + '-post', ref: r } satisfies FixtureData);
+  }
+  for (const s of layout.scoops) {
+    body.createFixture(P.Chain(scoopArc(s).map(p => P.Vec2(p.x, p.y)), false), { restitution: 0.25, friction: 0 }).setUserData({ kind: 'rail', id: s.id + '-cup', ref: s } satisfies FixtureData);
+  }
+  for (const s of layout.splitters) {
+    body.createFixture(P.Polygon(splitterPoly(s).map(p => P.Vec2(p.x, p.y))), { restitution: config.target.restitution, friction: 0 }).setUserData({ kind: 'splitter', id: s.id, ref: s } satisfies FixtureData);
+  }
+  for (const g of layout.gates) {
+    for (const p of [g.a, g.b]) body.createFixture(P.Circle(P.Vec2(p.x, p.y), g.postR), { restitution: config.post.restitution, friction: 0 }).setUserData({ kind: 'post', id: g.id + '-post', ref: g } satisfies FixtureData);
   }
   return body;
 }

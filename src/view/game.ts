@@ -4,10 +4,11 @@
  * so the art always matches the collision geometry.
  */
 import { config } from '../config.ts';
-import { BOX_TARGETS, BUMPERS, LANES, MOUND, OUTER_WALL, POSTS, ROUND_TARGETS, SLINGS, lowerWallX, targetPoly, type Pt } from '../physics/board.ts';
+import { MOUND, OUTER_WALL, lowerWallX, targetPoly, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
 import { drawGlow, Vfx } from './vfx.ts';
+import { drawMachinesFloorDynamic, drawMachinesFloorStatic, drawMachinesRaised, onMechanismEvent } from './machines.ts';
 import type { Theme } from './theme.ts';
 
 /** Visible world rectangle (a little beyond the rails for the frame and floodlights). */
@@ -82,12 +83,13 @@ export class GameView {
   debug = false;
   /** Seconds of "lit" remaining per machine id. */
   lit = new Map<string, number>();
-  trail: Pt[] = [];
-  ballRot = 0;
   time = 0;
   lastContact: { x: number; y: number; vx: number; vy: number; angle: number } | null = null;
 
-  constructor(canvas: HTMLCanvasElement, theme: Theme) {
+  layout: Layout;
+
+  constructor(canvas: HTMLCanvasElement, theme: Theme, layout: Layout) {
+    this.layout = layout;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.staticLayer = document.createElement('canvas');
@@ -102,12 +104,12 @@ export class GameView {
     if (Math.abs(ppu - this.ppu) < 0.01 && this.staticLayer.width) return;
     this.ppu = ppu;
     const w = Math.round(VIEW.w * ppu), h = Math.round(VIEW.h * ppu);
-    this.canvas.width = this.staticLayer.width = w;
-    this.canvas.height = this.staticLayer.height = h;
+    this.canvas.width = this.staticLayer.width = this.rampLayer.width = w;
+    this.canvas.height = this.staticLayer.height = this.rampLayer.height = h;
     this.drawStatic();
   }
 
-  private worldTransform(ctx: CanvasRenderingContext2D) {
+  worldTransform(ctx: CanvasRenderingContext2D) {
     ctx.setTransform(this.ppu, 0, 0, this.ppu, -VIEW.x0 * this.ppu, -VIEW.y0 * this.ppu);
   }
 
@@ -137,13 +139,15 @@ export class GameView {
     this.drawRails(ctx, poly);
     this.drawFloodlights(ctx);
     this.drawCrest(ctx);
-    for (const s of SLINGS) this.drawSlingBody(ctx, s.poly, s.face, s.kickDir);
-    for (const p of POSTS) this.drawPost(ctx, p.x, p.y, p.r);
-    for (const t of ROUND_TARGETS) this.drawBullseye(ctx, t.x, t.y, t.r);
-    for (const t of BOX_TARGETS) this.drawBoxTarget(ctx, t);
-    for (const l of LANES) this.drawLaneRail(ctx, l.rail);
-    for (const b of BUMPERS) {
+    for (const s of this.layout.slings) this.drawSlingBody(ctx, s.poly, s.face, s.kickDir);
+    for (const p of this.layout.posts) this.drawPost(ctx, p.x, p.y, p.r);
+    for (const t of this.layout.roundTargets) this.drawBullseye(ctx, t.x, t.y, t.r);
+    for (const t of this.layout.boxTargets) this.drawBoxTarget(ctx, t);
+    for (const l of this.layout.lanes) this.drawLaneRail(ctx, l.rail);
+    drawMachinesFloorStatic(ctx, this);
+    for (const b of this.layout.bumpers) {
       if (b.style === 'glove') this.drawGlove(ctx, b.x, b.y, b.r);
+      else if (b.style === 'bonus') this.drawBonusBase(ctx, b.x, b.y, b.r);
       else this.drawBumperBase(ctx, b.x, b.y, b.r);
     }
   }
@@ -172,6 +176,29 @@ export class GameView {
       ctx.arc(p.x, p.y, 0.17, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  private drawBonusBase(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(x + 0.18, y + 0.28, r * 1.2, r * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const s = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+    s.addColorStop(0, '#fff2c4');
+    s.addColorStop(0.5, '#c9932f');
+    s.addColorStop(1, '#5c3f14');
+    ctx.fillStyle = s;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+    const b = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+    b.addColorStop(0, '#ff7ae6');
+    b.addColorStop(0.7, '#a3168f');
+    b.addColorStop(1, '#4a0a42');
+    ctx.fillStyle = b;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   private drawGlove(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
@@ -440,6 +467,8 @@ export class GameView {
   }
 
   /** Bulb positions along the rail (drawn dynamically so they can chase). */
+  /** Pre-rendered raised ramp structures (drawn above floor balls). */
+  rampLayer = document.createElement('canvas');
   bulbs: Pt[] = (() => {
     const out: Pt[] = [];
     const pts = OUTER_WALL;
@@ -600,7 +629,7 @@ export class GameView {
     });
   }
 
-  private drawBoxTarget(ctx: CanvasRenderingContext2D, t: (typeof BOX_TARGETS)[number]) {
+  private drawBoxTarget(ctx: CanvasRenderingContext2D, t: BoxTarget) {
     const poly = targetPoly(t);
     ctx.save();
     ctx.translate(0.1, 0.15);
@@ -708,36 +737,40 @@ export class GameView {
     const t = this.theme;
     if (e.type === 'machine') {
       if (e.kind === 'bumper') {
-        const b = BUMPERS.find(b => b.id === e.id)!;
+        const b = this.layout.bumpers.find(b => b.id === e.id)!;
         this.lit.set(e.id, 0.45);
         this.vfx.bumperHit(b.x, b.y, b.r, -e.nx, -e.ny);
         this.vfx.flicker(b.x, b.y - b.r - 0.35, '+' + e.points);
       } else if (e.kind === 'target' || e.kind === 'jackpot') {
         this.lit.set(e.id, e.kind === 'jackpot' ? 0.9 : 0.6);
-        const rt = ROUND_TARGETS.find(r => r.id === e.id), bt = BOX_TARGETS.find(r => r.id === e.id);
+        const rt = this.layout.roundTargets.find(r => r.id === e.id), bt = this.layout.boxTargets.find(r => r.id === e.id);
         const p = rt ? { x: rt.x, y: rt.y } : bt ? { x: bt.x + bt.face.x * bt.hw, y: bt.y + bt.face.y * bt.hh } : { x: e.x, y: e.y };
         this.vfx.targetHit(p.x, p.y, -e.nx, -e.ny, e.kind === 'jackpot');
         this.vfx.flicker(p.x + (bt ? bt.face.x * 0.8 : 0), p.y - 0.6 + (bt?.style === 'jackpot' ? 1.4 : 0), '+' + e.points, e.kind === 'jackpot' ? t.jackpotAccent : t.impactCore);
       } else if (e.kind === 'sling') {
-        const s = SLINGS.find(s => s.id === e.id)!;
+        const s = this.layout.slings.find(s => s.id === e.id)!;
         this.lit.set(e.id, 0.35);
         this.vfx.slingHit(e.x, e.y, s.kickDir.x, s.kickDir.y);
       } else if (e.kind === 'lane') {
         this.lit.set(e.id, 1.0);
-        const l = LANES.find(l => l.id === e.id)!;
+        const l = this.layout.lanes.find(l => l.id === e.id)!;
         this.vfx.flash(l.sensor.x, l.sensor.y, 1.0, t.energyPrimary, 0.25);
         this.vfx.flicker(l.sensor.x, l.sensor.y - 0.7, '+' + e.points, t.impactCore);
       } else if (e.kind === 'post') {
         this.lit.set(e.id, 0.25);
         this.vfx.sparks(e.x - e.nx * 0.24, e.y - e.ny * 0.24, 4, 5, t.machineGlow);
+      } else {
+        onMechanismEvent(this, e);
       }
     } else if (e.type === 'bat') {
       this.vfx.batHit(e.x, e.y, e.contact.velocity.x, e.contact.velocity.y);
       this.lastContact = { x: e.x, y: e.y, vx: e.contact.velocity.x, vy: e.contact.velocity.y, angle: e.contact.angle };
       this.lit.set('bat', 0.18);
     } else if (e.type === 'serve') {
-      this.trail = [];
+      this.trails.clear();
       this.lit.set('mound', 0.4);
+    } else {
+      onMechanismEvent(this, e);
     }
   }
 
@@ -755,8 +788,12 @@ export class GameView {
 
     this.drawBulbs(ctx);
     this.drawMachinesDynamic(ctx);
+    drawMachinesFloorDynamic(ctx, this, sim);
     this.drawBatter(ctx, sim);
-    this.drawBall(ctx, sim, dt);
+    this.drawBalls(ctx, sim, dt, 'floor');
+    // raised mechanisms sit above floor balls, so a ball passing under a ramp stays visible through the glass
+    drawMachinesRaised(ctx, this, sim);
+    this.drawBalls(ctx, sim, dt, 'raised');
     this.vfx.draw(ctx);
     if (this.debug) this.drawDebug(ctx, sim);
   }
@@ -780,7 +817,7 @@ export class GameView {
   private drawMachinesDynamic(ctx: CanvasRenderingContext2D) {
     const th = this.theme;
     // bumpers: amber light segments + baseball cap, lit on hit
-    for (const b of BUMPERS) {
+    for (const b of this.layout.bumpers) {
       const lit = Math.min(1, (this.lit.get(b.id) ?? 0) / 0.3);
       if (b.style === 'glove') {
         ctx.globalCompositeOperation = 'lighter';
@@ -790,8 +827,9 @@ export class GameView {
         continue;
       }
       const idle = 0.35 + 0.1 * Math.sin(this.time * 2 + b.x);
+      const glowC = b.style === 'bonus' ? th.energySecondary : th.machineGlow;
       ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, th.machineGlow, b.x, b.y, b.r * (1.9 + lit * 0.8), idle * 0.35 + lit * 0.9);
+      drawGlow(ctx, glowC, b.x, b.y, b.r * (1.9 + lit * 0.8), idle * 0.35 + lit * 0.9);
       ctx.globalCompositeOperation = 'source-over';
       // light segments around the red body
       for (let i = 0; i < 10; i++) {
@@ -805,6 +843,11 @@ export class GameView {
       ctx.globalAlpha = 1;
       const squash = 1 - lit * 0.08; // cap dips when it fires
       drawBaseball(ctx, b.x, b.y - 0.1 * squash, b.r * 0.7 * squash, 0.5 + b.x);
+      if (b.style === 'bonus') {
+        ctx.fillStyle = th.jackpotAccent;
+        star(ctx, b.x, b.y - 0.1 * squash, b.r * 0.32, b.r * 0.14);
+        ctx.fill();
+      }
       if (lit > 0) {
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, th.impactCore, b.x, b.y - 0.1, b.r * 0.9, lit * 0.6);
@@ -813,24 +856,24 @@ export class GameView {
     }
     // targets lit overlays
     ctx.globalCompositeOperation = 'lighter';
-    for (const t of ROUND_TARGETS) {
+    for (const t of this.layout.roundTargets) {
       const lit = this.lit.get(t.id) ?? 0;
       if (lit > 0) drawGlow(ctx, th.energyPrimary, t.x, t.y, t.r * 3, Math.min(1, lit * 2));
     }
-    for (const t of BOX_TARGETS) {
+    for (const t of this.layout.boxTargets) {
       const lit = this.lit.get(t.id) ?? 0;
       const fx = t.x + t.face.x * t.hw * 0.6, fy = t.y + t.face.y * t.hh * 0.6;
       if (t.style === 'jackpot') drawGlow(ctx, th.jackpotAccent, fx, fy, 2.6, 0.18 + Math.min(1, lit * 1.5));
       else if (lit > 0) drawGlow(ctx, th.energyPrimary, fx, fy, 1.4, Math.min(1, lit * 2));
     }
-    for (const p of POSTS) {
+    for (const p of this.layout.posts) {
       const lit = this.lit.get(p.id) ?? 0;
       if (lit > 0) drawGlow(ctx, th.machineGlow, p.x, p.y, 0.8, lit * 3);
     }
     const mound = this.lit.get('mound') ?? 0;
     if (mound > 0) drawGlow(ctx, th.energyPrimary, MOUND.x, MOUND.y, 2, mound * 1.5);
     // slingshots: idle electric-blue breathe, bright pulse on kick
-    for (const s of SLINGS) {
+    for (const s of this.layout.slings) {
       const lit = Math.min(1, (this.lit.get(s.id) ?? 0) / 0.2);
       const mx = (s.face[0].x + s.face[1].x) / 2, my = (s.face[0].y + s.face[1].y) / 2;
       drawGlow(ctx, th.slingGlow, mx, my, 1.6 + lit, 0.25 + 0.06 * Math.sin(this.time * 2.5) + lit * 0.85);
@@ -846,7 +889,7 @@ export class GameView {
       }
     }
     ctx.globalCompositeOperation = 'source-over';
-    for (const l of LANES) {
+    for (const l of this.layout.lanes) {
       const lit = Math.min(1, (this.lit.get(l.id) ?? 0) / 0.5);
       const x = l.sensor.x;
       for (let i = 0; i < 4; i++) {
@@ -869,7 +912,7 @@ export class GameView {
         ctx.globalAlpha = 1;
       }
     }
-    for (const s of SLINGS) this.drawSlingChevrons(ctx, s.face, s.kickDir, this.lit.get(s.id) ?? 0);
+    for (const s of this.layout.slings) this.drawSlingChevrons(ctx, s.face, s.kickDir, this.lit.get(s.id) ?? 0);
   }
 
   private drawBatter(ctx: CanvasRenderingContext2D, sim: Simulation) {
@@ -1021,58 +1064,85 @@ export class GameView {
     ctx.restore();
   }
 
-  private drawBall(ctx: CanvasRenderingContext2D, sim: Simulation, dt: number) {
-    const r = config.ball.radius;
-    let p: Pt, v = { x: 0, y: 0 };
-    if (sim.ball) {
-      const bp = sim.ball.getPosition(), bv = sim.ball.getLinearVelocity();
-      p = { x: bp.x, y: bp.y };
-      v = { x: bv.x, y: bv.y };
-    } else if (sim.rules.phase !== 'over') {
-      // waiting on Ready: the next pitch sits on the mound
-      p = { x: config.pitch.x, y: config.pitch.y };
-      this.trail = [];
-    } else return;
+  /** Per-ball trails, keyed by ball id. */
+  trails = new Map<number, { pts: Pt[]; rot: number }>();
 
-    const speed = Math.hypot(v.x, v.y);
-    this.ballRot += (speed * dt) / r * 0.5;
-    this.trail.push(p);
-    if (this.trail.length > 14) this.trail.shift();
-    // trail (only visible when the ball is moving fast)
-    if (this.trail.length > 2 && speed > 6) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineCap = 'round';
-      const k = Math.min(1, (speed - 6) / 18);
-      for (let i = 1; i < this.trail.length; i++) {
-        const a = this.trail[i - 1], b = this.trail[i], f = i / this.trail.length;
-        ctx.strokeStyle = this.theme.ballTrail;
-        ctx.globalAlpha = f * 0.55 * k;
-        ctx.lineWidth = r * 1.6 * f;
+  /** Draw floor balls or raised (ramp) balls. Raised balls are drawn larger with a far shadow. */
+  private drawBalls(ctx: CanvasRenderingContext2D, sim: Simulation, dt: number, layer: 'floor' | 'raised') {
+    const r = config.ball.radius;
+    if (!sim.balls.length) {
+      if (layer === 'floor' && sim.rules.phase !== 'over') {
+        // waiting on Ready: the next pitch sits on the mound
+        this.trails.clear();
+        const p = { x: config.pitch.x, y: config.pitch.y };
+        this.drawOneBall(ctx, p, { x: 0, y: 0 }, 0, 0);
+        ctx.strokeStyle = this.theme.energyPrimary;
+        ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.time * 5);
+        ctx.lineWidth = 0.06;
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.arc(p.x, p.y, r + 0.18, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
-      ctx.restore();
+      return;
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    const live = new Set(sim.balls.map(b => b.id));
+    for (const id of this.trails.keys()) if (!live.has(id)) this.trails.delete(id);
+    for (const b of sim.balls) {
+      const raised = b.mode === 'ramp';
+      if ((layer === 'raised') !== raised) continue;
+      let v = { x: 0, y: 0 };
+      if (b.mode === 'field') {
+        const bv = b.body.getLinearVelocity();
+        v = { x: bv.x, y: bv.y };
+      } else if (b.mode === 'ramp' && b.ramp) {
+        const prev = this.trails.get(b.id)?.pts.at(-1);
+        if (prev && dt > 0) v = { x: (b.pos.x - prev.x) / dt, y: (b.pos.y - prev.y) / dt };
+      }
+      let tr = this.trails.get(b.id);
+      if (!tr) this.trails.set(b.id, (tr = { pts: [], rot: 0 }));
+      const speed = Math.hypot(v.x, v.y);
+      tr.rot += ((speed * dt) / r) * 0.5;
+      tr.pts.push({ ...b.pos });
+      if (tr.pts.length > 14) tr.pts.shift();
+      if (b.mode === 'held') {
+        // tucked in the glove: drawn by the scoop, plus a gentle pulse here
+        this.drawOneBall(ctx, b.pos, v, tr.rot, 0, 0.9);
+        continue;
+      }
+      if (tr.pts.length > 2 && speed > 6) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        const k = Math.min(1, (speed - 6) / 18);
+        for (let i = 1; i < tr.pts.length; i++) {
+          const a = tr.pts[i - 1], c = tr.pts[i], f = i / tr.pts.length;
+          if (Math.hypot(c.x - a.x, c.y - a.y) > 1.5) continue; // no streak across a release jump
+          ctx.strokeStyle = this.theme.ballTrail;
+          ctx.globalAlpha = f * 0.55 * k;
+          ctx.lineWidth = r * 1.6 * f * (1 + b.height * 0.3);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(c.x, c.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      this.drawOneBall(ctx, b.pos, v, tr.rot, b.height);
+    }
+  }
+
+  private drawOneBall(ctx: CanvasRenderingContext2D, p: Pt, v: Pt, rot: number, height: number, scale = 1) {
+    const r = config.ball.radius * scale * (1 + height * 0.28);
+    // shadow falls further away the higher the ball is
+    ctx.fillStyle = `rgba(0,0,0,${0.42 - height * 0.12})`;
     ctx.beginPath();
-    ctx.ellipse(p.x + 0.12, p.y + 0.18, r * 1.05, r * 0.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x + 0.12 + height * 0.45, p.y + 0.18 + height * 0.6, r * (1.05 + height * 0.2), r * (0.9 + height * 0.15), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = 'lighter';
-    drawGlow(ctx, '#ffffff', p.x, p.y, r * 2.6, 0.22);
+    drawGlow(ctx, height > 0.05 ? this.theme.energyPrimary : '#ffffff', p.x, p.y, r * 2.6, 0.22 + height * 0.25);
     ctx.globalCompositeOperation = 'source-over';
-    drawBaseball(ctx, p.x, p.y, r, Math.atan2(v.y, v.x) + this.ballRot);
-    if (!sim.ball && sim.rules.phase === 'ready') {
-      ctx.strokeStyle = this.theme.energyPrimary;
-      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.time * 5);
-      ctx.lineWidth = 0.06;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r + 0.18, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    drawBaseball(ctx, p.x, p.y, r, Math.atan2(v.y, v.x) + rot);
   }
 
   private drawDebug(ctx: CanvasRenderingContext2D, sim: Simulation) {
@@ -1112,7 +1182,7 @@ export class GameView {
     }
     if (sim.ball) {
       const p = sim.ball.getPosition(), v = sim.ball.getLinearVelocity();
-      const el = checkEligibility({ t: sim.swingT, dt: 0, hands: h, ball: p, vel: v, ballRadius: config.ball.radius, alreadyHitThisSwing: sim.hitSwingId === sim.swingId });
+      const el = checkEligibility({ t: sim.swingT, dt: 0, hands: h, ball: p, vel: v, ballRadius: config.ball.radius, alreadyHitThisSwing: sim.balls[0]?.hitSwingId === sim.swingId });
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 0.5px ${FONT}`;
       ctx.textAlign = 'left';
@@ -1144,7 +1214,7 @@ function batShape(ctx: CanvasRenderingContext2D, L: number, vertical = false) {
   ctx.closePath();
 }
 
-function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, r: number) {
+export function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r : R;

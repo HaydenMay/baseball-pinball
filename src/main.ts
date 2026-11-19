@@ -8,6 +8,12 @@ import { Simulation, type SimEvent } from './physics/sim.ts';
 import { Telemetry } from './telemetry/session.ts';
 import { GameView } from './view/game.ts';
 import { theme } from './view/theme.ts';
+import { PRESETS, presetForPath, validatePreset } from './machines/presets.ts';
+
+// Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Powerhouse.
+const preset = presetForPath(location.pathname);
+const power = validatePreset(preset);
+console.info(`[machine] ${preset.name} · power ${power.installed}/${power.max}${power.ok ? '' : ' OVER BUDGET'}`, preset.mechanisms.map(m => `${m.id}:${m.powerCost}`));
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const canvas = $<HTMLCanvasElement>('#game');
@@ -20,16 +26,21 @@ const controls = makeControls();
 const touch = new TouchInput();
 const keys = new Set<string>();
 const telemetry = new Telemetry();
-const view = new GameView(canvas, theme);
 let paused = false;
 
 const sim: Simulation = new Simulation({
+  preset,
   onEvent: (e: SimEvent) => {
     view.onSimEvent(e);
     telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
-    if (e.type === 'drain') onDrain();
+    // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
+    if (e.type === 'drain' && e.strike) onDrain();
   },
 });
+const view = new GameView(canvas, theme, sim.layout);
+$('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : 'BASELINE';
+document.title = `Baseball Pinball · ${preset.name}`;
+$('#machineInfo').textContent = preset.route ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}` : `BASELINE TABLE · POWER ${power.installed}/${power.max}`;
 
 // ─── HUD ───
 const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes') };
@@ -56,7 +67,8 @@ function updateHud() {
     hud.strikes.innerHTML = Array.from({ length: r.maxStrikes }, (_, i) => `<i class="${i < r.strikes ? 'on' : ''}"></i>`).join('');
     shown.strikes = r.strikes;
   }
-  const state = paused ? 'PAUSED' : r.phase === 'live' ? `PITCH ${r.pitchNumber} · LIVE` : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  const n = sim.balls.length;
+  const state = paused ? 'PAUSED' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
   if (state !== shown.state) {
     hud.state.textContent = state;
     shown.state = state;
@@ -193,6 +205,8 @@ if (new URLSearchParams(location.search).has('debug')) view.debug = true;
 const w = window as any;
 w.tune = config;
 w.sim = sim;
+w.preset = preset;
+w.presets = PRESETS;
 w.playtest = {
   report: () => telemetry.report(),
   download: () => {

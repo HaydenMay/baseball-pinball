@@ -7,13 +7,24 @@ A portrait, baseball-themed pinball physics prototype. You slide a batter, time 
 ```bash
 npm ci
 npm run dev        # open the printed URL (works on your phone over LAN)
-npm test           # 24 rule/swing/physics tests
+npm test           # 39 rule/swing/physics/mechanism tests
 npm run typecheck
 npm run build      # → dist/
-npm run bot -- 300 50   # headless bot playtest: balls, swing timing error (ms)
+npm run bot -- 300 50 1 powerhouse   # headless bot: balls, timing error (ms), seed, map
 ```
 
 Pushing to `main` builds and deploys to GitHub Pages through `.github/workflows/pages.yml`.
+
+## Maps
+
+The same game at four URL paths. Only the machine layout changes. See `docs/MAPS.md` for the details and measurements.
+
+- `/`: Baseline
+- `/1`: Sidewinder (long wall ramp + precision gate)
+- `/2`: Overpass (crossing ramp + glove scoop)
+- `/3`: Powerhouse (compact ramp + multiball + bonus bumper)
+
+Layouts are data in `src/machines/presets.ts`. Mechanism types are in `src/machines/mechanisms.ts`.
 
 ## Controls
 
@@ -37,6 +48,8 @@ src/physics/sim.ts      headless fixed-step simulation (runs in node for tests)
 src/view/game.ts        board art, batter, ball, lit machines
 src/view/vfx.ts         machine-localized neon effects
 src/view/theme.ts       semantic color tokens (one theme: Broadcast Classic)
+src/machines/            mechanism types, map presets, power budget
+src/view/machines.ts     mechanism art (ramps, scoop, splitter, gate)
 src/telemetry/session.ts playtest metrics
 tests/                  rules, swing, sim/physics tests
 scripts/bot-playtest.ts headless tuning bot
@@ -47,4 +60,4 @@ To add a theme, add another `Theme` object in `src/view/theme.ts`. Themes change
 
 ## Not in this build (on purpose)
 
-Innings, challenges, Closers, shop, drafts, multiball, upgrades, saves, theme unlocks. The strike accounting already treats only the last live ball as a strike, so multiball can be added later.
+Innings, challenges, Closers, shop, drafts, upgrades, modifier stacking, automatic power rewards, saves and theme unlocks. Power capacity exists only as data (`validatePreset`).
