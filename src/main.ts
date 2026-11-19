@@ -268,6 +268,42 @@ w.setTheme = (id: keyof typeof THEMES) => {
   w.theme = t;
   return true;
 };
+/**
+ * Dev only: live color tuning without a rebuild. Every theme color is a named role, so:
+ *   tuneTheme('m.bumperBody.0', '#ff8a3d')   // one value (dot path, array index allowed)
+ *   tuneTheme({ machineGlow: '#ff00aa', m: { turf: ['#123', '#234', '#123'] } })   // merge many
+ *   dumpTheme()   // copies the tuned palette as JSON, ready to paste into src/view/theme.ts
+ * Works on a copy of the active theme; reload to discard. Nothing is saved.
+ */
+w.tuneTheme = (pathOrPatch: string | Record<string, unknown>, value?: unknown) => {
+  const t = structuredClone(w.theme);
+  const merge = (dst: any, src: any) => {
+    for (const [k, v] of Object.entries(src)) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && dst[k] && typeof dst[k] === 'object') merge(dst[k], v);
+      else dst[k] = v;
+    }
+  };
+  if (typeof pathOrPatch === 'string') {
+    const keys = pathOrPatch.split('.');
+    let o: any = t;
+    for (const k of keys.slice(0, -1)) {
+      if (o[k] === undefined) return `unknown role: ${pathOrPatch}`;
+      o = o[k];
+    }
+    const last = keys[keys.length - 1];
+    if (!(last in o)) return `unknown role: ${pathOrPatch}`;
+    o[last] = value;
+  } else merge(t, pathOrPatch);
+  view.setTheme(t);
+  applyThemeToCss(t, document.documentElement);
+  w.theme = t;
+  return true;
+};
+w.dumpTheme = () => {
+  const json = JSON.stringify(w.theme, null, 2);
+  navigator.clipboard?.writeText(json).catch(() => {});
+  return json;
+};
 w.playtest = {
   report: () => telemetry.report(),
   download: () => {

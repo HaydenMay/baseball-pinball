@@ -171,7 +171,7 @@ export class GameView {
     ctx.lineTo(rail[1].x, rail[1].y);
     ctx.stroke();
     for (const p of rail) {
-      ctx.fillStyle = '#e3b45c';
+      ctx.fillStyle = this.theme.m.trim;
       ctx.beginPath();
       ctx.arc(p.x, p.y, 0.17, 0, Math.PI * 2);
       ctx.fill();
@@ -184,17 +184,17 @@ export class GameView {
     ctx.ellipse(x + 0.18, y + 0.28, r * 1.2, r * 1.1, 0, 0, Math.PI * 2);
     ctx.fill();
     const s = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
-    s.addColorStop(0, '#fff2c4');
-    s.addColorStop(0.5, '#c9932f');
-    s.addColorStop(1, '#5c3f14');
+    s.addColorStop(0, this.theme.m.bonusRim[0]);
+    s.addColorStop(0.5, this.theme.m.bonusRim[1]);
+    s.addColorStop(1, this.theme.m.bonusRim[2]);
     ctx.fillStyle = s;
     ctx.beginPath();
     ctx.arc(x, y, r * 1.15, 0, Math.PI * 2);
     ctx.fill();
     const b = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
-    b.addColorStop(0, '#ff7ae6');
-    b.addColorStop(0.7, '#a3168f');
-    b.addColorStop(1, '#4a0a42');
+    b.addColorStop(0, this.theme.m.bonusBody[0]);
+    b.addColorStop(0.7, this.theme.m.bonusBody[1]);
+    b.addColorStop(1, this.theme.m.bonusBody[2]);
     ctx.fillStyle = b;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -250,9 +250,9 @@ export class GameView {
   private drawStadium(ctx: CanvasRenderingContext2D) {
     const { x0, y0, w, h } = VIEW;
     const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
-    g.addColorStop(0, '#0b1a33');
-    g.addColorStop(0.5, '#08152a');
-    g.addColorStop(1, '#050c19');
+    g.addColorStop(0, this.theme.m.backdrop[0]);
+    g.addColorStop(0.5, this.theme.m.backdrop[1]);
+    g.addColorStop(1, this.theme.m.backdrop[2]);
     ctx.fillStyle = g;
     ctx.fillRect(x0, y0, w, h);
     // stands suggestion below the angled walls: soft out-of-focus crowd bokeh (static, cheap)
@@ -263,7 +263,8 @@ export class GameView {
         const y = 22 + rnd() * 11;
         const wallX = lowerWallX(Math.min(y, 30.6));
         const x = side < 0 ? x0 + rnd() * (wallX - x0 - 0.6) : 20 - wallX + 0.6 + rnd() * (wallX - x0 - 0.6);
-        const hue = ['#c43a3a', '#2f5fae', '#e8e0d0', '#24324d', '#b8862f'][Math.floor(rnd() * 5)];
+        const crowd = this.theme.m.crowd;
+        const hue = crowd[Math.floor(rnd() * crowd.length)];
         ctx.globalAlpha = 0.12 + rnd() * 0.16;
         ctx.fillStyle = hue;
         ctx.beginPath();
@@ -274,17 +275,17 @@ export class GameView {
     ctx.globalAlpha = 1;
     // floodlight bloom at the top corners
     ctx.globalCompositeOperation = 'lighter';
-    drawGlow(ctx, '#ffe8bd', 0.5, -0.8, 7.5, 0.35);
-    drawGlow(ctx, '#ffe8bd', 19.5, -0.8, 7.5, 0.35);
+    drawGlow(ctx, this.theme.m.floodlight, 0.5, -0.8, 7.5, 0.35);
+    drawGlow(ctx, this.theme.m.floodlight, 19.5, -0.8, 7.5, 0.35);
     drawGlow(ctx, this.theme.cabinetGlow, 10, 33, 9, 0.18);
     ctx.globalCompositeOperation = 'source-over';
   }
 
   private drawTurf(ctx: CanvasRenderingContext2D) {
     const g = ctx.createLinearGradient(0, 0, 0, 32);
-    g.addColorStop(0, '#1b6a38');
-    g.addColorStop(0.45, '#228043');
-    g.addColorStop(1, '#1b6837');
+    g.addColorStop(0, this.theme.m.turf[0]);
+    g.addColorStop(0.45, this.theme.m.turf[1]);
+    g.addColorStop(1, this.theme.m.turf[2]);
     ctx.fillStyle = g;
     ctx.fillRect(-1, -1, 22, 35);
     // mowing stripes
@@ -325,7 +326,7 @@ export class GameView {
     // infield skin arc around home plate
     ctx.save();
     ctx.globalAlpha = 0.55;
-    ctx.strokeStyle = '#a8744a';
+    ctx.strokeStyle = this.theme.m.infield;
     ctx.lineWidth = 0.95;
     ctx.beginPath();
     ctx.arc(HOME.x, HOME.y, 13.6, Math.PI * 1.17, Math.PI * 1.83);
@@ -363,9 +364,9 @@ export class GameView {
     }
     // pitcher's mound (serve point): decorative, no collision
     const m = ctx.createRadialGradient(MOUND.x - 0.3, MOUND.y - 0.3, 0.1, MOUND.x, MOUND.y, MOUND.r);
-    m.addColorStop(0, '#c7915f');
-    m.addColorStop(0.75, '#a26f45');
-    m.addColorStop(1, '#7d5434');
+    m.addColorStop(0, this.theme.m.mound[0]);
+    m.addColorStop(0.75, this.theme.m.mound[1]);
+    m.addColorStop(1, this.theme.m.mound[2]);
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
     ctx.ellipse(MOUND.x + 0.1, MOUND.y + 0.15, MOUND.r, MOUND.r * 0.92, 0, 0, Math.PI * 2);
@@ -381,9 +382,9 @@ export class GameView {
   private drawLaneAndApron(ctx: CanvasRenderingContext2D) {
     // apron / batter's dirt below the batting line down to the drain
     const a = ctx.createLinearGradient(0, BAT_LINE, 0, 32.5);
-    a.addColorStop(0, '#a5704a');
-    a.addColorStop(0.55, '#8a5c3b');
-    a.addColorStop(1, '#3b2618');
+    a.addColorStop(0, this.theme.m.apron[0]);
+    a.addColorStop(0.55, this.theme.m.apron[1]);
+    a.addColorStop(1, this.theme.m.apron[2]);
     ctx.fillStyle = a;
     ctx.fillRect(-1, BAT_LINE, 22, 34 - BAT_LINE);
     // home plate + batter's boxes
@@ -406,8 +407,8 @@ export class GameView {
 
     // batter movement lane: bright turf band, chalk edges, clear of all machinery
     const l = ctx.createLinearGradient(0, LANE_TOP, 0, BAT_LINE);
-    l.addColorStop(0, '#2a9150');
-    l.addColorStop(1, '#23803f');
+    l.addColorStop(0, this.theme.m.laneTurf[0]);
+    l.addColorStop(1, this.theme.m.laneTurf[1]);
     ctx.fillStyle = l;
     ctx.fillRect(-1, LANE_TOP, 22, BAT_LINE - LANE_TOP);
     for (let x = 0; x < 20; x += 1.2) {
@@ -439,12 +440,12 @@ export class GameView {
     path(ctx, rail, false);
     ctx.stroke();
     ctx.restore();
-    ctx.strokeStyle = '#0a1426';
+    ctx.strokeStyle = this.theme.m.railEdge;
     ctx.lineWidth = 0.78;
     path(ctx, rail, false);
     ctx.stroke();
     const metal = ctx.createLinearGradient(-1, -1, 21, 33);
-    const stops = ['#7a5523', '#f6dc9c', '#9a6d2f', '#fff1c8', '#8a612a', '#e9c57a', '#6e4c1f', '#f9e5ae', '#93692e'];
+    const stops = this.theme.m.railMetal;
     stops.forEach((c, i) => metal.addColorStop(i / (stops.length - 1), c));
     ctx.strokeStyle = metal;
     ctx.lineWidth = 0.48;
@@ -495,8 +496,8 @@ export class GameView {
   private drawFloodlights(ctx: CanvasRenderingContext2D) {
     for (const cx of [1.6, 18.4]) {
       const x = cx - 1.35, y = -1.55;
-      ctx.fillStyle = '#121c2c';
-      ctx.strokeStyle = '#c99a4c';
+      ctx.fillStyle = this.theme.m.floodPanel;
+      ctx.strokeStyle = this.theme.m.trimDeep;
       ctx.lineWidth = 0.08;
       ctx.beginPath();
       ctx.roundRect(x, y, 2.7, 1.2, 0.15);
@@ -506,7 +507,7 @@ export class GameView {
         for (let c = 0; c < 5; c++) {
           const bx = x + 0.32 + c * 0.51, by = y + 0.33 + r * 0.54;
           ctx.globalCompositeOperation = 'lighter';
-          drawGlow(ctx, '#fff1d0', bx, by, 0.55, 0.55);
+          drawGlow(ctx, this.theme.m.floodBulb, bx, by, 0.55, 0.55);
           ctx.globalCompositeOperation = 'source-over';
           ctx.fillStyle = '#fffaf0';
           ctx.beginPath();
@@ -604,9 +605,9 @@ export class GameView {
     ctx.arc(x + 0.08, y + 0.12, r * 1.15, 0, Math.PI * 2);
     ctx.fill();
     const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, 0, x, y, r * 1.2);
-    g.addColorStop(0, '#fff6d8');
-    g.addColorStop(0.5, '#d9a94f');
-    g.addColorStop(1, '#6d4a1c');
+    g.addColorStop(0, this.theme.m.postMetal[0]);
+    g.addColorStop(0.5, this.theme.m.postMetal[1]);
+    g.addColorStop(1, this.theme.m.postMetal[2]);
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(x, y, r * 1.1, 0, Math.PI * 2);
@@ -622,11 +623,12 @@ export class GameView {
     ctx.beginPath();
     ctx.ellipse(x + 0.1, y + 0.18, r * 1.15, r * 1.05, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#c99a4c';
+    ctx.fillStyle = this.theme.m.trimDeep;
     ctx.beginPath();
     ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
     ctx.fill();
-    const rings = ['#d4232c', '#f8f4ea', '#d4232c', '#f8f4ea', '#d4232c'];
+    const red = this.theme.m.targetRing;
+    const rings = [red, '#f8f4ea', red, '#f8f4ea', red];
     rings.forEach((c, i) => {
       ctx.fillStyle = c;
       ctx.beginPath();
@@ -645,17 +647,17 @@ export class GameView {
     ctx.restore();
     if (t.style === 'jackpot') {
       const g = ctx.createLinearGradient(0, t.y - t.hh, 0, t.y + t.hh + 0.25);
-      g.addColorStop(0, '#e2363b');
-      g.addColorStop(1, '#8e1118');
+      g.addColorStop(0, this.theme.m.jackpotBanner[0]);
+      g.addColorStop(1, this.theme.m.jackpotBanner[1]);
       ctx.fillStyle = g;
       ctx.lineJoin = 'round';
       path(ctx, poly);
       ctx.fill();
-      ctx.strokeStyle = '#f0c46a';
+      ctx.strokeStyle = this.theme.m.jackpotBorder;
       ctx.lineWidth = 0.1;
       ctx.stroke();
       // laurels
-      ctx.strokeStyle = '#e2b55c';
+      ctx.strokeStyle = this.theme.m.jackpotLaurel;
       ctx.lineWidth = 0.07;
       for (const s of [-1, 1]) {
         for (let i = 0; i < 4; i++) {
@@ -668,7 +670,7 @@ export class GameView {
       ctx.font = `italic 800 0.78px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#7a0d12';
+      ctx.fillStyle = this.theme.m.jackpotTextShadow;
       ctx.fillText('JACKPOT', t.x + 0.03, t.y + 0.07);
       ctx.fillStyle = '#fff6e0';
       ctx.fillText('JACKPOT', t.x, t.y + 0.03);
@@ -676,9 +678,9 @@ export class GameView {
     }
     // wall target panel
     const metal = ctx.createLinearGradient(t.x - 0.5, 0, t.x + 0.5, 0);
-    metal.addColorStop(0, '#6b4a1c');
-    metal.addColorStop(0.5, '#f1d08a');
-    metal.addColorStop(1, '#7a5422');
+    metal.addColorStop(0, this.theme.m.panelMetal[0]);
+    metal.addColorStop(0.5, this.theme.m.panelMetal[1]);
+    metal.addColorStop(1, this.theme.m.panelMetal[2]);
     ctx.fillStyle = metal;
     path(ctx, poly);
     ctx.fill();
@@ -705,9 +707,9 @@ export class GameView {
       ctx.lineTo(sx + 0.2, sy - 0.38);
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#16244a';
+      ctx.fillStyle = this.theme.m.starPanel;
       ctx.fillRect(panelX, t.y - t.hh + 0.08, 0.55, t.hh * 2 - 0.16);
-      ctx.fillStyle = '#ffcf4a';
+      ctx.fillStyle = this.theme.m.starFill;
       star(ctx, panelX + 0.275, t.y, 0.22, 0.1);
       ctx.fill();
     }
@@ -720,18 +722,18 @@ export class GameView {
     ctx.fill();
     // chrome skirt
     const s = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
-    s.addColorStop(0, '#e8edf3');
-    s.addColorStop(0.5, '#7c8593');
-    s.addColorStop(1, '#2b313b');
+    s.addColorStop(0, this.theme.m.bumperSkirt[0]);
+    s.addColorStop(0.5, this.theme.m.bumperSkirt[1]);
+    s.addColorStop(1, this.theme.m.bumperSkirt[2]);
     ctx.fillStyle = s;
     ctx.beginPath();
     ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
     ctx.fill();
     // red body
     const b = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
-    b.addColorStop(0, '#ff5a52');
-    b.addColorStop(0.7, '#c4141d');
-    b.addColorStop(1, '#6e0a10');
+    b.addColorStop(0, this.theme.m.bumperBody[0]);
+    b.addColorStop(0.7, this.theme.m.bumperBody[1]);
+    b.addColorStop(1, this.theme.m.bumperBody[2]);
     ctx.fillStyle = b;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);

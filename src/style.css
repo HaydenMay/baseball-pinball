@@ -11,6 +11,29 @@
   --energy-faint: #3fd8ff55;
   --ui-accent: #6fe6ff;
   --ui-accent-faint: #3fd8ff55;
+  /* Material layer (defaults = Broadcast Classic) */
+  --m-page-a: #0a1730;
+  --m-page-b: #050b16;
+  --m-page-glow: #2a3d63aa;
+  --m-bezel-a: #2a2216;
+  --m-bezel-b: #120e08;
+  --m-screen-a: #1f3d78;
+  --m-screen-b: #0a1530;
+  --m-screen-border: #8d6b34;
+  --m-strip-a: #141b2a;
+  --m-strip-b: #0b111d;
+  --m-label: #9fb6d6;
+  --m-btn-a: #ffe49a;
+  --m-btn-b: #e3a83f;
+  --m-btn-text: #1a1206;
+  --m-btn-edge: #6b4a17;
+  --m-card-a: #13223cf2;
+  --m-card-b: #0b1528f2;
+  --m-offer-a: #17284a;
+  --m-offer-b: #0f1a33;
+  --m-panel-a: #0b1528f0;
+  --m-panel-b: #070e1cf8;
+  --m-trim: #e3b45c;
   --navy: #060d1a;
   --gold: #e3b45c;
   --gold-hi: #fbe3a6;
@@ -32,9 +55,9 @@ html, body {
 }
 body {
   background:
-    radial-gradient(ellipse 60% 40% at 15% 0%, #2a3d63aa, transparent 70%),
-    radial-gradient(ellipse 60% 40% at 85% 0%, #2a3d63aa, transparent 70%),
-    linear-gradient(#0a1730, #050b16);
+    radial-gradient(ellipse 60% 40% at 15% 0%, var(--m-page-glow), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 85% 0%, var(--m-page-glow), transparent 70%),
+    linear-gradient(var(--m-page-a), var(--m-page-b));
 }
 #app {
   min-height: 100%;
@@ -59,7 +82,7 @@ body {
   grid-template-columns: 1fr 1.35fr 1fr;
   gap: 5px;
   padding: 6px;
-  background: linear-gradient(#2a2216, #120e08);
+  background: linear-gradient(var(--m-bezel-a), var(--m-bezel-b));
   border: 2px solid var(--gold);
   border-bottom: 0;
   border-radius: 14px 14px 0 0;
@@ -69,8 +92,8 @@ body {
   position: relative;
   background:
     repeating-linear-gradient(0deg, #ffffff07 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at 50% 0%, #1f3d78, #0a1530 75%);
-  border: 1px solid #8d6b34;
+    radial-gradient(ellipse at 50% 0%, var(--m-screen-a), var(--m-screen-b) 75%);
+  border: 1px solid var(--m-screen-border);
   border-radius: 6px;
   padding: 3px 4px 2px;
   text-align: center;
@@ -83,7 +106,7 @@ body {
   font-size: clamp(9px, 2.6vw, 12px);
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: #9fb6d6;
+  color: var(--m-label);
 }
 .screen strong {
   display: block;
@@ -109,7 +132,7 @@ body {
   justify-content: space-between;
   gap: 6px;
   padding: 3px 6px 3px 10px;
-  background: linear-gradient(#141b2a, #0b111d);
+  background: linear-gradient(var(--m-strip-a), var(--m-strip-b));
   border-left: 2px solid var(--gold);
   border-right: 2px solid var(--gold);
   font-size: clamp(11px, 3vw, 13px);
@@ -162,7 +185,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   width: min(82%, 340px);
   text-align: center;
   padding: 20px 18px 16px;
-  background: linear-gradient(#13223cf2, #0b1528f2);
+  background: linear-gradient(var(--m-card-a), var(--m-card-b));
   border: 1px solid var(--gold);
   border-radius: 14px;
   box-shadow: 0 0 0 1px #000, 0 18px 40px #000b, inset 0 1px 0 #fbe3a655;
@@ -179,9 +202,9 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   min-height: 48px;
   border: 0;
   border-radius: 8px;
-  color: #1a1206;
-  background: linear-gradient(#ffe49a, #e3a83f);
-  box-shadow: 0 0 0 1px #6b4a17, 0 6px 18px #ffb34755;
+  color: var(--m-btn-text);
+  background: linear-gradient(var(--m-btn-a), var(--m-btn-b));
+  box-shadow: 0 0 0 1px var(--m-btn-edge), 0 6px 18px #ffb34755;
   cursor: pointer;
 }
 #ready:focus-visible, #pause:focus-visible, #mute:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
@@ -219,7 +242,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   position: absolute; left: 0; right: 0; bottom: 0;
   max-height: 64%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
   padding: 10px 10px 12px;
-  background: linear-gradient(#0b1528f0, #070e1cf8);
+  background: linear-gradient(var(--m-panel-a), var(--m-panel-b));
   border-top: 2px solid var(--gold);
   box-shadow: 0 -12px 30px #000a;
   font-family: var(--font);
@@ -232,7 +255,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .offers.draft { grid-template-columns: repeat(3, 1fr); }
 .offers.shop { grid-template-columns: repeat(2, 1fr); }
 .offer { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 9px; border-radius: 10px; cursor: pointer;
-  background: linear-gradient(#17284a, #0f1a33); border: 1px solid #3a4c6e; color: #e9f0f7; }
+  background: linear-gradient(var(--m-offer-a), var(--m-offer-b)); border: 1px solid #3a4c6e; color: #e9f0f7; }
 .offer.machine { border-color: #6a5a2e; }
 .offer.sel { outline: 2px solid var(--ui-accent); box-shadow: 0 0 16px var(--ui-accent-faint); }
 .offer.locked { opacity: 0.55; }
@@ -245,13 +268,13 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .mount { font: 700 11px var(--font); padding: 4px 6px; border-radius: 5px; border: 1px solid var(--energy-soft); background: #0a1a30; color: color-mix(in srgb, var(--energy) 35%, white); cursor: pointer; }
 .mount.on { background: var(--energy); color: #04121f; }
 .obuy { margin-top: auto; font: italic 800 14px var(--font); letter-spacing: 0.04em; padding: 7px 4px; min-height: 34px; border-radius: 6px; border: 0;
-  color: #1a1206; background: linear-gradient(#ffe49a, #e3a83f); cursor: pointer; }
+  color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); cursor: pointer; }
 .obuy:disabled { background: #2a3550; color: #8d9bb3; cursor: default; }
 .pmachine { margin: 8px 2px 0; font-size: 12px; color: #8ea2bb; }
 .pfoot { display: flex; gap: 8px; margin-top: 8px; }
 .pfoot button { flex: 1; font: italic 800 15px var(--font); padding: 10px 6px; min-height: 42px; border-radius: 8px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
 .pfoot button:disabled { opacity: 0.45; cursor: default; }
-.pfoot .next { flex: 1.6; color: #1a1206; border: 0; background: linear-gradient(#ffe49a, #e3a83f); }
+.pfoot .next { flex: 1.6; color: var(--m-btn-text); border: 0; background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); }
 .empty { grid-column: 1 / -1; font-size: 14px; color: #a9bad0; padding: 10px; }
 @media (max-width: 420px) {
   .offers.draft { grid-template-columns: 1fr; }

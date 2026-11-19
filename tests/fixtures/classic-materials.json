@@ -1,0 +1,136 @@
+{
+  "backdrop": [
+    "#0b1a33",
+    "#08152a",
+    "#050c19"
+  ],
+  "crowd": [
+    "#c43a3a",
+    "#2f5fae",
+    "#e8e0d0",
+    "#24324d",
+    "#b8862f"
+  ],
+  "floodlight": "#ffe8bd",
+  "floodBulb": "#fff1d0",
+  "floodPanel": "#121c2c",
+  "turf": [
+    "#1b6a38",
+    "#228043",
+    "#1b6837"
+  ],
+  "laneTurf": [
+    "#2a9150",
+    "#23803f"
+  ],
+  "infield": "#a8744a",
+  "mound": [
+    "#c7915f",
+    "#a26f45",
+    "#7d5434"
+  ],
+  "apron": [
+    "#a5704a",
+    "#8a5c3b",
+    "#3b2618"
+  ],
+  "railMetal": [
+    "#7a5523",
+    "#f6dc9c",
+    "#9a6d2f",
+    "#fff1c8",
+    "#8a612a",
+    "#e9c57a",
+    "#6e4c1f",
+    "#f9e5ae",
+    "#93692e"
+  ],
+  "railEdge": "#0a1426",
+  "trim": "#e3b45c",
+  "trimDeep": "#c99a4c",
+  "postMetal": [
+    "#fff6d8",
+    "#d9a94f",
+    "#6d4a1c"
+  ],
+  "panelMetal": [
+    "#6b4a1c",
+    "#f1d08a",
+    "#7a5422"
+  ],
+  "bumperBody": [
+    "#ff5a52",
+    "#c4141d",
+    "#6e0a10"
+  ],
+  "bumperSkirt": [
+    "#e8edf3",
+    "#7c8593",
+    "#2b313b"
+  ],
+  "bonusBody": [
+    "#ff7ae6",
+    "#a3168f",
+    "#4a0a42"
+  ],
+  "bonusRim": [
+    "#fff2c4",
+    "#c9932f",
+    "#5c3f14"
+  ],
+  "targetRing": "#d4232c",
+  "jackpotBanner": [
+    "#e2363b",
+    "#8e1118"
+  ],
+  "jackpotBorder": "#f0c46a",
+  "jackpotLaurel": "#e2b55c",
+  "jackpotTextShadow": "#7a0d12",
+  "starPanel": "#16244a",
+  "starFill": "#ffcf4a",
+  "splitterFace": [
+    "#2a3f78",
+    "#101a3a"
+  ],
+  "ui": {
+    "page": [
+      "#0a1730",
+      "#050b16"
+    ],
+    "pageGlow": "#2a3d63aa",
+    "bezel": [
+      "#2a2216",
+      "#120e08"
+    ],
+    "screen": [
+      "#1f3d78",
+      "#0a1530"
+    ],
+    "screenBorder": "#8d6b34",
+    "strip": [
+      "#141b2a",
+      "#0b111d"
+    ],
+    "label": "#9fb6d6",
+    "frame": "#e3b45c",
+    "frameHi": "#fbe3a6",
+    "button": [
+      "#ffe49a",
+      "#e3a83f"
+    ],
+    "buttonText": "#1a1206",
+    "buttonEdge": "#6b4a17",
+    "card": [
+      "#13223cf2",
+      "#0b1528f2"
+    ],
+    "offer": [
+      "#17284a",
+      "#0f1a33"
+    ],
+    "panel": [
+      "#0b1528f0",
+      "#070e1cf8"
+    ]
+  }
+}

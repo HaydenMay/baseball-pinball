@@ -10,7 +10,10 @@ import { dropLanding, rampAt, rampHeight, type Pt, type RampPath, type SpinnerDe
 import { scoopArc, splitterPoly } from '../physics/board.ts';
 import type { Simulation, SimEvent } from '../physics/sim.ts';
 import { drawGlow, underlay } from './vfx.ts';
-import { derived, rgba, type Theme } from './theme.ts';
+import { BROADCAST_CLASSIC, derived, rgba, type Materials, type Theme } from './theme.ts';
+
+/** Materials for the static pass (set at the start of drawMachinesFloorStatic). */
+let mat: Materials = BROADCAST_CLASSIC.m;
 import { drawBaseball, type GameView } from './game.ts';
 
 const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
@@ -38,6 +41,7 @@ const lift = (h: number) => ({ x: h * 0.45, y: h * 0.6 });
 /** Floor-level parts drawn into the static layer, plus the raised ramp layer. */
 export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: GameView) {
   const L = view.layout;
+  mat = view.theme.m;
   for (const s of L.scoops) drawScoopStatic(ctx, s);
   for (const s of L.splitters) drawSplitterStatic(ctx, s);
   for (const g of L.gates) drawGateStatic(ctx, g, view.theme);
@@ -133,7 +137,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
   for (let s = 1.2; s < r.length - 0.8; s += 1.5) chevron(ctx, r, s, 0.2);
   // mouth arch + name plate
   const [a, b] = r.posts;
-  ctx.strokeStyle = '#e3b45c';
+  ctx.strokeStyle = mat.trim;
   ctx.lineWidth = 0.16;
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
@@ -143,7 +147,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
   ctx.save();
   ctx.translate(plate.x, plate.y);
   ctx.fillStyle = '#0d1a33e6';
-  ctx.strokeStyle = '#e3b45c';
+  ctx.strokeStyle = mat.trim;
   ctx.lineWidth = 0.05;
   ctx.beginPath();
   ctx.roundRect(-1.35, -0.33, 2.7, 0.66, 0.14);
@@ -158,7 +162,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
   const ex = r.exit, en = { x: -r.exitDir.y, y: r.exitDir.x };
   if (r.def.exit?.mode === 'drop') {
     // open end: rails stop short with gold caps, the ball visibly leaves the raised level here
-    ctx.fillStyle = '#e3b45c';
+    ctx.fillStyle = mat.trim;
     for (const side of [-1, 1]) {
       ctx.beginPath();
       ctx.arc(ex.x + en.x * RAIL * side, ex.y + en.y * RAIL * side, 0.12, 0, Math.PI * 2);
@@ -203,7 +207,7 @@ function drawRampGateArch(ctx: CanvasRenderingContext2D, r: RampPath) {
   ctx.moveTo(p.x + n.x * w, p.y + n.y * w);
   ctx.lineTo(p.x - n.x * w, p.y - n.y * w);
   ctx.stroke();
-  ctx.strokeStyle = '#e3b45c';
+  ctx.strokeStyle = mat.trim;
   ctx.lineWidth = 0.07;
   ctx.stroke();
   for (const side of [-1, 1]) drawChromePost(ctx, p.x + n.x * w * side, p.y + n.y * w * side, 0.17);
@@ -264,7 +268,7 @@ function drawChromePost(ctx: CanvasRenderingContext2D, x: number, y: number, r: 
   ctx.beginPath();
   ctx.arc(x, y, r * 1.1, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#e3b45c';
+  ctx.fillStyle = mat.trim;
   ctx.beginPath();
   ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
   ctx.fill();
@@ -321,13 +325,13 @@ function drawSplitterStatic(ctx: CanvasRenderingContext2D, s: import('../machine
   ctx.fill();
   ctx.restore();
   const g = ctx.createLinearGradient(0, s.y - s.hh - 0.35, 0, s.y + s.hh);
-  g.addColorStop(0, '#2a3f78');
-  g.addColorStop(1, '#101a3a');
+  g.addColorStop(0, mat.splitterFace[0]);
+  g.addColorStop(1, mat.splitterFace[1]);
   ctx.fillStyle = g;
   poly(ctx, pts);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#e3b45c';
+  ctx.strokeStyle = mat.trim;
   ctx.lineWidth = 0.07;
   ctx.stroke();
   ctx.fillStyle = '#ffe8a8';
@@ -373,7 +377,7 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
   ctx.moveTo(g.a.x, g.a.y);
   ctx.lineTo(g.b.x, g.b.y);
   ctx.stroke();
-  ctx.strokeStyle = '#e3b45c';
+  ctx.strokeStyle = mat.trim;
   ctx.lineWidth = 0.06;
   ctx.setLineDash([0.12, 0.1]);
   ctx.stroke();

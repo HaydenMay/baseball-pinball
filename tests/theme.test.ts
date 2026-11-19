@@ -17,17 +17,26 @@ test('theme selection: ?theme=toxicThunder previews it; default and unknown valu
   }
 });
 
-test('palettes are complete: every role present and a valid #rrggbb color', () => {
-  const roles = Object.keys(BROADCAST_CLASSIC) as (keyof Theme)[];
-  assert.ok(roles.length >= 20);
+/** Walks a theme value, returning [path, leaf] pairs and a shape signature for key-set comparison. */
+function leaves(v: unknown, path = ''): [string, unknown][] {
+  if (v !== null && typeof v === 'object') return Object.entries(v).flatMap(([k, x]) => leaves(x, path ? `${path}.${k}` : k));
+  return [[path, v]];
+}
+
+test('palettes are complete: every role present and a valid #rrggbb(aa) color', () => {
+  const roles = leaves(BROADCAST_CLASSIC).map(([p]) => p);
+  assert.ok(roles.length >= 60);
   for (const t of Object.values(THEMES)) {
-    assert.deepEqual(Object.keys(t).sort(), [...roles].sort(), `${t.name} has exactly the theme roles`);
-    for (const k of roles) {
-      if (k === 'id' || k === 'name') continue;
-      const v = t[k];
-      if (k === 'energyOutline' && v === null) continue;
-      assert.match(String(v), /^#[0-9a-f]{6}$/i, `${t.name}.${k}`);
+    const ls = leaves(t);
+    // Same shape, including material arrays of the same length (crowd may differ in length).
+    const norm = (p: string) => p.replace(/^m\.crowd\.\d+$/, 'm.crowd.#');
+    assert.deepEqual([...new Set(ls.map(([p]) => norm(p)))].sort(), [...new Set(roles.map(norm))].sort(), `${t.name} has exactly the theme roles`);
+    for (const [p, v] of ls) {
+      if (p === 'id' || p === 'name') continue;
+      if (p === 'energyOutline' && v === null) continue;
+      assert.match(String(v), /^#[0-9a-f]{6}([0-9a-f]{2})?$/i, `${t.name}.${p}`);
     }
+    assert.ok(t.m.crowd.length >= 3, `${t.name} crowd has variety`);
     // derived colors resolve once per theme and are cached
     assert.equal(derived(t), derived(t));
   }
@@ -35,7 +44,10 @@ test('palettes are complete: every role present and a valid #rrggbb color', () =
 });
 
 test('Broadcast Classic tokens are locked to the shipped default look', () => {
-  assert.deepEqual(BROADCAST_CLASSIC, {
+  const { m, ...roles } = BROADCAST_CLASSIC;
+  // Materials equal the literals the table was drawn with before themes existed (pixel diff proves it).
+  assert.deepEqual(m, JSON.parse(readFileSync(new URL('./fixtures/classic-materials.json', import.meta.url), 'utf8')));
+  assert.deepEqual(roles, {
     id: 'broadcastClassic', name: 'Broadcast Classic',
     machineGlow: '#ffb347', energyPrimary: '#3fd8ff', energySecondary: '#ff4fd8', impactCore: '#ffffff', jackpotAccent: '#ffd76a',
     ballTrail: '#6fe6ff', scoreboardAccent: '#ffcb5c', scoreboardValue: '#6fe6ff', scoreboardBar: '#ffe58e',
