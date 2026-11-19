@@ -9,11 +9,17 @@ type Ring = { x: number; y: number; r0: number; r1: number; life: number; max: n
 type Flicker = { x: number; y: number; text: string; life: number; max: number; color: string };
 type Flash = { x: number; y: number; r: number; life: number; max: number; color: string };
 
+/** Glow sprites cached by color. Bounded so theme switches can't grow it without limit. */
 const glowCache = new Map<string, HTMLCanvasElement>();
+export const GLOW_CACHE_MAX = 48;
+export function glowCacheSize() {
+  return glowCache.size;
+}
 /** Soft radial sprite in a given color, drawn with additive blending. */
 export function glowSprite(color: string): HTMLCanvasElement {
   let c = glowCache.get(color);
   if (c) return c;
+  if (glowCache.size >= GLOW_CACHE_MAX) glowCache.delete(glowCache.keys().next().value!);
   c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
@@ -26,6 +32,22 @@ export function glowSprite(color: string): HTMLCanvasElement {
   g.fillRect(0, 0, 128, 128);
   glowCache.set(color, c);
   return c;
+}
+
+/**
+ * Contrast underlay: if the theme defines energyOutline, stroke the current path with it first
+ * (wider, normal blending) so a bright stroke stays legible on the green turf. No-op otherwise.
+ */
+export function underlay(ctx: CanvasRenderingContext2D, theme: Theme, width: number) {
+  if (!theme.energyOutline) return;
+  const s = ctx.strokeStyle, w = ctx.lineWidth, op = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = theme.energyOutline;
+  ctx.lineWidth = width;
+  ctx.stroke();
+  ctx.strokeStyle = s;
+  ctx.lineWidth = w;
+  ctx.globalCompositeOperation = op;
 }
 
 export function drawGlow(ctx: CanvasRenderingContext2D, color: string, x: number, y: number, r: number, alpha: number) {
@@ -93,7 +115,7 @@ export class Vfx {
     const c = jackpot ? t.jackpotAccent : t.energyPrimary;
     this.flash(x, y, jackpot ? 2.4 : 1.3, c, 0.22);
     this.flash(x, y, 0.5, t.impactCore, 0.07);
-    this.fragments(x, y, jackpot ? 12 : 7, jackpot ? t.jackpotAccent : '#ffffff', -nx || 0, -ny || 1);
+    this.fragments(x, y, jackpot ? 12 : 7, jackpot ? t.jackpotAccent : t.impactCore, -nx || 0, -ny || 1);
     this.sparks(x, y, 6, 6, c, -nx, -ny, 1.2);
   }
 
@@ -148,6 +170,7 @@ export class Vfx {
       ctx.lineWidth = r.width * (1 - k * 0.6);
       ctx.beginPath();
       ctx.arc(r.x, r.y, rad, 0, Math.PI * 2);
+      if (r.color === this.theme.energyPrimary || r.color === this.theme.machineGlow) underlay(ctx, this.theme, ctx.lineWidth * 2.2);
       ctx.stroke();
       if (r.stitch) {
         // baseball stitch ticks riding on the ring

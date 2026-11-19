@@ -7,13 +7,17 @@ import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
 import { Telemetry } from './telemetry/session.ts';
 import { GameView } from './view/game.ts';
-import { theme } from './view/theme.ts';
+import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
+import { glowCacheSize } from './view/vfx.ts';
 import { PRESETS, isBuildRoute, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
 import { Sfx } from './view/audio.ts';
 import { BuildUI } from './run/ui.ts';
 
 // Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Turbo, /build-test/ roguelite loop.
 const buildMode = isBuildRoute(location.pathname);
+// Cosmetic palette: default Broadcast Classic; developer preview with ?theme=toxicThunder.
+const theme = themeFromSearch(location.search);
+applyThemeToCss(theme, document.documentElement);
 const preset = presetForPath(location.pathname);
 const power = validatePreset(preset);
 console.info(`[machine] ${preset.name} · power ${power.installed}/${power.max}${power.ok ? '' : ' OVER BUDGET'}`, preset.mechanisms.map(m => `${m.id}:${m.powerCost}`));
@@ -253,6 +257,17 @@ w.tune = config;
 w.sim = sim;
 w.preset = preset;
 w.presets = PRESETS;
+w.theme = theme;
+w.glowCacheSize = glowCacheSize;
+/** Dev only: setTheme('toxicThunder') re-renders the cached layers once; no menu, nothing saved. */
+w.setTheme = (id: keyof typeof THEMES) => {
+  const t = THEMES[id];
+  if (!t) return false;
+  view.setTheme(t);
+  applyThemeToCss(t, document.documentElement);
+  w.theme = t;
+  return true;
+};
 w.playtest = {
   report: () => telemetry.report(),
   download: () => {

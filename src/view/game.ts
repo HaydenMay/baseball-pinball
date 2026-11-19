@@ -7,9 +7,9 @@ import { config } from '../config.ts';
 import { MOUND, OUTER_WALL, lowerWallX, targetPoly, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
-import { drawGlow, Vfx } from './vfx.ts';
+import { drawGlow, underlay, Vfx } from './vfx.ts';
 import { drawMachinesFloorDynamic, drawMachinesFloorStatic, drawMachinesRaised, onMechanismEvent } from './machines.ts';
-import type { Theme } from './theme.ts';
+import { derived, type Theme } from './theme.ts';
 
 /** Visible world rectangle (a little beyond the rails for the frame and floodlights). */
 export const VIEW = { x0: -0.9, y0: -1.7, w: 21.8, h: 34.1 };
@@ -276,7 +276,7 @@ export class GameView {
     ctx.globalCompositeOperation = 'lighter';
     drawGlow(ctx, '#ffe8bd', 0.5, -0.8, 7.5, 0.35);
     drawGlow(ctx, '#ffe8bd', 19.5, -0.8, 7.5, 0.35);
-    drawGlow(ctx, '#3a6fd8', 10, 33, 9, 0.18);
+    drawGlow(ctx, this.theme.cabinetGlow, 10, 33, 9, 0.18);
     ctx.globalCompositeOperation = 'source-over';
   }
 
@@ -354,7 +354,7 @@ export class GameView {
     ctx.lineWidth = 0.13;
     for (let i = 0; i < 4; i++) {
       const y = 9.4 - i * 1.25;
-      ctx.strokeStyle = `rgba(255,215,106,${0.16 + i * 0.07})`;
+      ctx.strokeStyle = derived(this.theme).paintedArrow(0.16 + i * 0.07);
       ctx.beginPath();
       ctx.moveTo(9.45, y + 0.4);
       ctx.lineTo(10, y);
@@ -558,8 +558,8 @@ export class GameView {
     ctx.fill();
     ctx.restore();
     const g = ctx.createLinearGradient(face[0].x, face[0].y, face[0].x - k.x, face[0].y - k.y);
-    g.addColorStop(0, '#3d8cff');
-    g.addColorStop(1, '#0d2f7a');
+    g.addColorStop(0, this.theme.slingBody);
+    g.addColorStop(1, this.theme.slingDeep);
     ctx.fillStyle = g;
     path(ctx, poly);
     ctx.fill();
@@ -568,7 +568,7 @@ export class GameView {
     ctx.lineWidth = 0.08;
     ctx.stroke();
     // bright kick face rubber
-    ctx.strokeStyle = '#9fd4ff';
+    ctx.strokeStyle = this.theme.slingFace;
     ctx.lineWidth = 0.1;
     ctx.beginPath();
     ctx.moveTo(face[0].x, face[0].y);
@@ -806,6 +806,16 @@ export class GameView {
     if (this.debug) this.drawDebug(ctx, sim);
   }
 
+  /**
+   * Switch palette. Re-renders the cached static and ramp layers once and recolors future effect
+   * spawns; nothing is recomputed per frame.
+   */
+  setTheme(theme: Theme) {
+    this.theme = theme;
+    this.vfx.theme = theme;
+    this.drawStatic();
+  }
+
   /** Swap in a rebuilt machine (build-test installs) and redraw the static layers. */
   setLayout(layout: Layout) {
     this.layout = layout;
@@ -827,6 +837,7 @@ export class GameView {
       ctx.lineDashOffset = -this.time * 0.8;
       ctx.beginPath();
       ctx.arc(h.x, h.y, h.r + pulse * 0.15, 0, Math.PI * 2);
+      underlay(ctx, this.theme, 0.22);
       ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -858,7 +869,7 @@ export class GameView {
       drawGlow(ctx, this.theme.railLight, b.x, b.y, 0.42, 0.22 + chase * 0.2);
     });
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#fff3d6';
+    ctx.fillStyle = this.theme.railBulb;
     for (const b of this.bulbs) {
       ctx.beginPath();
       ctx.arc(b.x, b.y, 0.07, 0, Math.PI * 2);
@@ -960,6 +971,7 @@ export class GameView {
         ctx.moveTo(x - 0.32, y - 0.17);
         ctx.lineTo(x, y + 0.13);
         ctx.lineTo(x + 0.32, y - 0.17);
+        underlay(ctx, th, 0.24);
         ctx.stroke();
         ctx.globalAlpha = 1;
       }

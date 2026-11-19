@@ -1,4 +1,16 @@
 :root {
+  /* Theme-driven UI colors (defaults = Broadcast Classic; src/view/theme.ts applyThemeToCss overrides) */
+  --sb-value: #6fe6ff;
+  --sb-value-glow: #3fd8ff66;
+  --sb-main: #ffcb5c;
+  --sb-main-glow: #ffb34766;
+  --sb-bar-a: #ffb347;
+  --sb-bar-b: #ffe58e;
+  --energy: #3fd8ff;
+  --energy-soft: #3fd8ff66;
+  --energy-faint: #3fd8ff55;
+  --ui-accent: #6fe6ff;
+  --ui-accent-faint: #3fd8ff55;
   --navy: #060d1a;
   --gold: #e3b45c;
   --gold-hi: #fbe3a6;
@@ -80,14 +92,14 @@ body {
   font-weight: 800;
   font-style: italic;
   font-variant-numeric: tabular-nums;
-  color: var(--cyan);
-  text-shadow: 0 0 10px #3fd8ff66;
+  color: var(--sb-value);
+  text-shadow: 0 0 10px var(--sb-value-glow);
   transition: transform 0.12s, text-shadow 0.3s;
 }
 .screen.main strong {
   font-size: clamp(26px, 8.6vw, 42px);
-  color: var(--amber);
-  text-shadow: 0 0 12px #ffb34766;
+  color: var(--sb-main);
+  text-shadow: 0 0 12px var(--sb-main-glow);
 }
 .screen strong.pulse { transform: scale(1.08); text-shadow: 0 0 18px currentColor; }
 
@@ -172,7 +184,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   box-shadow: 0 0 0 1px #6b4a17, 0 6px 18px #ffb34755;
   cursor: pointer;
 }
-#ready:focus-visible, #pause:focus-visible, #mute:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+#ready:focus-visible, #pause:focus-visible, #mute:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
 .touch-only { display: none; }
 @media (pointer: coarse) { .touch-only { display: block; } .key-only { display: none; } }
 
@@ -201,7 +213,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .screen.main .target { font-size: clamp(11px, 3vw, 14px); font-weight: 700; color: #ffe7a8; line-height: 1; margin-top: -2px; }
 .screen.main .tbar { display: none; }
 .screen.main .target:not([hidden]) ~ .tbar { display: block; width: 86%; height: 4px; margin-top: 3px; border-radius: 2px; background: #ffffff1a; overflow: hidden; }
-.screen.main .tbar b { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, #ffe58e); transition: width 0.2s; }
+.screen.main .tbar b { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--sb-bar-a), var(--sb-bar-b)); transition: width 0.2s; }
 
 #buildPanel {
   position: absolute; left: 0; right: 0; bottom: 0;
@@ -222,16 +234,16 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .offer { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 9px; border-radius: 10px; cursor: pointer;
   background: linear-gradient(#17284a, #0f1a33); border: 1px solid #3a4c6e; color: #e9f0f7; }
 .offer.machine { border-color: #6a5a2e; }
-.offer.sel { outline: 2px solid var(--cyan); box-shadow: 0 0 16px #3fd8ff55; }
+.offer.sel { outline: 2px solid var(--ui-accent); box-shadow: 0 0 16px var(--ui-accent-faint); }
 .offer.locked { opacity: 0.55; }
 .otag { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8fb0d6; }
 .offer.machine .otag { color: var(--gold); }
 .oname { font: italic 800 17px/1.05 var(--font); }
 .odesc { font-size: 13px; line-height: 1.2; color: #c9d6e4; }
-.owhere { font-size: 12px; color: var(--cyan); }
+.owhere { font-size: 12px; color: var(--ui-accent); }
 .mounts { display: flex; flex-wrap: wrap; gap: 4px; }
-.mount { font: 700 11px var(--font); padding: 4px 6px; border-radius: 5px; border: 1px solid #3fd8ff66; background: #0a1a30; color: #bfeaff; cursor: pointer; }
-.mount.on { background: #3fd8ff; color: #04121f; }
+.mount { font: 700 11px var(--font); padding: 4px 6px; border-radius: 5px; border: 1px solid var(--energy-soft); background: #0a1a30; color: color-mix(in srgb, var(--energy) 35%, white); cursor: pointer; }
+.mount.on { background: var(--energy); color: #04121f; }
 .obuy { margin-top: auto; font: italic 800 14px var(--font); letter-spacing: 0.04em; padding: 7px 4px; min-height: 34px; border-radius: 6px; border: 0;
   color: #1a1206; background: linear-gradient(#ffe49a, #e3a83f); cursor: pointer; }
 .obuy:disabled { background: #2a3550; color: #8d9bb3; cursor: default; }

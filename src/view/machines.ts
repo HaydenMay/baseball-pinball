@@ -9,7 +9,8 @@ import { config } from '../config.ts';
 import { dropLanding, rampAt, rampHeight, type Pt, type RampPath, type SpinnerDef } from '../machines/mechanisms.ts';
 import { scoopArc, splitterPoly } from '../physics/board.ts';
 import type { Simulation, SimEvent } from '../physics/sim.ts';
-import { drawGlow } from './vfx.ts';
+import { drawGlow, underlay } from './vfx.ts';
+import { derived, rgba, type Theme } from './theme.ts';
 import { drawBaseball, type GameView } from './game.ts';
 
 const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
@@ -39,17 +40,17 @@ export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: Gam
   const L = view.layout;
   for (const s of L.scoops) drawScoopStatic(ctx, s);
   for (const s of L.splitters) drawSplitterStatic(ctx, s);
-  for (const g of L.gates) drawGateStatic(ctx, g);
+  for (const g of L.gates) drawGateStatic(ctx, g, view.theme);
   for (const r of L.ramps) drawRampMouthFloor(ctx, r);
   for (const sp of L.spinners) drawSpinnerStatic(ctx, sp);
-  for (const r of L.ramps) if (r.def.exit?.mode === 'drop') drawLandingMarker(ctx, r, view.theme.energyPrimary);
+  for (const r of L.ramps) if (r.def.exit?.mode === 'drop') drawLandingMarker(ctx, r, view.theme);
 
   // Raised ramps go in their own layer, composited above floor balls each frame.
   const rl = view.rampLayer.getContext('2d')!;
   rl.setTransform(1, 0, 0, 1, 0, 0);
   rl.clearRect(0, 0, view.rampLayer.width, view.rampLayer.height);
   view.worldTransform(rl);
-  for (const r of L.ramps) drawRampRaised(rl, r);
+  for (const r of L.ramps) drawRampRaised(rl, r, view.theme);
 }
 
 function drawRampMouthFloor(ctx: CanvasRenderingContext2D, r: RampPath) {
@@ -70,7 +71,7 @@ function drawRampMouthFloor(ctx: CanvasRenderingContext2D, r: RampPath) {
   for (const p of r.posts) drawChromePost(ctx, p.x, p.y, 0.22);
 }
 
-function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath) {
+function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
   const hs = r.cum.map(s => rampHeight(r, s));
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -102,7 +103,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath) {
     void p;
   }
   // see-through glass floor
-  ctx.strokeStyle = 'rgba(150,215,255,0.16)';
+  ctx.strokeStyle = derived(th).glass;
   ctx.lineWidth = RAIL * 2;
   poly(ctx, r.pts);
   ctx.stroke();
@@ -127,7 +128,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath) {
     ctx.stroke();
   }
   // static chevrons along the ride
-  ctx.strokeStyle = 'rgba(255,215,106,0.32)';
+  ctx.strokeStyle = derived(th).chevronStatic;
   ctx.lineWidth = 0.07;
   for (let s = 1.2; s < r.length - 0.8; s += 1.5) chevron(ctx, r, s, 0.2);
   // mouth arch + name plate
@@ -163,7 +164,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath) {
       ctx.arc(ex.x + en.x * RAIL * side, ex.y + en.y * RAIL * side, 0.12, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.strokeStyle = 'rgba(255,215,106,0.8)';
+    ctx.strokeStyle = rgba(th.jackpotAccent, 0.8);
     ctx.lineWidth = 0.08;
     const tip = { x: ex.x + r.exitDir.x * 0.25, y: ex.y + r.exitDir.y * 0.25 };
     ctx.beginPath();
@@ -209,7 +210,8 @@ function drawRampGateArch(ctx: CanvasRenderingContext2D, r: RampPath) {
 }
 
 /** Painted ring where a drop-exit ball lands (mid exit speed). */
-function drawLandingMarker(ctx: CanvasRenderingContext2D, r: RampPath, color: string) {
+function drawLandingMarker(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
+  const color = th.energyPrimary;
   const { p } = dropLanding(r, (r.def.exitMin + r.def.exitMax) / 2, config.gravity);
   ctx.save();
   ctx.globalAlpha = 0.35;
@@ -218,6 +220,7 @@ function drawLandingMarker(ctx: CanvasRenderingContext2D, r: RampPath, color: st
   ctx.setLineDash([0.15, 0.12]);
   ctx.beginPath();
   ctx.arc(p.x, p.y, 0.62, 0, Math.PI * 2);
+  underlay(ctx, th, 0.16);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.beginPath();
@@ -237,13 +240,14 @@ function drawSpinnerStatic(ctx: CanvasRenderingContext2D, sp: SpinnerDef) {
   for (const q of [sp.a, sp.b]) drawChromePost(ctx, q.x, q.y, 0.12);
 }
 
-function chevron(ctx: CanvasRenderingContext2D, r: RampPath, s: number, size: number) {
+function chevron(ctx: CanvasRenderingContext2D, r: RampPath, s: number, size: number, outline?: Theme) {
   const { p, t } = rampAt(r, s);
   const n = { x: -t.y, y: t.x };
   ctx.beginPath();
   ctx.moveTo(p.x - t.x * size + n.x * size * 1.3, p.y - t.y * size + n.y * size * 1.3);
   ctx.lineTo(p.x + t.x * size * 0.6, p.y + t.y * size * 0.6);
   ctx.lineTo(p.x - t.x * size - n.x * size * 1.3, p.y - t.y * size - n.y * size * 1.3);
+  if (outline) underlay(ctx, outline, ctx.lineWidth * 2.4);
   ctx.stroke();
 }
 
@@ -347,10 +351,10 @@ function drawSplitterStatic(ctx: CanvasRenderingContext2D, s: import('../machine
   ctx.fill();
 }
 
-function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/mechanisms.ts').GateDef) {
+function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/mechanisms.ts').GateDef, th: Theme) {
   // floor arrow showing which way through scores
   const c = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 };
-  ctx.strokeStyle = 'rgba(255,215,106,0.35)';
+  ctx.strokeStyle = derived(th).gateArrow;
   ctx.lineWidth = 0.09;
   ctx.lineCap = 'round';
   for (let i = 0; i < 2; i++) {
@@ -448,7 +452,7 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
       if (!t) continue;
       const on = done?.has(id) || flash > 0;
       const lx = t.x + t.face.x * (t.hw + 0.28), ly = t.y;
-      ctx.fillStyle = on ? th.jackpotAccent : '#2a3550';
+      ctx.fillStyle = on ? th.jackpotAccent : th.lampOff;
       ctx.beginPath();
       ctx.arc(lx, ly, 0.13, 0, Math.PI * 2);
       ctx.fill();
@@ -469,6 +473,7 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.cupR + 0.32, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+      underlay(ctx, th, 0.2);
       ctx.stroke();
     }
   }
@@ -479,7 +484,7 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
     for (let i = 0; i < s.hitsToArm; i++) {
       const x = s.x + (i - (s.hitsToArm - 1) / 2) * 0.42, y = s.y - s.hh - 0.02;
       const on = i < st.charge || st.launchAt !== null;
-      ctx.fillStyle = cooling ? '#3a4458' : on ? th.energySecondary : '#5a2a55';
+      ctx.fillStyle = cooling ? '#3a4458' : on ? th.energySecondary : th.lampOffSecondary;
       ctx.beginPath();
       ctx.arc(x, y, 0.11, 0, Math.PI * 2);
       ctx.fill();
@@ -524,7 +529,7 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
       ctx.globalAlpha = a;
       ctx.strokeStyle = th.energyPrimary;
       ctx.lineWidth = 0.1;
-      chevron(ctx, r, s, 0.22);
+      chevron(ctx, r, s, 0.22, th);
       ctx.globalCompositeOperation = 'lighter';
       const { p } = rampAt(r, s);
       drawGlow(ctx, th.energyPrimary, p.x, p.y, 0.7, a * 0.6);
@@ -540,7 +545,7 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
         const k = (i / 4) * 2 - 1;
         const q = { x: p.x + n.x * w * k * 0.8, y: p.y + n.y * w * k * 0.8 };
         const on = lit > 0 || Math.floor(view.time * 6) % 5 === i;
-        ctx.fillStyle = lit > 0 ? th.impactCore : on ? th.jackpotAccent : '#5b4a25';
+        ctx.fillStyle = lit > 0 ? th.impactCore : on ? th.jackpotAccent : th.lampOffAccent;
         ctx.beginPath();
         ctx.arc(q.x, q.y, 0.07, 0, Math.PI * 2);
         ctx.fill();
