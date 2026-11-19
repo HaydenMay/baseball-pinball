@@ -4,7 +4,7 @@ import * as P from 'planck';
 import { config } from '../src/config.ts';
 import { Simulation, type SimEvent } from '../src/physics/sim.ts';
 import { makeControls } from '../src/core/input.ts';
-import { SLINGS, OUTER_WALL } from '../src/physics/board.ts';
+import { SLINGS, OUTER_WALL, BUMPERS } from '../src/physics/board.ts';
 
 const DT = 1 / config.physicsHz;
 function run(sim: Simulation, seconds: number, each?: (s: Simulation) => void) {
@@ -140,7 +140,7 @@ test('8. a side escape below the batter is a strike even though it never crosses
   const s = new Simulation();
   s.ready();
   // ball slipping down between the right sling and the drain lip, far right of center
-  s.spawnBall(13.9, 30.0, 0, 5);
+  s.spawnBall(12.9, 30.6, 0, 5);
   run(s, 2);
   assert.equal(s.rules.strikes, 1);
   const d = s.events.find(e => e.type === 'drain') as Extract<SimEvent, { type: 'drain' }>;
@@ -150,8 +150,8 @@ test('8. a side escape below the batter is a strike even though it never crosses
 test('9. score banks on collisions as they happen and survives strikes', () => {
   const s = new Simulation();
   s.ready();
-  // drop onto the top bumper
-  s.spawnBall(10.3, 2.6, 0, 2);
+  // drop onto an upper bumper
+  s.spawnBall(BUMPERS[0].x + 0.3, BUMPERS[0].y - 2, 0, 2);
   let scoredLive = false;
   run(s, 6, s => { if (s.ball && s.rules.score > 0) scoredLive = true; });
   assert.ok(scoredLive, 'score appears while the ball is still live');
@@ -165,7 +165,7 @@ test('9. score banks on collisions as they happen and survives strikes', () => {
 test('bumpers kick hard', () => {
   const s = new Simulation();
   s.ready();
-  s.spawnBall(10, 2.4, 0, 3);
+  s.spawnBall(BUMPERS[0].x, BUMPERS[0].y - 1.9, 0, 3);
   let out = 0;
   run(s, 0.6, s => {
     if (s.events.some(e => e.type === 'machine' && e.kind === 'bumper')) {
@@ -217,6 +217,15 @@ test('balls never come to rest on the playfield (anti-trap)', () => {
     if (!s.ball) s.rules.phase = 'live';
   }
   assert.ok(maxStill <= config.ball.stuckSeconds + 0.05, `longest still ${maxStill.toFixed(2)}s`);
+});
+
+test('a straight-up hit from the plate has a clear path to the jackpot', () => {
+  const s = new Simulation();
+  s.ready();
+  s.spawnBall(10, 22, 0, -config.swing.exitSpeed);
+  run(s, 1.5);
+  const first = s.events.find(e => e.type === 'machine') as Extract<SimEvent, { type: 'machine' }>;
+  assert.equal(first?.kind, 'jackpot');
 });
 
 test('side lanes score on rollover', () => {

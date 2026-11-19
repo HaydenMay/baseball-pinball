@@ -11,7 +11,7 @@ export const config = {
   physicsHz: 240,
   gravity: 14,
   ball: {
-    radius: 0.24,
+    radius: 0.32,
     restitution: 0.5,
     linearDamping: 0.03,
     maxSpeed: 36,
@@ -31,20 +31,20 @@ export const config = {
      * Batter position = x of the hands (bat pivot). Start so a straight center pitch meets the
      * barrel without moving.
      */
-    startX: 8.7,
+    startX: 8.6,
     /** y of the batter's hands (bat pivot). */
     handsY: 25.0,
     /** Hands sit this far right of the batter's body center (right-handed batter). */
     handsOffsetX: 0.62,
     minX: 4.1,
-    maxX: 15.2,
+    maxX: 14.9,
     moveSpeed: 13,
   },
   swing: {
-    length: 2.1,
+    length: 2.3,
     /** Contact envelope = bat radius + ball radius + this tolerance. */
     radius: 0.16,
-    tolerance: 0.14,
+    tolerance: 0.28,
     /** Bat must be this far from the hands to count (the knob/hands don't hit). */
     minReach: 0.3,
     /** ~7 o'clock */
@@ -59,11 +59,11 @@ export const config = {
     battingLine: 0.95,
     /**
      * Bat angle at contact that sends the ball straight up. Measured: a straight pitch is contactable
-     * from about -1.1 (early) to +0.9 rad (late), so center sits in the middle of that range.
+     * from about -1.1 (early) to +1.05 rad (late), so center sits in the middle of that range.
      */
-    centerAngle: -0.1,
+    centerAngle: -0.03,
     /** Bat-angle distance from center that maps to full left/right aim. */
-    aimHalfRange: 0.9,
+    aimHalfRange: 0.95,
     /** Widest aim from vertical. */
     maxAim: 0.8,
     /** Every valid contact leaves at this speed: early/late are not penalised. */

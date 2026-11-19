@@ -7,7 +7,7 @@ A portrait, baseball-themed pinball physics prototype. You slide a batter, time 
 ```bash
 npm ci
 npm run dev        # open the printed URL (works on your phone over LAN)
-npm test           # 23 rule/swing/physics tests
+npm test           # 24 rule/swing/physics tests
 npm run typecheck
 npm run build      # → dist/
 npm run bot -- 300 50   # headless bot playtest: balls, swing timing error (ms)

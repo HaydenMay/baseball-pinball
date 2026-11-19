@@ -321,6 +321,19 @@ export class GameView {
     ctx.moveTo(HOME.x, HOME.y);
     ctx.lineTo(HOME.x + 14, HOME.y - 14);
     ctx.stroke();
+    // jackpot lane arrows painted up the center, through the bullseye gate (paint only)
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 0.13;
+    for (let i = 0; i < 4; i++) {
+      const y = 9.4 - i * 1.25;
+      ctx.strokeStyle = `rgba(255,215,106,${0.16 + i * 0.07})`;
+      ctx.beginPath();
+      ctx.moveTo(9.45, y + 0.4);
+      ctx.lineTo(10, y);
+      ctx.lineTo(10.55, y + 0.4);
+      ctx.stroke();
+    }
     // pitcher's mound (serve point): decorative, no collision
     const m = ctx.createRadialGradient(MOUND.x - 0.3, MOUND.y - 0.3, 0.1, MOUND.x, MOUND.y, MOUND.r);
     m.addColorStop(0, '#c7915f');
@@ -596,12 +609,12 @@ export class GameView {
     ctx.fill();
     ctx.restore();
     if (t.style === 'jackpot') {
-      const g = ctx.createLinearGradient(0, t.y - t.hh, 0, t.y + t.hh);
+      const g = ctx.createLinearGradient(0, t.y - t.hh, 0, t.y + t.hh + 0.25);
       g.addColorStop(0, '#e2363b');
       g.addColorStop(1, '#8e1118');
       ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.roundRect(t.x - t.hw, t.y - t.hh, t.hw * 2, t.hh * 2, 0.2);
+      ctx.lineJoin = 'round';
+      path(ctx, poly);
       ctx.fill();
       ctx.strokeStyle = '#f0c46a';
       ctx.lineWidth = 0.1;

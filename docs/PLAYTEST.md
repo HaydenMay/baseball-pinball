@@ -2,9 +2,30 @@
 
 What was measured, how, and what still needs a human with a real phone.
 
+## Update after the first hands-on session (prototype 02.1)
+
+Hayden's feedback: best was 4,200 over 3 strikes, one jackpot in about 15 runs, the swing felt stingy, and balls kept slipping past the blue slingshots.
+
+Changes:
+- Ball radius 0.24 → 0.32 (it was about half the size of a real pinball relative to the table).
+- Swing tolerance 0.14 → 0.28 and bat length 2.1 → 2.3. The straight-pitch hit window went from 248 ms to 280 ms, and the aim center was re-measured.
+- Slingshots now run along almost the whole lower wall (y 26.1 → 30.3) and stick out 0.95 instead of 0.7. The drain gap narrowed from 8.6 to 7.6.
+- The jackpot lane is open. The top bumper became an upper corner pair, the two bullseyes form a gate a centered hit can slip through, and the jackpot has a V-shaped underside.
+
+Bot results, same seed, before → after:
+
+| Timing error | Survival / ball | Bat hits / ball | Score / ball | Sling fires / ball | Jackpots / ball |
+|---|---|---|---|---|---|
+| 70 ms | 22.8 → 59.4 s | 6.7 → 19.5 | 1,055 → 3,755 | 1.11 → 2.75 | 0.15 → 1.32 |
+| 110 ms | 12.3 → 25.8 s | 3.5 → 7.8 | 509 → 1,471 | 0.70 → 1.89 | 0.08 → 0.39 |
+
+The share of bat hits that reach the jackpot went from about 2% to about 7%. Opening the center without the gate pushed it to about 10% (a jackpot almost every rally), which was too much.
+
+Watch for: this is now a lot more forgiving. If rallies feel endless, try `tune.swing.tolerance = 0.2` first, then `tune.sling.kick = 14`.
+
 ## How this was tested
 
-- **Automated tests:** `npm test` runs 23 tests covering the 10 required cases in the build prompt, plus swing-arc, aim and anti-trap checks. Mutation-checked: allowing upward hits breaks 3 tests, and removing the batting line breaks 1.
+- **Automated tests:** `npm test` runs 24 tests covering the 10 required cases in the build prompt, plus swing-arc, aim and anti-trap checks. Mutation-checked: allowing upward hits breaks 3 tests, and removing the batting line breaks 1.
 - **Bot playtest:** `npm run bot -- <balls> <timingErrorMs> <seed>`. This is a headless "player" that tracks the ball at keyboard speed, reacts 180 ms after the ball turns downward, and swings with a Gaussian timing error. It's a tuning aid, not a replacement for hands-on play: it predicts the ball path perfectly and never panics.
 - **Browser:** the production build ran in headless Chrome at 1366×900 desktop and at 390×844 portrait phone (DPR 3, touch emulated). Ready, move and swing were driven through real `keydown` events and real CDP multi-touch events.
 

@@ -27,9 +27,9 @@ const LEFT_WALL: Pt[] = [
   { x: 0.65, y: 3.2 },
   { x: 0.6, y: 21.4 },
   // lower angled sidewall converging toward the drain
-  { x: 5.7, y: 30.6 },
+  { x: 6.2, y: 30.6 },
   // short vertical drain lip
-  { x: 5.7, y: 32.5 },
+  { x: 6.2, y: 32.5 },
 ];
 const mirror = (p: Pt): Pt => ({ x: W - p.x, y: p.y });
 
@@ -43,7 +43,7 @@ export function lowerWallX(y: number) {
 }
 
 function makeSling(side: 'left' | 'right'): Sling {
-  const y0 = 26.5, y1 = 29.8, depth = 0.7;
+  const y0 = 26.1, y1 = 30.3, depth = 0.95;
   const a = { x: lowerWallX(y0), y: y0 }, b = { x: lowerWallX(y1), y: y1 };
   const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
   const n = { x: dy / len, y: -dx / len }; // inward normal (into the table)
@@ -63,7 +63,9 @@ function makeSling(side: 'left' | 'right'): Sling {
 }
 
 export const BUMPERS: Bumper[] = [
-  { id: 'bumper-top', kind: 'bumper', x: 10, y: 4.9, r: 1.1, style: 'ball' },
+  // Upper corner pair. The center column above the mound stays open so a straight-up hit can reach the jackpot.
+  { id: 'bumper-top-l', kind: 'bumper', x: 6.3, y: 4.3, r: 0.95, style: 'ball' },
+  { id: 'bumper-top-r', kind: 'bumper', x: 13.7, y: 4.3, r: 0.95, style: 'ball' },
   { id: 'bumper-left', kind: 'bumper', x: 5.9, y: 7.9, r: 1.1, style: 'ball' },
   { id: 'bumper-right', kind: 'bumper', x: 14.1, y: 7.9, r: 1.1, style: 'ball' },
   { id: 'bumper-mid', kind: 'bumper', x: 15.5, y: 16.6, r: 1.0, style: 'ball' },
@@ -71,9 +73,9 @@ export const BUMPERS: Bumper[] = [
 ];
 
 export const ROUND_TARGETS: RoundTarget[] = [
-  { id: 'bull-1', kind: 'target', x: 7.3, y: 11.1, r: 0.42 },
-  { id: 'bull-2', kind: 'target', x: 10, y: 10.6, r: 0.42 },
-  { id: 'bull-3', kind: 'target', x: 12.7, y: 11.1, r: 0.42 },
+  // Gate in front of the jackpot lane: only a well-centered hit slips between them.
+  { id: 'bull-1', kind: 'target', x: 8.4, y: 11.0, r: 0.42 },
+  { id: 'bull-3', kind: 'target', x: 11.6, y: 11.0, r: 0.42 },
 ];
 
 export const BOX_TARGETS: BoxTarget[] = [
@@ -105,7 +107,8 @@ export const MOUND = { x: config.pitch.x, y: config.pitch.y, r: 1.25 };
  */
 export function targetPoly(t: BoxTarget): Pt[] {
   if (t.style === 'jackpot') {
-    return [{ x: t.x - t.hw, y: t.y - t.hh }, { x: t.x + t.hw, y: t.y - t.hh }, { x: t.x + t.hw, y: t.y + t.hh }, { x: t.x - t.hw, y: t.y + t.hh }];
+    // Shallow V underside: a jackpot hit kicks off to one side instead of dropping straight back to the bat.
+    return [{ x: t.x - t.hw, y: t.y - t.hh }, { x: t.x + t.hw, y: t.y - t.hh }, { x: t.x + t.hw, y: t.y + t.hh - 0.35 }, { x: t.x, y: t.y + t.hh + 0.25 }, { x: t.x - t.hw, y: t.y + t.hh - 0.35 }];
   }
   const f = t.face.x; // +1 faces right (left wall), -1 faces left (right wall)
   const back = t.x - f * (t.hw + 0.12), front = t.x + f * t.hw;
