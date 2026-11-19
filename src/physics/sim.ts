@@ -29,7 +29,7 @@ export type SimEvent =
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
 
-export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout };
+export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
 
 export type Ball = {
   id: number;
@@ -68,6 +68,7 @@ export class Simulation {
   /** Spinner animation state (read by the view): id → remaining spins. */
   spinners = new Map<string, number>();
   mods: ModifierTable;
+  private seed: number;
   private onEvent?: (e: SimEvent) => void;
   private pendingKicks: { kind: 'bumper' | 'sling'; ref: unknown; ball: Ball }[] = [];
   private lastSlingKick = -10;
@@ -78,11 +79,20 @@ export class Simulation {
     this.onEvent = opts.onEvent;
     this.layout = opts.layout ?? layoutFor(opts.preset);
     this.mods = opts.preset?.modifiers ?? {};
+    this.seed = (opts.seed ?? 1) >>> 0 || 1;
     for (const b of this.layout.banks) this.banks.set(b.id, new Set());
     this.world = new P.World({ gravity: P.Vec2(0, config.gravity) });
     buildBoard(this.world, this.layout);
     for (const s of this.layout.splitters) this.splitters.set(s.id, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
     this.world.on('begin-contact', c => this.beginContact(c));
+  }
+
+  /** Seeded random in [0, 1) (mulberry32): small launch variation so mechanisms don't replay identical paths. */
+  random() {
+    let t = (this.seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   /** Base points after the preset's stacked modifiers for this part id and its kind. */
@@ -357,7 +367,8 @@ export class Simulation {
     for (const s of this.layout.scoops) {
       if ((ball.ignore[s.id] ?? 0) > this.time) continue;
       if (this.balls.some(o => o.held?.scoop === s)) continue; // one ball at a time
-      if (Math.hypot(p.x - s.x, p.y - s.y) < s.cupR - config.ball.radius - 0.08) {
+      // Anything that gets inside the cup is caught (a fast ball used to ride the inner wall around and out).
+      if (Math.hypot(p.x - s.x, p.y - s.y) < s.cupR - 0.15) {
         this.catchInScoop(ball, s);
         return;
       }
@@ -474,7 +485,9 @@ export class Simulation {
     // Failsafe: the hold is a fixed timer, so a captured ball always comes back out.
     if (h.t >= h.scoop.holdSeconds) {
       const s = h.scoop;
-      const v = { x: Math.cos(s.ejectAngle) * s.ejectSpeed, y: Math.sin(s.ejectAngle) * s.ejectSpeed };
+      // ±0.1 rad and ±8% speed so the relaunch doesn't replay the exact same bounce sequence every time
+      const a = s.ejectAngle + (this.random() - 0.5) * 0.2, sp = s.ejectSpeed * (0.92 + this.random() * 0.16);
+      const v = { x: Math.cos(a) * sp, y: Math.sin(a) * sp };
       this.releaseToField(ball, { x: s.x, y: s.y }, v);
       ball.ignore[s.id] = this.time + (s.recatchDelay ?? 0.8);
       this.emit({ type: 'scoop', id: s.id, phase: 'eject', x: s.x, y: s.y, points: 0, ball: ball.id });
@@ -504,7 +517,8 @@ export class Simulation {
       st.charge = 0;
       st.readyAt = this.time + s.cooldown;
       if (this.rules.phase !== 'live' || this.balls.length >= s.maxBalls) continue;
-      const nb = this.addBall(s.hatch.x, s.hatch.y, Math.cos(s.launchAngle) * s.launchSpeed, Math.sin(s.launchAngle) * s.launchSpeed);
+      const a = s.launchAngle + (this.random() - 0.5) * 0.24, sp = s.launchSpeed * (0.92 + this.random() * 0.16);
+      const nb = this.addBall(s.hatch.x, s.hatch.y, Math.cos(a) * sp, Math.sin(a) * sp);
       this.rules.addBall();
       this.emit({ type: 'multiball', id: s.id, x: s.hatch.x, y: s.hatch.y, balls: this.balls.length, ball: nb.id });
     }

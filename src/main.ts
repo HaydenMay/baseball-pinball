@@ -32,6 +32,7 @@ const sfx = new Sfx();
 
 const sim: Simulation = new Simulation({
   preset,
+  seed: (Math.random() * 2 ** 32) >>> 0,
   onEvent: (e: SimEvent) => {
     view.onSimEvent(e);
     sfx.onEvent(e);

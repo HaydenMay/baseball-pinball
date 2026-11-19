@@ -220,3 +220,32 @@ test('Turbo multiball stress: live-ball count always matches the rules; no lost 
   assert.equal(mismatches, 0);
   assert.ok(maxBalls >= 2 && maxBalls <= sp.maxBalls, `peak ${maxBalls}`);
 });
+
+test('glove: a fast ball entering the cup is caught, not whipped around the inner wall and out', () => {
+  const s = new Simulation({ preset: preset('overpass') });
+  s.ready();
+  const sc = s.layout.scoops[0];
+  // the reported shot: off the Overpass mouth post, into the glove opening at ~16 u/s
+  for (const [ang, sp] of [[-40, 16], [-30, 18], [-55, 14], [-70, 20]]) {
+    const t = new Simulation({ preset: preset('overpass') });
+    t.ready();
+    const a = (ang * Math.PI) / 180;
+    t.spawnBall(sc.x + Math.cos(a) * 1.5, sc.y + Math.sin(a) * 1.5, -Math.cos(a) * sp, -Math.sin(a) * sp);
+    run(t, 1);
+    assert.ok(evs(t, 'scoop').some(e => e.phase === 'catch'), `entry from ${ang}° at ${sp} u/s is caught`);
+  }
+  void s;
+});
+
+test('glove relaunch varies between catches (not a replayed bounce sequence)', () => {
+  const paths = new Set<string>();
+  for (let seed = 1; seed <= 5; seed++) {
+    const s = new Simulation({ preset: preset('overpass'), seed });
+    s.ready();
+    const sc = s.layout.scoops[0];
+    s.spawnBall(sc.x + 0.3, sc.y - 2.2, 0, 2);
+    run(s, 2.2);
+    paths.add(s.events.filter(e => e.type === 'machine').map(e => (e as any).id).slice(0, 6).join('>'));
+  }
+  assert.ok(paths.size >= 3, `${paths.size} distinct relaunch sequences from 5 catches`);
+});

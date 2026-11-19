@@ -98,7 +98,7 @@ export const PRESETS: Preset[] = [
         gate: { at: 0.5, points: 750 },
         exit: { mode: 'drop', fall: 0.28 },
       },
-      { type: 'gate', id: 'gate-right', powerCost: 1, a: { x: 13.2, y: 13.6 }, b: { x: 14.7, y: 13.6 }, dir: { x: 0, y: -1 }, points: 300, postR: 0.2 },
+      { type: 'gate', id: 'gate-right', powerCost: 1, a: { x: 13.1, y: 13.6 }, b: { x: 14.8, y: 13.6 }, dir: { x: 0, y: -1 }, points: 300, postR: 0.2, label: 'BONUS GATE' },
       { type: 'spinner', id: 'spinner-left', powerCost: 1, ...LEFT_LANE_SPINNER, pointsPerSpin: 40, spinsPerSpeed: 0.7, maxSpins: 20 },
       { type: 'bank', id: 'bank-cards', powerCost: 1, name: 'BATTER UP', targetIds: CARD_BANK, bonus: 1500 },
       { type: 'bank', id: 'bank-stars', powerCost: 1, name: 'ALL-STAR', targetIds: STAR_BANK, bonus: 1500 },

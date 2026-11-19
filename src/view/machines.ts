@@ -379,7 +379,7 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
   ctx.font = `italic 800 0.4px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(g.label ?? 'GATE', c.x, c.y + (g.posts === false ? 0.55 : 1.05));
+  ctx.fillText(`${g.label ?? 'GATE'} ↑ +${g.points}`, c.x, c.y + (g.posts === false ? 0.55 : 1.05));
 }
 
 // ───────────────────────── dynamic ─────────────────────────
