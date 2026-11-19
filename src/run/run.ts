@@ -19,6 +19,9 @@ export type Check = { ok: true; mounts: string[] } | { ok: false; reason: string
 
 export type Phase = 'challenge' | 'draft' | 'shop' | 'failed';
 
+/** Factory parts left off the build-test starter table (playtest finding, see BUILD_LOOP_PLAYTEST.md). */
+export const BUILD_TEST_REMOVED = ['post-l', 'post-r'];
+
 export class Run {
   challenge = 1;
   money = 0;
@@ -65,7 +68,9 @@ export class Run {
       name: 'Build Test',
       tagline: `Challenge ${this.challenge}`,
       maxPower: this.maxPower,
-      removeBase: [],
+      // Player playtest: the two front pegs just above the batter deflect the ball too late to react to.
+      // Removed on the build-test factory table only; / keeps them as the frozen comparison.
+      removeBase: [...BUILD_TEST_REMOVED],
       mechanisms: this.installed.map(i => i.def),
       modifiers: structuredClone(this.mods),
     };

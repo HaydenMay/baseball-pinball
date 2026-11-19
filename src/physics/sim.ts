@@ -144,8 +144,19 @@ export class Simulation {
     this.clearBalls();
     this.batterX = config.batter.startX;
     this.swingStart = -100;
-    for (const st of this.splitters.values()) Object.assign(st, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
-    for (const b of this.banks.values()) b.clear();
+    // Mechanism progress (multiball charge, bank lamps) carries over between strikes; it only
+    // resets when a new game or challenge starts (first pitch).
+    if (this.rules.pitchNumber === 1) {
+      for (const st of this.splitters.values()) Object.assign(st, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
+      for (const b of this.banks.values()) b.clear();
+    } else {
+      // a launch that was mid-fire when the last ball drained stays one hit away
+      for (const [id, st] of this.splitters) {
+        if (st.launchAt === null) continue;
+        const def = this.layout.splitters.find(s => s.id === id)!;
+        Object.assign(st, { charge: def.hitsToArm - 1, launchAt: null });
+      }
+    }
     this.addBall(config.pitch.x, config.pitch.y, 0, config.pitch.speed);
     this.emit({ type: 'serve' });
     return true;

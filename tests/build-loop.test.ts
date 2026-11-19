@@ -391,3 +391,9 @@ test('build-test bridge: a real swing reaches it, and its drop returns the ball 
   assert.ok(entries >= 5, `${entries} swings enter the bridge`);
   assert.ok(backToBat >= entries * 0.6, `${backToBat}/${entries} bridge runs come back down to the batting zone`);
 });
+
+test('build-test starter table drops the two front pegs; / keeps them', () => {
+  const s = new Simulation({ preset: new Run(1).preset() });
+  assert.ok(!s.layout.posts.some(p => p.id === 'post-l' || p.id === 'post-r'));
+  assert.ok(new Simulation().layout.posts.some(p => p.id === 'post-l'), 'original table unchanged');
+});

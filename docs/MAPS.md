@@ -37,7 +37,7 @@ One game, four URL paths. Physics, batter, swing, slingshots, Ready pitch, three
   - stacked modifiers, e.g. bumpers (base + 50) × 2 × 1.5, jackpot × 3, banks × 2, spinners × 2
 - **New reusable parts:**
   - **spinner:** spins scale with ball speed; one award per crossing
-  - **target bank:** completing it pays a bonus, then resets; progress also resets each pitch; lamps on each target
+  - **target bank:** completing it pays a bonus, then resets; progress carries over strikes and resets on a new game; lamps on each target
   - **gate without posts**
   - **modifier tables:** `(base + Σadd) × Πmul`, no stack cap
 - **Sound:** synthesized WebAudio for bat, bumpers, targets, gates, spinner, ramp in/out/land, glove catch/eject, banks, multiball and drain.

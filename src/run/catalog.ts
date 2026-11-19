@@ -75,7 +75,7 @@ export const MACHINES: MachineOffer[] = [
     key: 'bank',
     kind: 'machine',
     name: 'Target Bank',
-    desc: 'Hit all 3 targets in a pitch: +1,500',
+    desc: 'Hit all 3 targets (progress survives strikes): +1,500',
     power: 1,
     price: 5,
     at: {

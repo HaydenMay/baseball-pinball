@@ -23,6 +23,11 @@ Captures in `docs/screenshots/build-test/`, phone viewport 390×844:
 - buy and install
 - the installed bridge paying out in challenge 2
 
+## Playtest changes (Nov 19)
+
+- **Front pegs removed on `/build-test/` only.** The player found the two posts just above the batter (y 19.9) deflect the ball too late to react. Bot data: they appear in 11% of strike sequences, and removing them doesn't change bot survival (67 s vs 64 s per ball), because the bot predicts bounces perfectly and humans can't. `/` keeps them as the frozen comparison; `/1`–`/3` are unchanged.
+- **Mechanism progress carries over strikes on every table.** Multiball charge and target-bank lamps reset only at the start of a new game or challenge, not on each pitch. If a strike lands during the 0.35 s hatch-opening window, the splitter stays one hit from launching.
+
 ## Provisional economy
 
 | Knob | Test value |

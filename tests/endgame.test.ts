@@ -174,7 +174,7 @@ test('spinner: one award per crossing, more spins for a faster ball', () => {
   assert.ok(fast[0].spins! > slow[0].spins!, `spins ${slow[0].spins} → ${fast[0].spins}`);
 });
 
-test('target bank: completing it pays once, resets, and resets on the next pitch', () => {
+test('target bank: completing it pays once and resets; progress survives a strike, resets on a new game', () => {
   const s = new Simulation({ preset: preset('powerhouse') });
   s.ready();
   const bank = s.layout.banks.find(b => b.id === 'bank-stars')!;
@@ -188,9 +188,43 @@ test('target bank: completing it pays once, resets, and resets on the next pitch
   hit(bank.targetIds[0]);
   assert.equal(evs(s, 'bank').length, 1, 'not re-awarded until the whole bank is hit again');
   assert.equal(s.banks.get(bank.id)!.size, 1);
-  s.rules.phase = 'ready';
+  // a strike (next pitch of the same game) keeps the lit target
+  s.balls[0].body.setPosition(P.Vec2(10, 31.5));
+  s.balls[0].body.setLinearVelocity(P.Vec2(0, 10));
+  run(s, 0.2);
+  assert.equal(s.rules.strikes, 1);
   s.ready();
-  assert.equal(s.banks.get(bank.id)!.size, 0, 'new pitch resets progress');
+  assert.equal(s.banks.get(bank.id)!.size, 1, 'progress survives the strike');
+  // a brand-new game starts clean
+  s.rules.reset();
+  s.ready();
+  assert.equal(s.banks.get(bank.id)!.size, 0, 'new game resets progress');
+});
+
+test('multiball charge survives a strike and resets on a new game', () => {
+  const s = new Simulation({ preset: preset('powerhouse') });
+  s.ready();
+  const sp = s.layout.splitters[0];
+  for (let k = 0; k < sp.hitsToArm - 1; k++) {
+    s.balls[0].body.setPosition(P.Vec2(sp.x, sp.y + sp.hh + 1.2));
+    s.balls[0].body.setLinearVelocity(P.Vec2(0, -14));
+    run(s, 0.4);
+  }
+  assert.equal(s.splitters.get(sp.id)!.charge, sp.hitsToArm - 1);
+  s.balls[0].body.setPosition(P.Vec2(10, 31.5));
+  s.balls[0].body.setLinearVelocity(P.Vec2(0, 10));
+  run(s, 0.2);
+  assert.equal(s.rules.strikes, 1);
+  s.ready();
+  assert.equal(s.splitters.get(sp.id)!.charge, sp.hitsToArm - 1, 'charge kept through the strike');
+  // one more hit now launches
+  s.balls[0].body.setPosition(P.Vec2(sp.x, sp.y + sp.hh + 1.2));
+  s.balls[0].body.setLinearVelocity(P.Vec2(0, -14));
+  run(s, 0.8);
+  assert.equal(s.events.filter(e => e.type === 'multiball').length, 1);
+  s.rules.reset();
+  s.ready();
+  assert.equal(s.splitters.get(sp.id)!.charge, 0, 'new game resets the charge');
 });
 
 test('modifiers stack without a cap', () => {
