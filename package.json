@@ -1,20 +1,26 @@
 {
   "name": "baseball-pinball",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Baseball-themed pinball physics prototype",
   "scripts": {
-    "test": "node --test tests/*.test.ts",
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build"
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc -p .",
+    "bot": "node scripts/bot-playtest.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@fontsource/barlow-condensed": "^5.3.0",
     "planck": "^1.5.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5"
   }
 }

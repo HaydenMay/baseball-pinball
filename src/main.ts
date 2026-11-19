@@ -1,32 +1,204 @@
-import * as P from 'planck';
-import {GameRules,TouchInput,batAngle,batContact} from './rules';
-import {theme} from './theme';
+import '@fontsource/barlow-condensed/600.css';
+import '@fontsource/barlow-condensed/700.css';
+import '@fontsource/barlow-condensed/800-italic.css';
 import './style.css';
-const V=P.Vec2, W=20,H=30, canvas=document.querySelector<HTMLCanvasElement>('#game')!,ctx=canvas.getContext('2d')!;canvas.width=800;canvas.height=1200;
-const rules=new GameRules(), touch=new TouchInput(), world=new P.World({gravity:V(0,8)});let ball:P.Body|null=null, batter=8.9, swingAt=-10, swingId=0, hitSwing=-1, keys=new Set<string>(), paused=false,last=0,acc=0,aliveAt=0;let frames:number[]=[],sessions:any[]=[],touchCount=0;
-const $=(s:string)=>document.querySelector<HTMLElement>(s)!;const overlay=$('#overlay'),ready=$('#ready') as HTMLButtonElement,pause=$('#pause') as HTMLButtonElement;
-const board=world.createBody();function edge(x1:number,y1:number,x2:number,y2:number,kind='wall'){let f=board.createFixture(P.Edge(V(x1,y1),V(x2,y2)),{restitution:.72,friction:0});f.setUserData({kind})}
-edge(0,0,20,0);edge(0,0,0,22.8);edge(20,0,20,22.8);edge(0,22.8,3.1,27.7);edge(20,22.8,16.9,27.7);edge(3.1,27.7,4.5,29.5,'sling');edge(16.9,27.7,15.5,29.5,'sling');
-const machines=[{x:4.1,y:7.4,r:1.05},{x:7.5,y:5.3,r:1.05},{x:15.9,y:7.4,r:1.05},{x:6.1,y:13.2,r:.85},{x:13.9,y:13.2,r:.85}];
-const posts=[{x:2.5,y:12.7,r:.22},{x:17.5,y:12.7,r:.22},{x:4.6,y:18.2,r:.22},{x:15.4,y:18.2,r:.22}];let flashes:{x:number,y:number,t:number,kind:string}[]=[];let targetHits=0,launches=0;
-for(const m of [...machines,...posts]){let f=board.createFixture(P.Circle(V(m.x,m.y),m.r),{restitution:.95,friction:0});f.setUserData({kind:machines.includes(m)?'bumper':'post',m})}
-for(const t of [{x:5,y:3},{x:7.4,y:3},{x:12.6,y:3},{x:15,y:3}]){let b=world.createBody({position:V(t.x,t.y)});let f=b.createFixture(P.Box(.65,.23),{restitution:.8});f.setUserData({kind:'target',m:t})}
-world.on('begin-contact',(contact:any)=>{let fa=contact.getFixtureA(),fb=contact.getFixtureB();let fixture=fa.getBody()===ball?fb:fb.getBody()===ball?fa:null;if(!fixture||!ball)return;let d=fixture.getUserData() as any;if(!d)return;if(d.kind==='bumper'||d.kind==='target'){rules.hit(d.kind==='bumper'?100:50);targetHits++;const p=d.m;flashes.push({x:p.x,y:p.y,t:.48,kind:d.kind});let pos=ball.getPosition(),dx=pos.x-p.x,dy=pos.y-p.y,len=Math.hypot(dx,dy)||1;ball.applyLinearImpulse(V(dx/len*.035,dy/len*.035),pos,true)}if(d.kind==='sling'){let pos=ball.getPosition();flashes.push({x:pos.x,y:pos.y,t:.4,kind:'sling'});ball.applyLinearImpulse(V(pos.x<10?.06:-.06,-.13),pos,true)}});
-function show(){ $('#score').textContent=rules.score.toLocaleString();$('#ballscore').textContent=rules.ballScore.toLocaleString();$('#hits').textContent=String(rules.hits);$('#strikes').textContent=Array.from({length:3},(_,i)=>i<rules.strikes?'●':'○').join(' ');$('#state').textContent=paused?'PAUSED':rules.phase==='live'?'BALL IN PLAY':rules.phase==='over'?'GAME OVER':'PRESS READY';}
-function serve(){if(rules.phase==='over')rules.reset();if(!rules.ready())return;batter=8.9;ball=world.createDynamicBody({position:V(10,1),bullet:true,linearDamping:.035});ball.createFixture(P.Circle(.23),{density:1,restitution:.82,friction:0});ball.setLinearVelocity(V(0,9));aliveAt=performance.now();touchCount=0;launches++;overlay.hidden=true;paused=false;show()}
-ready.addEventListener('click',serve);pause.addEventListener('click',()=>{if(rules.phase!=='live')return;paused=!paused;keys.clear();touch.left=null;pause.textContent=paused?'RESUME':'PAUSE';show()});
-function swing(){if(rules.phase!=='live'||paused)return;let now=performance.now()/1000;if(now-swingAt<.32)return;swingAt=now;swingId++}
-window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' ','a','d','A','D'].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase());if(e.code==='Space'&&!e.repeat)swing()});window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>{keys.clear();touch.left=null});
-document.addEventListener('touchmove',e=>{if(rules.phase==='live')e.preventDefault()},{passive:false});
-canvas.addEventListener('pointerdown',e=>{if(rules.phase!=='live'||paused)return;e.preventDefault();canvas.setPointerCapture(e.pointerId);let r=canvas.getBoundingClientRect();if(touch.down(e.pointerId,e.clientX-r.left,r.width))swing()});canvas.addEventListener('pointermove',e=>{let r=canvas.getBoundingClientRect();let dx=touch.move(e.pointerId,e.clientX-r.left);batter=Math.max(4.3,Math.min(15.7,batter+dx/r.width*W))});for(const n of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(n,e=>touch.up((e as PointerEvent).pointerId));
-function endBall(x:number){if(!ball)return;sessions.push({seconds:+((performance.now()-aliveAt)/1000).toFixed(2),batHits:touchCount,exit:x<5?'left':x>15?'right':'center',score:rules.ballScore});world.destroyBody(ball);ball=null;rules.drain();overlay.hidden=false;$('#overlayTitle').textContent=rules.phase==='over'?'THREE STRIKES':'STRIKE '+rules.strikes;$('#overlayText').textContent=rules.phase==='over'?`Final score ${rules.score.toLocaleString()}. Ready for another round?`:'Score banked. Ready for the next pitch?';ready.textContent=rules.phase==='over'?'PLAY AGAIN':'READY';show()}
-function step(dt:number){if(!ball||paused)return;let d=(keys.has('a')||keys.has('arrowleft')?-1:0)+(keys.has('d')||keys.has('arrowright')?1:0);batter=Math.max(4.3,Math.min(15.7,batter+d*11*dt));world.step(dt);let p=ball.getPosition(),v=ball.getLinearVelocity();let phase=(performance.now()/1000-swingAt)/.23;let vel=batContact({phase,down:v.y,already:swingId===hitSwing,batterX:batter,ballX:p.x,ballY:p.y}); if(vel){ball.setLinearVelocity(V(vel.x,vel.y));hitSwing=swingId;touchCount++;flashes.push({x:p.x,y:p.y,t:.3,kind:'bat'})}if(p.y>30.3||p.x<-.5||p.x>20.5)endBall(p.x);flashes=flashes.filter(f=>(f.t-=dt)>0);show()}
-const C=(x:number)=>x*40;function line(x1:number,y1:number,x2:number,y2:number,color:string,w:number){ctx.strokeStyle=color;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(C(x1),C(y1));ctx.lineTo(C(x2),C(y2));ctx.stroke()}function circle(x:number,y:number,r:number,color:string){ctx.fillStyle=color;ctx.beginPath();ctx.arc(C(x),C(y),C(r),0,Math.PI*2);ctx.fill()}
-function draw(){ctx.clearRect(0,0,800,1200);ctx.fillStyle='#123f32';ctx.fillRect(0,0,800,1200);for(let x=0;x<20;x+=2){ctx.fillStyle='rgba(110,180,130,.055)';ctx.fillRect(C(x),0,80,1200)}ctx.fillStyle='#ae8455';ctx.beginPath();ctx.moveTo(C(10),C(15));ctx.lineTo(C(18),C(23));ctx.lineTo(C(15.5),C(29.5));ctx.lineTo(C(4.5),C(29.5));ctx.lineTo(C(2),C(23));ctx.closePath();ctx.fill();ctx.fillStyle='#1b6043';ctx.fillRect(C(4.3),C(23.6),C(11.4),C(2.6));ctx.strokeStyle='#f0e5c4';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(C(3),C(22.5));ctx.lineTo(C(10),C(15.6));ctx.lineTo(C(17),C(22.5));ctx.stroke();for(const [x,y] of [[10,16],[4.5,21.5],[15.5,21.5]]){ctx.save();ctx.translate(C(x),C(y));ctx.rotate(Math.PI/4);ctx.fillStyle='#f4ead7';ctx.fillRect(-8,-8,16,16);ctx.restore()}
-ctx.lineCap='round';for(const e of [[0,0,20,0],[0,0,0,22.8],[20,0,20,22.8],[0,22.8,3.1,27.7],[20,22.8,16.9,27.7]]){line(e[0],e[1],e[2],e[3],'#403529',25);line(e[0],e[1],e[2],e[3],'#b9945c',12);line(e[0],e[1],e[2],e[3],'#ffe2a2',3)}line(3.1,27.7,4.5,29.5,'#194b78',30);line(3.1,27.7,4.5,29.5,'#49d7ff',9);line(16.9,27.7,15.5,29.5,'#194b78',30);line(16.9,27.7,15.5,29.5,'#49d7ff',9);
-for(const m of machines){ctx.shadowColor='#ff952f';ctx.shadowBlur=16;circle(m.x,m.y,m.r+0.15,'#cc621d');ctx.shadowBlur=0;circle(m.x,m.y,m.r,'#7b131e');circle(m.x,m.y,m.r*.8,'#df3030');circle(m.x,m.y,m.r*.62,'#fbf5e4');ctx.strokeStyle='#ca3e3b';ctx.lineWidth=3;ctx.beginPath();ctx.arc(C(m.x)-7,C(m.y),C(m.r*.42),-1,1);ctx.stroke();ctx.beginPath();ctx.arc(C(m.x)+7,C(m.y),C(m.r*.42),Math.PI-1,Math.PI+1);ctx.stroke()}
-for(const p of posts){circle(p.x,p.y,.32,'#d6b269');circle(p.x,p.y,.18,'#f1e5c9')}for(const x of [5,7.4,12.6,15]){ctx.fillStyle='#c49a5d';ctx.fillRect(C(x-.8),C(2.5),64,42);ctx.fillStyle='#b52229';ctx.fillRect(C(x-.65),C(2.6),52,28);ctx.fillStyle='#ffe8b4';ctx.font='bold 20px Arial';ctx.textAlign='center';ctx.fillText('★',C(x),C(3.14))}
-for(const f of flashes){let t=1-f.t/.48;ctx.save();ctx.globalAlpha=Math.min(1,f.t*3);ctx.shadowColor=theme.energyPrimary;ctx.shadowBlur=26;ctx.strokeStyle=f.kind==='sling'?theme.energyPrimary:theme.energySecondary;ctx.lineWidth=6;ctx.beginPath();ctx.arc(C(f.x),C(f.y),C(.5+t*1.4),0,Math.PI*2);ctx.stroke();ctx.restore()}
-let now=performance.now()/1000,phase=(now-swingAt)/.23;ctx.save();ctx.translate(C(batter),C(25.55));ctx.fillStyle='#102a39';ctx.beginPath();ctx.ellipse(0,31,35,12,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#eff2e6';ctx.fillRect(-16,-18,32,36);circle(0,0,0,'#fff');ctx.fillStyle='#bd3136';ctx.beginPath();ctx.arc(0,-24,19,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#e3b779';ctx.lineWidth=9;ctx.lineCap='round';let angle=batAngle(phase);ctx.beginPath();ctx.moveTo(10,-5);ctx.lineTo(10+Math.cos(angle)*54,-5+Math.sin(angle)*54);ctx.stroke();ctx.restore();if(ball){let p=ball.getPosition();ctx.save();ctx.shadowColor=theme.ballTrail;ctx.shadowBlur=18;circle(p.x,p.y,.25,'#fffdf2');ctx.restore();ctx.strokeStyle='#d94341';ctx.lineWidth=2;ctx.beginPath();ctx.arc(C(p.x),C(p.y),6,.5,2);ctx.stroke()}}
-function tick(ms:number){if(!last)last=ms;let delta=Math.min((ms-last)/1000,.08);last=ms;frames.push(delta*1000);if(frames.length>600)frames.shift();if(!paused){acc+=delta;while(acc>=1/120){step(1/120);acc-=1/120}}draw();requestAnimationFrame(tick)}requestAnimationFrame(tick);show();
-(window as any).playtest={report:()=>({sessions,launches,targetHits,averageFrameMs:frames.reduce((a,b)=>a+b,0)/frames.length}),download:()=>{let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify((window as any).playtest.report(),null,2)],{type:'application/json'}));a.download='playtest.json';a.click()}};
+import { config } from './config.ts';
+import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
+import { Simulation, type SimEvent } from './physics/sim.ts';
+import { Telemetry } from './telemetry/session.ts';
+import { GameView } from './view/game.ts';
+import { theme } from './view/theme.ts';
+
+const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
+const canvas = $<HTMLCanvasElement>('#game');
+const stage = $('#stage');
+const overlay = $('#overlay');
+const readyBtn = $<HTMLButtonElement>('#ready');
+const pauseBtn = $<HTMLButtonElement>('#pause');
+
+const controls = makeControls();
+const touch = new TouchInput();
+const keys = new Set<string>();
+const telemetry = new Telemetry();
+const view = new GameView(canvas, theme);
+let paused = false;
+
+const sim: Simulation = new Simulation({
+  onEvent: (e: SimEvent) => {
+    view.onSimEvent(e);
+    telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
+    if (e.type === 'drain') onDrain();
+  },
+});
+
+// ─── HUD ───
+const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes') };
+const shown = { ball: -1, score: -1, strikes: -1, state: '' };
+function pulse(el: HTMLElement) {
+  el.classList.remove('pulse');
+  void el.offsetWidth;
+  el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 140);
+}
+function updateHud() {
+  const r = sim.rules;
+  if (r.ballScore !== shown.ball) {
+    if (r.ballScore > shown.ball && shown.ball >= 0) pulse(hud.ballscore);
+    hud.ballscore.textContent = r.ballScore.toLocaleString();
+    shown.ball = r.ballScore;
+  }
+  if (r.score !== shown.score) {
+    if (r.score > shown.score && shown.score >= 0) pulse(hud.score);
+    hud.score.textContent = r.score.toLocaleString();
+    shown.score = r.score;
+  }
+  if (r.strikes !== shown.strikes) {
+    hud.strikes.innerHTML = Array.from({ length: r.maxStrikes }, (_, i) => `<i class="${i < r.strikes ? 'on' : ''}"></i>`).join('');
+    shown.strikes = r.strikes;
+  }
+  const state = paused ? 'PAUSED' : r.phase === 'live' ? `PITCH ${r.pitchNumber} · LIVE` : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  if (state !== shown.state) {
+    hud.state.textContent = state;
+    shown.state = state;
+  }
+}
+
+// ─── Flow ───
+function showOverlay(kicker: string, title: string, text: string, button: string) {
+  $('#overlayKicker').textContent = kicker;
+  $('#overlayTitle').textContent = title;
+  $('#overlayText').textContent = text;
+  readyBtn.textContent = button;
+  overlay.hidden = false;
+  readyBtn.focus({ preventScroll: true });
+}
+function onReady() {
+  if (paused) return togglePause();
+  if (!sim.ready()) return;
+  overlay.hidden = true;
+  readyBtn.blur();
+  keys.clear();
+  controls.moveAxis = 0;
+  controls.dragDelta = 0;
+  touch.clear();
+}
+function onDrain() {
+  const r = sim.rules;
+  if (r.phase === 'over') showOverlay('THREE STRIKES', 'GAME OVER', `Final score ${r.score.toLocaleString()}. Run it back?`, 'PLAY AGAIN');
+  else showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', r.ballScore > 0 ? `+${r.ballScore.toLocaleString()} banked. Batter re-centers for the next pitch.` : 'No points that ball. Batter re-centers for the next pitch.', 'READY');
+}
+function togglePause() {
+  if (sim.rules.phase !== 'live') return;
+  paused = !paused;
+  keys.clear();
+  touch.clear();
+  pauseBtn.textContent = paused ? '▶' : 'II';
+  pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+  if (paused) showOverlay('TIMEOUT', 'PAUSED', 'Take a breath.', 'RESUME');
+  else {
+    overlay.hidden = true;
+    readyBtn.blur();
+  }
+}
+readyBtn.addEventListener('click', onReady);
+pauseBtn.addEventListener('click', () => {
+  togglePause();
+  pauseBtn.blur();
+});
+
+// ─── Keyboard ───
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === '`') {
+    view.debug = !view.debug;
+    return;
+  }
+  if (k === 'p' || k === 'escape') {
+    togglePause();
+    return;
+  }
+  if (sim.rules.phase !== 'live' || paused) {
+    // Enter always confirms the Ready card (the focused button already handles its own Enter/Space).
+    if (k === 'enter' && !overlay.hidden && e.target !== readyBtn) {
+      e.preventDefault();
+      onReady();
+    }
+    return;
+  }
+  if (k === ' ' || KEY_LEFT.has(k) || KEY_RIGHT.has(k)) e.preventDefault();
+  keys.add(k);
+  if (k === ' ' && !e.repeat) controls.swingPressed = true;
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => {
+  keys.clear();
+  touch.clear();
+});
+
+// ─── Touch / pointer: only the playfield canvas accepts gameplay input ───
+document.addEventListener('touchmove', e => {
+  if (sim.rules.phase === 'live') e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('pointerdown', e => {
+  if (sim.rules.phase !== 'live' || paused) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const kind = touch.down(e.pointerId, e.clientX - r.left, r.width);
+  if (kind) canvas.setPointerCapture(e.pointerId);
+  if (kind === 'swing') controls.swingPressed = true;
+});
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  const dx = touch.move(e.pointerId, e.clientX - r.left);
+  if (dx) controls.dragDelta += view.cssToWorld(dx, r.width) * 1.15;
+});
+for (const n of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+  canvas.addEventListener(n, e => touch.up(e.pointerId));
+}
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ─── Sizing ───
+function resize() {
+  view.resize(stage.getBoundingClientRect().width);
+}
+new ResizeObserver(resize).observe(stage);
+resize();
+document.fonts?.ready.then(() => view.drawStatic());
+
+// ─── Loop: fixed-step physics, render every animation frame ───
+const STEP = 1 / config.physicsHz;
+let last = 0, acc = 0;
+function tick(ms: number) {
+  const delta = last ? Math.min((ms - last) / 1000, 0.05) : 0;
+  last = ms;
+  telemetry.frame(delta * 1000);
+  if (!paused) {
+    controls.moveAxis = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+    acc += delta;
+    while (acc >= STEP) {
+      sim.step(STEP, controls);
+      acc -= STEP;
+    }
+  }
+  view.draw(sim, paused ? 0 : delta);
+  updateHud();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+updateHud();
+readyBtn.focus({ preventScroll: true });
+if (new URLSearchParams(location.search).has('debug')) view.debug = true;
+
+// ─── Dev hooks ───
+const w = window as any;
+w.tune = config;
+w.sim = sim;
+w.playtest = {
+  report: () => telemetry.report(),
+  download: () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(telemetry.report(), null, 2)], { type: 'application/json' }));
+    a.download = 'playtest.json';
+    a.click();
+  },
+};

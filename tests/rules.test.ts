@@ -1,28 +1,50 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { GameRules, contactVelocity, eligible, TouchInput } from '../src/rules.ts';
-test('ready serves once; drain waits; third drain ends; score banks',()=>{const g=new GameRules(); assert.equal(g.ready(),true);assert.equal(g.ready(),false);g.hit(100);g.drain();assert.equal(g.score,100);assert.equal(g.phase,'ready');g.ready();g.drain();g.ready();g.drain();assert.equal(g.phase,'over');assert.equal(g.strikes,3)});
-test('only downward in-front active balls hit; early and late equal speed',()=>{assert.equal(eligible(true,1,1,0),true);assert.equal(eligible(false,1,1,0),false);assert.equal(eligible(true,-1,1,0),false);assert.equal(eligible(true,1,-1,0),false);assert.equal(eligible(true,1,1,1),false);const a=contactVelocity(0),b=contactVelocity(1);assert.ok(a.x<0&&b.x>0&&a.y<0&&b.y<0);assert.ok(Math.abs(Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y))<1e-8)});
-test('touch drag stays relative, permits independent swing',()=>{const i=new TouchInput();assert.equal(i.down(1,100,400),false);assert.equal(i.move(1,130),30);assert.equal(i.down(2,300,400),true);assert.equal(i.move(1,150),20);i.up(1);assert.equal(i.move(1,180),0)});
+import { GameRules } from '../src/core/rules.ts';
+import { TouchInput } from '../src/core/input.ts';
 
-test('bat sweeps smoothly from lower left through right to upper left', async()=>{const {batAngle}=await import('../src/rules.ts');assert.ok(Math.abs(batAngle(-1)-2*Math.PI/3)<.001);assert.ok(Math.abs(batAngle(0)-2*Math.PI/3)<.001);assert.ok(Math.abs(batAngle(.5))<.001);assert.ok(Math.abs(batAngle(1)+2*Math.PI/3)<.001)});
-
-test('bat contact matches the right side and provides early, center and late aim', async()=>{
- const { batContact }=await import('../src/rules.ts');
- const swing={phase:.5,down:8,already:false,batterX:10};
- assert.equal(batContact({...swing,ballX:10,ballY:25.1}),null,'above the batter is not the bat');
- assert.equal(batContact({...swing,ballX:11,ballY:24.7}),null,'ball is above the contact area');
- assert.equal(batContact({...swing,ballX:11,ballY:25.1,down:-8}),null,'upward save cannot hit');
- assert.equal(batContact({...swing,ballX:11,ballY:25.5}),null,'ball behind bat cannot hit');
- const early=batContact({...swing,ballX:11,ballY:24.95});
- const center=batContact({...swing,ballX:11,ballY:25.17});
- const late=batContact({...swing,ballX:11,ballY:25.39});
- assert.ok(early && center && late);assert.ok(early.x<0 && Math.abs(center.x)<.001 && late.x>0);assert.ok(early.y<0&&late.y<0);assert.ok(Math.abs(Math.hypot(early.x,early.y)-Math.hypot(late.x,late.y))<1e-8);
+test('ready serves once; drain waits for Ready; third strike ends; score banks', () => {
+  const g = new GameRules();
+  assert.equal(g.ready(), true);
+  assert.equal(g.ready(), false, 'second Ready while live does nothing');
+  g.addScore(100);
+  assert.equal(g.drain(), true);
+  assert.equal(g.score, 100, 'score banked after strike 1');
+  assert.equal(g.phase, 'ready', 'no automatic re-serve');
+  g.ready(); g.addScore(50); g.drain();
+  assert.equal(g.score, 150, 'score survives two strikes');
+  assert.equal(g.ballScore, 50);
+  g.ready(); g.drain();
+  assert.equal(g.phase, 'over');
+  assert.equal(g.strikes, 3);
+  g.addScore(999);
+  assert.equal(g.score, 150, 'no scoring after game over');
+  assert.equal(g.ready(), true, 'Ready after game over restarts');
+  assert.equal(g.score, 0);
+  assert.equal(g.strikes, 0);
 });
 
-test('different swing times on an incoming pitch yield left, center and right', async()=>{
- const { batContact }=await import('../src/rules.ts');
- function pitch(swingStart:number){for(let t=0;t<.2;t+=1/120){const result=batContact({phase:(t-swingStart)/.23,down:18,already:false,batterX:8.9,ballX:10,ballY:24.9+18*t});if(result)return result.x}return null}
- const early=pitch(-.05),center=pitch(-.035),late=pitch(-.025);
- assert.ok(early!==null && early<0,`early: ${early}`);assert.ok(center!==null && Math.abs(center)<3,`center: ${center}`);assert.ok(late!==null && late>0,`late: ${late}`);
+test('only the last live ball costs a strike (multiball-compatible accounting)', () => {
+  const g = new GameRules();
+  g.ready();
+  g.ballsLive = 2;
+  assert.equal(g.drain(), false);
+  assert.equal(g.strikes, 0);
+  assert.equal(g.drain(), true);
+  assert.equal(g.strikes, 1);
+});
+
+test('touch: left drag is relative and never teleports; right half swings; two thumbs independent', () => {
+  const t = new TouchInput();
+  assert.equal(t.down(1, 100, 400), 'drag');
+  assert.equal(t.move(1, 100), 0, 'touch-down produces no movement');
+  assert.equal(t.move(1, 130), 30);
+  assert.equal(t.down(2, 300, 400), 'swing', 'right thumb swings while left is dragging');
+  assert.equal(t.move(2, 350), 0, 'right thumb never moves the batter');
+  assert.equal(t.move(1, 150), 20, 'left drag keeps tracking during the swing');
+  t.up(1);
+  assert.equal(t.move(1, 180), 0, 'released drag stops moving');
+  assert.equal(t.down(3, 50, 400), 'drag', 'new left touch starts from where it lands');
+  assert.equal(t.move(3, 60), 10);
+  assert.equal(t.down(4, 20, 400), null, 'a second left touch is ignored');
 });
