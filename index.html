@@ -1,1 +1,58 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#07111c"><title>Baseball Pinball · Physics Test</title></head><body><div id="app"><header><span class="eyebrow">THE CLUBHOUSE · PLAYTEST 01</span><h1>BASEBALL <b>PINBALL</b></h1><p>SWING FOR THE SCORE</p></header><main><div class="stadium"><div class="scoreboard"><div><label>THIS BALL</label><strong id="ballscore">0</strong></div><div class="main-score"><label>SCORE</label><strong id="score">0</strong></div><div><label>BUMPER HITS</label><strong id="hits">0</strong></div></div><div class="status"><span>PHYSICS TEST</span><span id="state">PRESS READY</span><span>STRIKES <b id="strikes">○ ○ ○</b></span></div><div id="stage"><canvas id="game" aria-label="Baseball pinball field"></canvas><div id="overlay"><div><small>YOUR AT-BAT</small><h2 id="overlayTitle">READY TO PLAY?</h2><p id="overlayText">Move your batter. Time your swing. Keep the ball alive.</p><button id="ready">PLAY BALL</button></div></div></div><div class="bottom-bar"><span>← A / D → MOVE</span><span>SPACE SWING</span><button id="pause">PAUSE</button></div></div><aside><div class="badge">PROTOTYPE / 01</div><h2>A new kind<br>of <em>ball game.</em></h2><p>Keep the ball alive, light up the board, and chase a bigger score.</p><div class="guide"><b>DESKTOP</b><span>Move with A / D or arrow keys.<br>Press Space to swing.</span></div><div class="guide"><b>TOUCH</b><span>Drag left side to move.<br>Tap right side to swing.</span></div><div class="guide"><b>THE SWING</b><span>Timing shapes your shot. Early goes left; late goes right.</span></div><div class="foot">A PHYSICS & FEEL EXPERIMENT</div></aside></main></div><script type="module" src="/src/main.ts"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#060d1a" />
+  <title>Baseball Pinball · Prototype</title>
+</head>
+<body>
+  <div id="app">
+    <div class="cabinet">
+      <div class="scoreboard" aria-live="polite">
+        <div class="screen side">
+          <label>THIS BALL</label>
+          <strong id="ballscore">0</strong>
+        </div>
+        <div class="screen main">
+          <label>SCORE</label>
+          <strong id="score">0</strong>
+        </div>
+        <div class="screen side" title="No multiplier mechanic yet — always x1 in this prototype">
+          <label>MULTIPLIER</label>
+          <strong id="mult">x1</strong>
+        </div>
+      </div>
+      <div class="strip">
+        <span class="tag">PHYSICS TEST</span>
+        <span id="state">PRESS READY</span>
+        <span class="strikes">STRIKES <b id="strikes"><i></i><i></i><i></i></b></span>
+        <button id="pause" type="button" aria-label="Pause">II</button>
+      </div>
+      <div id="stage">
+        <canvas id="game" aria-label="Baseball pinball playfield"></canvas>
+        <div id="overlay">
+          <div class="card">
+            <small id="overlayKicker">YOUR AT-BAT</small>
+            <h2 id="overlayTitle">READY TO PLAY?</h2>
+            <p id="overlayText">Slide your batter, time your swing, keep the ball alive.</p>
+            <button id="ready" type="button">PLAY BALL</button>
+            <p class="hint touch-only">Left thumb: drag to move · Right thumb: tap to swing</p>
+            <p class="hint key-only">A / D or ← → to move · Space to swing · Enter for Ready · P to pause</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="badge">PROTOTYPE · 02</div>
+      <h1>BASEBALL <b>PINBALL</b></h1>
+      <p>Keep the ball alive, light up the machines, chase a bigger score.</p>
+      <div class="guide"><b>MOVE</b><span>A / D or ← →<br>Phone: drag with your left thumb</span></div>
+      <div class="guide"><b>SWING</b><span>Space<br>Phone: tap anywhere on the right half</span></div>
+      <div class="guide"><b>AIM</b><span>Swing early to pull it left, late to push it right, on time to go up the middle.</span></div>
+      <div class="foot">Press <kbd>`</kbd> for the debug overlay · console: <code>playtest.report()</code></div>
+    </aside>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

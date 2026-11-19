@@ -1,0 +1,1141 @@
+/**
+ * Board presentation: a pre-rendered static layer (turf, chalk, rails, machine bodies) plus a
+ * cheap dynamic layer (lit machines, ball, batter, bat, VFX). Shapes come straight from board.ts
+ * so the art always matches the collision geometry.
+ */
+import { config } from '../config.ts';
+import { BOX_TARGETS, BUMPERS, LANES, MOUND, OUTER_WALL, POSTS, ROUND_TARGETS, SLINGS, lowerWallX, targetPoly, type Pt } from '../physics/board.ts';
+import type { Simulation } from '../physics/sim.ts';
+import { checkEligibility } from '../core/swing.ts';
+import { drawGlow, Vfx } from './vfx.ts';
+import type { Theme } from './theme.ts';
+
+/** Visible world rectangle (a little beyond the rails for the frame and floodlights). */
+export const VIEW = { x0: -0.9, y0: -1.7, w: 21.8, h: 34.1 };
+
+const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
+const LANE_TOP = config.batter.handsY - 1.7;
+const BAT_LINE = config.batter.handsY + config.swing.battingLine;
+const HOME = { x: 10, y: 28.0 };
+
+function path(ctx: CanvasRenderingContext2D, pts: Pt[], close = true) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  if (close) ctx.closePath();
+}
+
+/** White baseball with red stitched seams. */
+export function drawBaseball(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot = 0, shade = true) {
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+  g.addColorStop(0, '#ffffff');
+  g.addColorStop(0.6, '#f3efe4');
+  g.addColorStop(1, shade ? '#b9b2a2' : '#e8e2d2');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.97, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.strokeStyle = '#d4272e';
+  ctx.lineWidth = r * 0.06;
+  for (const s of [-1, 1]) {
+    const cx = s * r * 1.32, rr = r * 0.95;
+    ctx.beginPath();
+    ctx.arc(cx, 0, rr, Math.PI - 0.95, Math.PI + 0.95);
+    if (s < 0) {
+      ctx.beginPath();
+      ctx.arc(cx, 0, rr, -0.95, 0.95);
+    }
+    ctx.stroke();
+    // stitch ticks
+    ctx.lineWidth = r * 0.05;
+    for (let i = -5; i <= 5; i++) {
+      const a = (s < 0 ? 0 : Math.PI) + i * 0.16;
+      const px = cx + Math.cos(a) * rr, py = Math.sin(a) * rr;
+      const tx = -Math.sin(a), ty = Math.cos(a), nx = Math.cos(a), ny = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(px - nx * r * 0.11 + tx * r * 0.05, py - ny * r * 0.11 + ty * r * 0.05);
+      ctx.lineTo(px + nx * r * 0.11 + tx * r * 0.05, py + ny * r * 0.11 + ty * r * 0.05);
+      ctx.stroke();
+    }
+    ctx.lineWidth = r * 0.06;
+  }
+  ctx.restore();
+}
+
+function playfieldPolygon(): Pt[] {
+  return [...OUTER_WALL];
+}
+
+export class GameView {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  staticLayer: HTMLCanvasElement;
+  ppu = 30;
+  theme: Theme;
+  vfx: Vfx;
+  debug = false;
+  /** Seconds of "lit" remaining per machine id. */
+  lit = new Map<string, number>();
+  trail: Pt[] = [];
+  ballRot = 0;
+  time = 0;
+  lastContact: { x: number; y: number; vx: number; vy: number; angle: number } | null = null;
+
+  constructor(canvas: HTMLCanvasElement, theme: Theme) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d')!;
+    this.staticLayer = document.createElement('canvas');
+    this.theme = theme;
+    this.vfx = new Vfx(theme);
+  }
+
+  /** Size the backing store to the displayed size × devicePixelRatio (capped) and redraw statics. */
+  resize(cssWidth: number) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const ppu = Math.max(14, Math.min(70, (cssWidth * dpr) / VIEW.w));
+    if (Math.abs(ppu - this.ppu) < 0.01 && this.staticLayer.width) return;
+    this.ppu = ppu;
+    const w = Math.round(VIEW.w * ppu), h = Math.round(VIEW.h * ppu);
+    this.canvas.width = this.staticLayer.width = w;
+    this.canvas.height = this.staticLayer.height = h;
+    this.drawStatic();
+  }
+
+  private worldTransform(ctx: CanvasRenderingContext2D) {
+    ctx.setTransform(this.ppu, 0, 0, this.ppu, -VIEW.x0 * this.ppu, -VIEW.y0 * this.ppu);
+  }
+
+  /** Convert a client-space x delta (CSS px) to world units. */
+  cssToWorld(dxCss: number, cssWidth: number) {
+    return (dxCss / cssWidth) * VIEW.w;
+  }
+
+  // ───────────────────────────── static layer ─────────────────────────────
+  drawStatic() {
+    const ctx = this.staticLayer.getContext('2d')!;
+    const W = this.staticLayer.width, H = this.staticLayer.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    this.worldTransform(ctx);
+    this.drawStadium(ctx);
+    const poly = playfieldPolygon();
+
+    ctx.save();
+    path(ctx, poly);
+    ctx.clip();
+    this.drawTurf(ctx);
+    this.drawInfield(ctx);
+    this.drawLaneAndApron(ctx);
+    ctx.restore();
+
+    this.drawRails(ctx, poly);
+    this.drawFloodlights(ctx);
+    this.drawCrest(ctx);
+    for (const s of SLINGS) this.drawSlingBody(ctx, s.poly, s.face, s.kickDir);
+    for (const p of POSTS) this.drawPost(ctx, p.x, p.y, p.r);
+    for (const t of ROUND_TARGETS) this.drawBullseye(ctx, t.x, t.y, t.r);
+    for (const t of BOX_TARGETS) this.drawBoxTarget(ctx, t);
+    for (const l of LANES) this.drawLaneRail(ctx, l.rail);
+    for (const b of BUMPERS) {
+      if (b.style === 'glove') this.drawGlove(ctx, b.x, b.y, b.r);
+      else this.drawBumperBase(ctx, b.x, b.y, b.r);
+    }
+  }
+
+  private drawLaneRail(ctx: CanvasRenderingContext2D, rail: [Pt, Pt]) {
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(rail[0].x + 0.12, rail[0].y + 0.18);
+    ctx.lineTo(rail[1].x + 0.12, rail[1].y + 0.18);
+    ctx.stroke();
+    const g = ctx.createLinearGradient(rail[0].x - 0.15, 0, rail[0].x + 0.15, 0);
+    g.addColorStop(0, '#6f7784');
+    g.addColorStop(0.45, '#f4f7fb');
+    g.addColorStop(1, '#5b6370');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 0.24;
+    ctx.beginPath();
+    ctx.moveTo(rail[0].x, rail[0].y);
+    ctx.lineTo(rail[1].x, rail[1].y);
+    ctx.stroke();
+    for (const p of rail) {
+      ctx.fillStyle = '#e3b45c';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawGlove(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(x + 0.2, y + 0.32, r * 1.18, r * 1.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // gold ring base
+    const s = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+    s.addColorStop(0, '#fbe3a6');
+    s.addColorStop(0.5, '#b8862f');
+    s.addColorStop(1, '#5c3f14');
+    ctx.fillStyle = s;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
+    ctx.fill();
+    // leather mitt: palm + four finger lobes + thumb
+    const leather = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r * 1.1);
+    leather.addColorStop(0, '#e2a35c');
+    leather.addColorStop(0.7, '#a8652a');
+    leather.addColorStop(1, '#5e3412');
+    ctx.fillStyle = leather;
+    ctx.beginPath();
+    ctx.arc(x, y + r * 0.1, r * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 4; i++) {
+      const a = -Math.PI / 2 - 0.75 + i * 0.5;
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62, r * 0.2, r * 0.32, a + Math.PI / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.ellipse(x + r * 0.7, y + r * 0.25, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // pocket + laces
+    ctx.fillStyle = '#7a4318';
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.12, r * 0.42, r * 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#f0d2a0';
+    ctx.lineWidth = 0.05;
+    ctx.setLineDash([0.08, 0.08]);
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.12, r * 0.55, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  private drawStadium(ctx: CanvasRenderingContext2D) {
+    const { x0, y0, w, h } = VIEW;
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
+    g.addColorStop(0, '#0b1a33');
+    g.addColorStop(0.5, '#08152a');
+    g.addColorStop(1, '#050c19');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0, y0, w, h);
+    // stands suggestion below the angled walls: soft out-of-focus crowd bokeh (static, cheap)
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 70; i++) {
+        const y = 22 + rnd() * 11;
+        const wallX = lowerWallX(Math.min(y, 30.6));
+        const x = side < 0 ? x0 + rnd() * (wallX - x0 - 0.6) : 20 - wallX + 0.6 + rnd() * (wallX - x0 - 0.6);
+        const hue = ['#c43a3a', '#2f5fae', '#e8e0d0', '#24324d', '#b8862f'][Math.floor(rnd() * 5)];
+        ctx.globalAlpha = 0.12 + rnd() * 0.16;
+        ctx.fillStyle = hue;
+        ctx.beginPath();
+        ctx.arc(x, y, 0.18 + rnd() * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    // floodlight bloom at the top corners
+    ctx.globalCompositeOperation = 'lighter';
+    drawGlow(ctx, '#ffe8bd', 0.5, -0.8, 7.5, 0.35);
+    drawGlow(ctx, '#ffe8bd', 19.5, -0.8, 7.5, 0.35);
+    drawGlow(ctx, '#3a6fd8', 10, 33, 9, 0.18);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  private drawTurf(ctx: CanvasRenderingContext2D) {
+    const g = ctx.createLinearGradient(0, 0, 0, 32);
+    g.addColorStop(0, '#1b6a38');
+    g.addColorStop(0.45, '#228043');
+    g.addColorStop(1, '#1b6837');
+    ctx.fillStyle = g;
+    ctx.fillRect(-1, -1, 22, 35);
+    // mowing stripes
+    for (let x = 0; x < 20; x += 3.2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.045)';
+      ctx.fillRect(x, -1, 1.6, 35);
+    }
+    for (let y = 0; y < 32; y += 3.2) {
+      ctx.fillStyle = 'rgba(0,0,0,0.035)';
+      ctx.fillRect(-1, y, 22, 1.6);
+    }
+    // stadium light pool from the top, darker edges (2.5D depth cue)
+    const r = ctx.createRadialGradient(10, 9, 1, 10, 12, 19);
+    r.addColorStop(0, 'rgba(255,240,200,0.10)');
+    r.addColorStop(0.6, 'rgba(0,0,0,0)');
+    r.addColorStop(1, 'rgba(0,10,20,0.45)');
+    ctx.fillStyle = r;
+    ctx.fillRect(-1, -1, 22, 35);
+    // turf grain (pixel space)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const n = document.createElement('canvas');
+    n.width = n.height = 96;
+    const ng = n.getContext('2d')!;
+    const img = ng.createImageData(96, 96);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.random() < 0.5 ? 0 : 255;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = Math.random() * 16;
+    }
+    ng.putImageData(img, 0, 0);
+    ctx.fillStyle = ctx.createPattern(n, 'repeat')!;
+    ctx.fillRect(0, 0, this.staticLayer.width, this.staticLayer.height);
+    ctx.restore();
+  }
+
+  private drawInfield(ctx: CanvasRenderingContext2D) {
+    // infield skin arc around home plate
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#a8744a';
+    ctx.lineWidth = 0.95;
+    ctx.beginPath();
+    ctx.arc(HOME.x, HOME.y, 13.6, Math.PI * 1.17, Math.PI * 1.83);
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#e9dcc0';
+    ctx.lineWidth = 0.05;
+    for (const rr of [13.12, 14.08]) {
+      ctx.beginPath();
+      ctx.arc(HOME.x, HOME.y, rr, Math.PI * 1.17, Math.PI * 1.83);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // foul lines from home plate
+    ctx.strokeStyle = 'rgba(245,240,225,0.6)';
+    ctx.lineWidth = 0.08;
+    ctx.beginPath();
+    ctx.moveTo(HOME.x, HOME.y);
+    ctx.lineTo(HOME.x - 14, HOME.y - 14);
+    ctx.moveTo(HOME.x, HOME.y);
+    ctx.lineTo(HOME.x + 14, HOME.y - 14);
+    ctx.stroke();
+    // pitcher's mound (serve point): decorative, no collision
+    const m = ctx.createRadialGradient(MOUND.x - 0.3, MOUND.y - 0.3, 0.1, MOUND.x, MOUND.y, MOUND.r);
+    m.addColorStop(0, '#c7915f');
+    m.addColorStop(0.75, '#a26f45');
+    m.addColorStop(1, '#7d5434');
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(MOUND.x + 0.1, MOUND.y + 0.15, MOUND.r, MOUND.r * 0.92, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = m;
+    ctx.beginPath();
+    ctx.arc(MOUND.x, MOUND.y, MOUND.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f4efe2';
+    ctx.fillRect(MOUND.x - 0.34, MOUND.y - 0.5, 0.68, 0.14);
+  }
+
+  private drawLaneAndApron(ctx: CanvasRenderingContext2D) {
+    // apron / batter's dirt below the batting line down to the drain
+    const a = ctx.createLinearGradient(0, BAT_LINE, 0, 32.5);
+    a.addColorStop(0, '#a5704a');
+    a.addColorStop(0.55, '#8a5c3b');
+    a.addColorStop(1, '#3b2618');
+    ctx.fillStyle = a;
+    ctx.fillRect(-1, BAT_LINE, 22, 34 - BAT_LINE);
+    // home plate + batter's boxes
+    ctx.strokeStyle = 'rgba(245,240,225,0.7)';
+    ctx.lineWidth = 0.07;
+    ctx.strokeRect(HOME.x - 2.3, HOME.y - 0.95, 1.5, 1.9);
+    ctx.strokeRect(HOME.x + 0.8, HOME.y - 0.95, 1.5, 1.9);
+    ctx.fillStyle = '#f7f3ea';
+    path(ctx, [{ x: HOME.x - 0.42, y: HOME.y - 0.4 }, { x: HOME.x + 0.42, y: HOME.y - 0.4 }, { x: HOME.x + 0.42, y: HOME.y }, { x: HOME.x, y: HOME.y + 0.42 }, { x: HOME.x - 0.42, y: HOME.y }]);
+    ctx.fill();
+    // drain mouth shadow + danger tint
+    const d = ctx.createLinearGradient(0, 29.6, 0, 32.5);
+    d.addColorStop(0, 'rgba(5,8,16,0)');
+    d.addColorStop(1, 'rgba(5,8,16,0.95)');
+    ctx.fillStyle = d;
+    ctx.fillRect(-1, 29.6, 22, 3);
+    ctx.globalCompositeOperation = 'lighter';
+    drawGlow(ctx, '#ff2d3a', 10, 32.6, 4.2, 0.22);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // batter movement lane: bright turf band, chalk edges, clear of all machinery
+    const l = ctx.createLinearGradient(0, LANE_TOP, 0, BAT_LINE);
+    l.addColorStop(0, '#2a9150');
+    l.addColorStop(1, '#23803f');
+    ctx.fillStyle = l;
+    ctx.fillRect(-1, LANE_TOP, 22, BAT_LINE - LANE_TOP);
+    for (let x = 0; x < 20; x += 1.2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+      ctx.fillRect(x, LANE_TOP, 0.6, BAT_LINE - LANE_TOP);
+    }
+    ctx.fillStyle = 'rgba(245,240,225,0.5)';
+    ctx.fillRect(-1, LANE_TOP - 0.04, 22, 0.06);
+    ctx.fillStyle = 'rgba(250,247,238,0.9)';
+    ctx.fillRect(-1, BAT_LINE - 0.05, 22, 0.1);
+    // painted travel chevrons at the lane ends
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    const cy = (LANE_TOP + BAT_LINE) / 2;
+    for (const [x, dir] of [[3.6, -1], [4.3, -1], [16.4, 1], [15.7, 1]] as const) {
+      path(ctx, [{ x: x + dir * 0.3, y: cy }, { x: x - dir * 0.15, y: cy - 0.42 }, { x: x - dir * 0.15 - dir * 0.0, y: cy - 0.2 }, { x: x + dir * 0.05, y: cy }, { x: x - dir * 0.15, y: cy + 0.2 }, { x: x - dir * 0.15, y: cy + 0.42 }]);
+      ctx.fill();
+    }
+  }
+
+  private drawRails(ctx: CanvasRenderingContext2D, poly: Pt[]) {
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const rail = poly; // open chain (bottom left lip → top → bottom right lip)
+    // drop shadow onto turf
+    ctx.save();
+    ctx.translate(0.14, 0.2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.75;
+    path(ctx, rail, false);
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = '#0a1426';
+    ctx.lineWidth = 0.78;
+    path(ctx, rail, false);
+    ctx.stroke();
+    const metal = ctx.createLinearGradient(-1, -1, 21, 33);
+    const stops = ['#7a5523', '#f6dc9c', '#9a6d2f', '#fff1c8', '#8a612a', '#e9c57a', '#6e4c1f', '#f9e5ae', '#93692e'];
+    stops.forEach((c, i) => metal.addColorStop(i / (stops.length - 1), c));
+    ctx.strokeStyle = metal;
+    ctx.lineWidth = 0.48;
+    path(ctx, rail, false);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,248,225,0.85)';
+    ctx.lineWidth = 0.07;
+    ctx.save();
+    ctx.translate(-0.06, -0.06);
+    path(ctx, rail, false);
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(40,24,6,0.6)';
+    ctx.lineWidth = 0.05;
+    ctx.save();
+    ctx.translate(0.1, 0.1);
+    path(ctx, rail, false);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Bulb positions along the rail (drawn dynamically so they can chase). */
+  bulbs: Pt[] = (() => {
+    const out: Pt[] = [];
+    const pts = OUTER_WALL;
+    let carry = 0.6;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (b.y > 30.7 && a.y > 30.5) continue;
+      let d = carry;
+      while (d < len) {
+        out.push({ x: a.x + ((b.x - a.x) * d) / len, y: a.y + ((b.y - a.y) * d) / len });
+        d += 1.45;
+      }
+      carry = d - len;
+    }
+    return out;
+  })();
+
+  private drawFloodlights(ctx: CanvasRenderingContext2D) {
+    for (const cx of [1.6, 18.4]) {
+      const x = cx - 1.35, y = -1.55;
+      ctx.fillStyle = '#121c2c';
+      ctx.strokeStyle = '#c99a4c';
+      ctx.lineWidth = 0.08;
+      ctx.beginPath();
+      ctx.roundRect(x, y, 2.7, 1.2, 0.15);
+      ctx.fill();
+      ctx.stroke();
+      for (let r = 0; r < 2; r++)
+        for (let c = 0; c < 5; c++) {
+          const bx = x + 0.32 + c * 0.51, by = y + 0.33 + r * 0.54;
+          ctx.globalCompositeOperation = 'lighter';
+          drawGlow(ctx, '#fff1d0', bx, by, 0.55, 0.55);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = '#fffaf0';
+          ctx.beginPath();
+          ctx.arc(bx, by, 0.17, 0, Math.PI * 2);
+          ctx.fill();
+        }
+    }
+  }
+
+  /** Crossed bats, baseball and stars above the jackpot, in the frame (no collision). */
+  private drawCrest(ctx: CanvasRenderingContext2D) {
+    const cx = 10, cy = -0.7;
+    for (const sgn of [-1, 1]) {
+      ctx.save();
+      ctx.translate(cx, cy + 0.15);
+      ctx.rotate(sgn * 0.62);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.save();
+      ctx.translate(0.08, 0.1);
+      batShape(ctx, 2.4, true);
+      ctx.fill();
+      ctx.restore();
+      const g = ctx.createLinearGradient(-0.2, 0, 0.2, 0);
+      g.addColorStop(0, '#f8d9a0');
+      g.addColorStop(0.5, '#d49b52');
+      g.addColorStop(1, '#8a5826');
+      ctx.fillStyle = g;
+      batShape(ctx, 2.4, true);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    drawGlow(ctx, '#fff1d0', cx, cy, 1.6, 0.35);
+    ctx.globalCompositeOperation = 'source-over';
+    drawBaseball(ctx, cx, cy, 0.68, 0.4);
+    ctx.fillStyle = this.theme.jackpotAccent;
+    for (const [x, y, r] of [[7.9, -0.95, 0.24], [12.1, -0.95, 0.24], [10, -1.55, 0]] as const) {
+      if (!r) continue;
+      star(ctx, x, y, r, r * 0.45);
+      ctx.fill();
+    }
+  }
+
+  private drawSlingBody(ctx: CanvasRenderingContext2D, poly: Pt[], face: [Pt, Pt], k: Pt) {
+    ctx.save();
+    ctx.translate(0.1, 0.16);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    path(ctx, poly);
+    ctx.fill();
+    ctx.restore();
+    const g = ctx.createLinearGradient(face[0].x, face[0].y, face[0].x - k.x, face[0].y - k.y);
+    g.addColorStop(0, '#3d8cff');
+    g.addColorStop(1, '#0d2f7a');
+    ctx.fillStyle = g;
+    path(ctx, poly);
+    ctx.fill();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#d6e3f5';
+    ctx.lineWidth = 0.08;
+    ctx.stroke();
+    // bright kick face rubber
+    ctx.strokeStyle = '#9fd4ff';
+    ctx.lineWidth = 0.1;
+    ctx.beginPath();
+    ctx.moveTo(face[0].x, face[0].y);
+    ctx.lineTo(face[1].x, face[1].y);
+    ctx.stroke();
+  }
+
+  /** Chevrons on the sling, pointing the kick direction. Drawn dynamically (they light up). */
+  private drawSlingChevrons(ctx: CanvasRenderingContext2D, face: [Pt, Pt], k: Pt, glow: number) {
+    const mx = (face[0].x + face[1].x) / 2, my = (face[0].y + face[1].y) / 2;
+    const tx = face[1].x - face[0].x, ty = face[1].y - face[0].y, tl = Math.hypot(tx, ty);
+    const ux = tx / tl, uy = ty / tl;
+    // chevrons sit inside the sling body, behind the face
+    const nx = -k.x, ny = -k.y;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = glow > 0.05 ? '#ffffff' : 'rgba(225,238,255,0.8)';
+    ctx.lineWidth = 0.08;
+    for (let i = 0; i < 2; i++) {
+      const off = -0.55 + i * 0.85;
+      const cx = mx + ux * off + nx * 0.18, cy = my + uy * off + ny * 0.18;
+      ctx.beginPath();
+      ctx.moveTo(cx - k.x * 0.09 + ux * 0.2, cy - k.y * 0.09 + uy * 0.2);
+      ctx.lineTo(cx + k.x * 0.12, cy + k.y * 0.12);
+      ctx.lineTo(cx - k.x * 0.09 - ux * 0.2, cy - k.y * 0.09 - uy * 0.2);
+      ctx.stroke();
+    }
+  }
+
+  private drawPost(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.arc(x + 0.08, y + 0.12, r * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+    const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, 0, x, y, r * 1.2);
+    g.addColorStop(0, '#fff6d8');
+    g.addColorStop(0.5, '#d9a94f');
+    g.addColorStop(1, '#6d4a1c');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#20293a';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawBullseye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(x + 0.1, y + 0.18, r * 1.15, r * 1.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c99a4c';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
+    ctx.fill();
+    const rings = ['#d4232c', '#f8f4ea', '#d4232c', '#f8f4ea', '#d4232c'];
+    rings.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(x, y, r * (1 - i * 0.19), 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  private drawBoxTarget(ctx: CanvasRenderingContext2D, t: (typeof BOX_TARGETS)[number]) {
+    const poly = targetPoly(t);
+    ctx.save();
+    ctx.translate(0.1, 0.15);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    path(ctx, poly);
+    ctx.fill();
+    ctx.restore();
+    if (t.style === 'jackpot') {
+      const g = ctx.createLinearGradient(0, t.y - t.hh, 0, t.y + t.hh);
+      g.addColorStop(0, '#e2363b');
+      g.addColorStop(1, '#8e1118');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.roundRect(t.x - t.hw, t.y - t.hh, t.hw * 2, t.hh * 2, 0.2);
+      ctx.fill();
+      ctx.strokeStyle = '#f0c46a';
+      ctx.lineWidth = 0.1;
+      ctx.stroke();
+      // laurels
+      ctx.strokeStyle = '#e2b55c';
+      ctx.lineWidth = 0.07;
+      for (const s of [-1, 1]) {
+        for (let i = 0; i < 4; i++) {
+          const lx = t.x + s * (t.hw + 0.22 + i * 0.05), ly = t.y + 0.3 - i * 0.28;
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, 0.08, 0.17, s * 0.6, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.font = `italic 800 0.78px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#7a0d12';
+      ctx.fillText('JACKPOT', t.x + 0.03, t.y + 0.07);
+      ctx.fillStyle = '#fff6e0';
+      ctx.fillText('JACKPOT', t.x, t.y + 0.03);
+      return;
+    }
+    // wall target panel
+    const metal = ctx.createLinearGradient(t.x - 0.5, 0, t.x + 0.5, 0);
+    metal.addColorStop(0, '#6b4a1c');
+    metal.addColorStop(0.5, '#f1d08a');
+    metal.addColorStop(1, '#7a5422');
+    ctx.fillStyle = metal;
+    path(ctx, poly);
+    ctx.fill();
+    const fx = t.x + t.face.x * t.hw; // front face x
+    const panelX = Math.min(fx, fx - t.face.x * 0.55);
+    if (t.style === 'card') {
+      ctx.fillStyle = '#f5f1e6';
+      ctx.fillRect(panelX, t.y - t.hh + 0.08, 0.55, t.hh * 2 - 0.16);
+      // tiny batter silhouette
+      ctx.fillStyle = '#1d3a73';
+      const sx = panelX + 0.28, sy = t.y;
+      ctx.beginPath();
+      ctx.arc(sx, sy - 0.32, 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1d3a73';
+      ctx.lineWidth = 0.07;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 0.22);
+      ctx.lineTo(sx, sy + 0.1);
+      ctx.lineTo(sx - 0.12, sy + 0.38);
+      ctx.moveTo(sx, sy + 0.1);
+      ctx.lineTo(sx + 0.12, sy + 0.38);
+      ctx.moveTo(sx - 0.15, sy - 0.15);
+      ctx.lineTo(sx + 0.2, sy - 0.38);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#16244a';
+      ctx.fillRect(panelX, t.y - t.hh + 0.08, 0.55, t.hh * 2 - 0.16);
+      ctx.fillStyle = '#ffcf4a';
+      star(ctx, panelX + 0.275, t.y, 0.22, 0.1);
+      ctx.fill();
+    }
+  }
+
+  private drawBumperBase(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(x + 0.2, y + 0.32, r * 1.18, r * 1.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // chrome skirt
+    const s = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+    s.addColorStop(0, '#e8edf3');
+    s.addColorStop(0.5, '#7c8593');
+    s.addColorStop(1, '#2b313b');
+    ctx.fillStyle = s;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
+    ctx.fill();
+    // red body
+    const b = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+    b.addColorStop(0, '#ff5a52');
+    b.addColorStop(0.7, '#c4141d');
+    b.addColorStop(1, '#6e0a10');
+    ctx.fillStyle = b;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ───────────────────────────── dynamic layer ─────────────────────────────
+  onSimEvent(e: import('../physics/sim.ts').SimEvent) {
+    const t = this.theme;
+    if (e.type === 'machine') {
+      if (e.kind === 'bumper') {
+        const b = BUMPERS.find(b => b.id === e.id)!;
+        this.lit.set(e.id, 0.45);
+        this.vfx.bumperHit(b.x, b.y, b.r, -e.nx, -e.ny);
+        this.vfx.flicker(b.x, b.y - b.r - 0.35, '+' + e.points);
+      } else if (e.kind === 'target' || e.kind === 'jackpot') {
+        this.lit.set(e.id, e.kind === 'jackpot' ? 0.9 : 0.6);
+        const rt = ROUND_TARGETS.find(r => r.id === e.id), bt = BOX_TARGETS.find(r => r.id === e.id);
+        const p = rt ? { x: rt.x, y: rt.y } : bt ? { x: bt.x + bt.face.x * bt.hw, y: bt.y + bt.face.y * bt.hh } : { x: e.x, y: e.y };
+        this.vfx.targetHit(p.x, p.y, -e.nx, -e.ny, e.kind === 'jackpot');
+        this.vfx.flicker(p.x + (bt ? bt.face.x * 0.8 : 0), p.y - 0.6 + (bt?.style === 'jackpot' ? 1.4 : 0), '+' + e.points, e.kind === 'jackpot' ? t.jackpotAccent : t.impactCore);
+      } else if (e.kind === 'sling') {
+        const s = SLINGS.find(s => s.id === e.id)!;
+        this.lit.set(e.id, 0.35);
+        this.vfx.slingHit(e.x, e.y, s.kickDir.x, s.kickDir.y);
+      } else if (e.kind === 'lane') {
+        this.lit.set(e.id, 1.0);
+        const l = LANES.find(l => l.id === e.id)!;
+        this.vfx.flash(l.sensor.x, l.sensor.y, 1.0, t.energyPrimary, 0.25);
+        this.vfx.flicker(l.sensor.x, l.sensor.y - 0.7, '+' + e.points, t.impactCore);
+      } else if (e.kind === 'post') {
+        this.lit.set(e.id, 0.25);
+        this.vfx.sparks(e.x - e.nx * 0.24, e.y - e.ny * 0.24, 4, 5, t.machineGlow);
+      }
+    } else if (e.type === 'bat') {
+      this.vfx.batHit(e.x, e.y, e.contact.velocity.x, e.contact.velocity.y);
+      this.lastContact = { x: e.x, y: e.y, vx: e.contact.velocity.x, vy: e.contact.velocity.y, angle: e.contact.angle };
+      this.lit.set('bat', 0.18);
+    } else if (e.type === 'serve') {
+      this.trail = [];
+      this.lit.set('mound', 0.4);
+    }
+  }
+
+  draw(sim: Simulation, dt: number) {
+    const ctx = this.ctx;
+    this.time += dt;
+    for (const [k, v] of this.lit) {
+      if (v - dt <= 0) this.lit.delete(k);
+      else this.lit.set(k, v - dt);
+    }
+    this.vfx.update(dt);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.staticLayer, 0, 0);
+    this.worldTransform(ctx);
+
+    this.drawBulbs(ctx);
+    this.drawMachinesDynamic(ctx);
+    this.drawBatter(ctx, sim);
+    this.drawBall(ctx, sim, dt);
+    this.vfx.draw(ctx);
+    if (this.debug) this.drawDebug(ctx, sim);
+  }
+
+  private drawBulbs(ctx: CanvasRenderingContext2D) {
+    const t = this.time;
+    ctx.globalCompositeOperation = 'lighter';
+    this.bulbs.forEach((b, i) => {
+      const chase = 0.5 + 0.5 * Math.sin(t * 3 - i * 0.55);
+      drawGlow(ctx, this.theme.railLight, b.x, b.y, 0.42, 0.22 + chase * 0.2);
+    });
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff3d6';
+    for (const b of this.bulbs) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawMachinesDynamic(ctx: CanvasRenderingContext2D) {
+    const th = this.theme;
+    // bumpers: amber light segments + baseball cap, lit on hit
+    for (const b of BUMPERS) {
+      const lit = Math.min(1, (this.lit.get(b.id) ?? 0) / 0.3);
+      if (b.style === 'glove') {
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, th.machineGlow, b.x, b.y, b.r * (1.8 + lit), 0.2 + lit * 0.9);
+        if (lit > 0) drawGlow(ctx, th.impactCore, b.x, b.y + 0.1, b.r * 0.8, lit * 0.6);
+        ctx.globalCompositeOperation = 'source-over';
+        continue;
+      }
+      const idle = 0.35 + 0.1 * Math.sin(this.time * 2 + b.x);
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, th.machineGlow, b.x, b.y, b.r * (1.9 + lit * 0.8), idle * 0.35 + lit * 0.9);
+      ctx.globalCompositeOperation = 'source-over';
+      // light segments around the red body
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        ctx.fillStyle = lit > 0.05 ? th.impactCore : th.machineGlow;
+        ctx.globalAlpha = 0.55 + lit * 0.45;
+        ctx.beginPath();
+        ctx.arc(b.x + Math.cos(a) * b.r * 0.86, b.y + Math.sin(a) * b.r * 0.86, b.r * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      const squash = 1 - lit * 0.08; // cap dips when it fires
+      drawBaseball(ctx, b.x, b.y - 0.1 * squash, b.r * 0.7 * squash, 0.5 + b.x);
+      if (lit > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, th.impactCore, b.x, b.y - 0.1, b.r * 0.9, lit * 0.6);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    // targets lit overlays
+    ctx.globalCompositeOperation = 'lighter';
+    for (const t of ROUND_TARGETS) {
+      const lit = this.lit.get(t.id) ?? 0;
+      if (lit > 0) drawGlow(ctx, th.energyPrimary, t.x, t.y, t.r * 3, Math.min(1, lit * 2));
+    }
+    for (const t of BOX_TARGETS) {
+      const lit = this.lit.get(t.id) ?? 0;
+      const fx = t.x + t.face.x * t.hw * 0.6, fy = t.y + t.face.y * t.hh * 0.6;
+      if (t.style === 'jackpot') drawGlow(ctx, th.jackpotAccent, fx, fy, 2.6, 0.18 + Math.min(1, lit * 1.5));
+      else if (lit > 0) drawGlow(ctx, th.energyPrimary, fx, fy, 1.4, Math.min(1, lit * 2));
+    }
+    for (const p of POSTS) {
+      const lit = this.lit.get(p.id) ?? 0;
+      if (lit > 0) drawGlow(ctx, th.machineGlow, p.x, p.y, 0.8, lit * 3);
+    }
+    const mound = this.lit.get('mound') ?? 0;
+    if (mound > 0) drawGlow(ctx, th.energyPrimary, MOUND.x, MOUND.y, 2, mound * 1.5);
+    // slingshots: idle electric-blue breathe, bright pulse on kick
+    for (const s of SLINGS) {
+      const lit = Math.min(1, (this.lit.get(s.id) ?? 0) / 0.2);
+      const mx = (s.face[0].x + s.face[1].x) / 2, my = (s.face[0].y + s.face[1].y) / 2;
+      drawGlow(ctx, th.slingGlow, mx, my, 1.6 + lit, 0.25 + 0.06 * Math.sin(this.time * 2.5) + lit * 0.85);
+      if (lit > 0) {
+        ctx.strokeStyle = th.energyPrimary;
+        ctx.lineWidth = 0.12 + lit * 0.12;
+        ctx.globalAlpha = lit;
+        ctx.beginPath();
+        ctx.moveTo(s.face[0].x, s.face[0].y);
+        ctx.lineTo(s.face[1].x, s.face[1].y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    for (const l of LANES) {
+      const lit = Math.min(1, (this.lit.get(l.id) ?? 0) / 0.5);
+      const x = l.sensor.x;
+      for (let i = 0; i < 4; i++) {
+        const y = l.rail[0].y + 0.9 + i * 1.0;
+        const wave = (Math.sin(this.time * (4 + lit * 10) - i * 1.3) + 1) / 2;
+        const a = 0.18 + wave * 0.25 + lit * 0.6;
+        ctx.globalCompositeOperation = 'lighter';
+        if (lit > 0 || wave > 0.7) drawGlow(ctx, lit > 0 ? th.energyPrimary : th.machineGlow, x, y, 0.6, a * 0.7);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = lit > 0 ? th.energyPrimary : th.machineGlow;
+        ctx.globalAlpha = Math.min(1, a + 0.15);
+        ctx.lineWidth = 0.11;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 0.32, y - 0.17);
+        ctx.lineTo(x, y + 0.13);
+        ctx.lineTo(x + 0.32, y - 0.17);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    for (const s of SLINGS) this.drawSlingChevrons(ctx, s.face, s.kickDir, this.lit.get(s.id) ?? 0);
+  }
+
+  private drawBatter(ctx: CanvasRenderingContext2D, sim: Simulation) {
+    const hands = sim.hands;
+    const S = 1.45; // batter art scale (cosmetic only; collision comes from config.swing)
+    const bx = sim.batterBodyX, by = config.batter.handsY + 0.42;
+    const angle = sim.batAngle;
+    const state = sim.swingState;
+    const batOnTop = Math.sin(angle) < -0.15;
+
+    // swing smear (purely visual, attached to the bat)
+    if (state === 'active') {
+      const prev = angle + (config.swing.restAngle - config.swing.endAngle) * 0.14;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(hands.x, hands.y, 0.4, hands.x, hands.y, config.swing.length + 0.1);
+      g.addColorStop(0, this.theme.energyPrimary + '00');
+      g.addColorStop(0.7, this.theme.energyPrimary + '22');
+      g.addColorStop(1, this.theme.energyPrimary + '66');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(hands.x, hands.y);
+      ctx.arc(hands.x, hands.y, config.swing.length + 0.1, angle, Math.min(prev, config.swing.restAngle));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ground shadow + batter's circle
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(bx + 0.25, by + 0.45, 0.62 * S, 0.4 * S, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!batOnTop) this.drawBat(ctx, hands.x, hands.y, angle);
+
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.scale(S, S);
+    const hx = (hands.x - bx) / S, hy = (hands.y - by) / S;
+    // cleats + legs
+    for (const s of [-1, 1]) {
+      ctx.fillStyle = '#d7dbe2';
+      ctx.beginPath();
+      ctx.ellipse(s * 0.25, 0.32, 0.16, 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#16203a';
+      ctx.beginPath();
+      ctx.ellipse(s * 0.27, 0.52, 0.13, 0.09, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // jersey, seen from behind
+    const j = ctx.createLinearGradient(-0.5, -0.4, 0.5, 0.4);
+    j.addColorStop(0, '#ffffff');
+    j.addColorStop(1, '#c3c8d2');
+    ctx.fillStyle = j;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.5, 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c4222b';
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    ctx.moveTo(-0.46, 0.12);
+    ctx.quadraticCurveTo(0, 0.3, 0.46, 0.12);
+    ctx.stroke();
+    ctx.fillStyle = '#c4222b';
+    ctx.font = `italic 800 0.34px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('17', 0, 0.06);
+    // arms reaching to the hands
+    ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      const sx = s * 0.4, sy = -0.12;
+      ctx.strokeStyle = '#eef0f4';
+      ctx.lineWidth = 0.17;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo((sx + hx) / 2, sy - 0.12, hx - 0.03 * s, hy + 0.02);
+      ctx.stroke();
+      ctx.strokeStyle = '#c4222b';
+      ctx.lineWidth = 0.18;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + (hx - sx) * 0.16, sy + (hy - sy) * 0.16);
+      ctx.stroke();
+    }
+    // helmet
+    const hg = ctx.createRadialGradient(-0.1, -0.38, 0.03, 0, -0.28, 0.3);
+    hg.addColorStop(0, '#ff7b70');
+    hg.addColorStop(0.55, '#d0202b');
+    hg.addColorStop(1, '#740b12');
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.arc(0, -0.28, 0.27, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8c1118';
+    ctx.beginPath();
+    ctx.ellipse(0.02, -0.52, 0.19, 0.07, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#9e131b';
+    ctx.beginPath();
+    ctx.ellipse(-0.25, -0.24, 0.08, 0.12, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(-0.1, -0.38, 0.08, 0.04, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // batting gloves
+    ctx.fillStyle = '#1d2b4a';
+    ctx.beginPath();
+    ctx.arc(hx, hy, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    if (batOnTop) this.drawBat(ctx, hands.x, hands.y, angle);
+  }
+
+  private drawBat(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number) {
+    const L = config.swing.length;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.save();
+    ctx.translate(0.1, 0.14);
+    batShape(ctx, L);
+    ctx.fill();
+    ctx.restore();
+    const g = ctx.createLinearGradient(0, -0.14, 0, 0.14);
+    g.addColorStop(0, '#f5d39b');
+    g.addColorStop(0.5, '#d9a35d');
+    g.addColorStop(1, '#8c5b2a');
+    ctx.fillStyle = g;
+    batShape(ctx, L);
+    ctx.fill();
+    const lit = this.lit.get('bat') ?? 0;
+    if (lit > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = lit * 4;
+      ctx.fillStyle = this.theme.energyPrimary;
+      batShape(ctx, L);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.fillStyle = '#3a2614';
+    ctx.beginPath();
+    ctx.arc(0.02, 0, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawBall(ctx: CanvasRenderingContext2D, sim: Simulation, dt: number) {
+    const r = config.ball.radius;
+    let p: Pt, v = { x: 0, y: 0 };
+    if (sim.ball) {
+      const bp = sim.ball.getPosition(), bv = sim.ball.getLinearVelocity();
+      p = { x: bp.x, y: bp.y };
+      v = { x: bv.x, y: bv.y };
+    } else if (sim.rules.phase !== 'over') {
+      // waiting on Ready: the next pitch sits on the mound
+      p = { x: config.pitch.x, y: config.pitch.y };
+      this.trail = [];
+    } else return;
+
+    const speed = Math.hypot(v.x, v.y);
+    this.ballRot += (speed * dt) / r * 0.5;
+    this.trail.push(p);
+    if (this.trail.length > 14) this.trail.shift();
+    // trail (only visible when the ball is moving fast)
+    if (this.trail.length > 2 && speed > 6) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      const k = Math.min(1, (speed - 6) / 18);
+      for (let i = 1; i < this.trail.length; i++) {
+        const a = this.trail[i - 1], b = this.trail[i], f = i / this.trail.length;
+        ctx.strokeStyle = this.theme.ballTrail;
+        ctx.globalAlpha = f * 0.55 * k;
+        ctx.lineWidth = r * 1.6 * f;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.beginPath();
+    ctx.ellipse(p.x + 0.12, p.y + 0.18, r * 1.05, r * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    drawGlow(ctx, '#ffffff', p.x, p.y, r * 2.6, 0.22);
+    ctx.globalCompositeOperation = 'source-over';
+    drawBaseball(ctx, p.x, p.y, r, Math.atan2(v.y, v.x) + this.ballRot);
+    if (!sim.ball && sim.rules.phase === 'ready') {
+      ctx.strokeStyle = this.theme.energyPrimary;
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.time * 5);
+      ctx.lineWidth = 0.06;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private drawDebug(ctx: CanvasRenderingContext2D, sim: Simulation) {
+    const c = config.swing, h = sim.hands, a = sim.batAngle;
+    const reach = c.radius + config.ball.radius + c.tolerance;
+    ctx.save();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = sim.swingState === 'active' ? '#00ff88' : '#ff4466';
+    ctx.lineCap = 'round';
+    const ax = h.x + Math.cos(a) * c.minReach, ay = h.y + Math.sin(a) * c.minReach;
+    const bx = h.x + Math.cos(a) * c.length, by = h.y + Math.sin(a) * c.length;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = (reach - config.ball.radius) * 2;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = '#ffee00';
+    ctx.beginPath();
+    ctx.moveTo(0, h.y + c.battingLine);
+    ctx.lineTo(20, h.y + c.battingLine);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, c.length + reach - config.ball.radius, 0, Math.PI * 2);
+    ctx.setLineDash([0.15, 0.15]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (this.lastContact) {
+      const l = this.lastContact;
+      ctx.strokeStyle = '#00ffff';
+      ctx.beginPath();
+      ctx.moveTo(l.x, l.y);
+      ctx.lineTo(l.x + l.vx * 0.2, l.y + l.vy * 0.2);
+      ctx.stroke();
+    }
+    if (sim.ball) {
+      const p = sim.ball.getPosition(), v = sim.ball.getLinearVelocity();
+      const el = checkEligibility({ t: sim.swingT, dt: 0, hands: h, ball: p, vel: v, ballRadius: config.ball.radius, alreadyHitThisSwing: sim.hitSwingId === sim.swingId });
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 0.5px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(`swing:${sim.swingState} elig:${el} v:${Math.hypot(v.x, v.y).toFixed(1)}`, 0.9, 31.2);
+    }
+    ctx.restore();
+  }
+}
+
+/** Tapered bat along +x from the knob (vertical along -y when `vertical`). */
+function batShape(ctx: CanvasRenderingContext2D, L: number, vertical = false) {
+  if (vertical) {
+    ctx.save();
+    ctx.rotate(-Math.PI / 2);
+    ctx.translate(-L * 0.45, 0);
+    batShape(ctx, L);
+    ctx.restore();
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(0, -0.05);
+  ctx.lineTo(L * 0.38, -0.055);
+  ctx.quadraticCurveTo(L * 0.6, -0.08, L * 0.78, -0.125);
+  ctx.lineTo(L - 0.12, -0.13);
+  ctx.arc(L - 0.12, 0, 0.13, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(L * 0.78, 0.125);
+  ctx.quadraticCurveTo(L * 0.6, 0.08, L * 0.38, 0.055);
+  ctx.lineTo(0, 0.05);
+  ctx.closePath();
+}
+
+function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, r: number) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r : R;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
