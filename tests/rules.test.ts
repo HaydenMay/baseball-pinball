@@ -1,0 +1,6 @@
+import { test } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { GameRules, contactVelocity, eligible, TouchInput } from '../src/rules.ts';
+test('ready serves once; drain waits; third drain ends; score banks',()=>{const g=new GameRules(); assert.equal(g.ready(),true);assert.equal(g.ready(),false);g.hit(100);g.drain();assert.equal(g.score,100);assert.equal(g.phase,'ready');g.ready();g.drain();g.ready();g.drain();assert.equal(g.phase,'over');assert.equal(g.strikes,3)});
+test('only downward in-front active balls hit; early and late equal speed',()=>{assert.equal(eligible(true,1,1,0),true);assert.equal(eligible(false,1,1,0),false);assert.equal(eligible(true,-1,1,0),false);assert.equal(eligible(true,1,-1,0),false);assert.equal(eligible(true,1,1,1),false);const a=contactVelocity(0),b=contactVelocity(1);assert.ok(a.x<0&&b.x>0&&a.y<0&&b.y<0);assert.ok(Math.abs(Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y))<1e-8)});
+test('touch drag stays relative, permits independent swing',()=>{const i=new TouchInput();assert.equal(i.down(1,100,400),false);assert.equal(i.move(1,130),30);assert.equal(i.down(2,300,400),true);assert.equal(i.move(1,150),20);i.up(1);assert.equal(i.move(1,180),0)});

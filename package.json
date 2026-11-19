@@ -1,0 +1,20 @@
+{
+  "name": "baseball-pinball",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "planck": "^1.5.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
