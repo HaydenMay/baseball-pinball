@@ -7,7 +7,8 @@ A portrait, baseball-themed pinball physics prototype. You slide a batter, time 
 ```bash
 npm ci
 npm run dev        # open the printed URL (works on your phone over LAN)
-npm test           # 50 rule/swing/physics/mechanism tests
+npm test           # 68 tests incl. the golden baseline replay
+npm run bot:run -- 40 70 1 6   # bot plays /build-test/ runs: runs, timing error, seed, max challenge
 npm run typecheck
 npm run build      # → dist/
 npm run bot -- 300 50 1 powerhouse   # headless bot: balls, timing error (ms), seed, map
@@ -23,6 +24,8 @@ The same game at four URL paths. Only the machine layout changes. See `docs/MAPS
 - `/1`: Sidewinder (loop ramp with a top gate and a center drop, plus spinner, banks, gate, bonus bumper)
 - `/2`: Overpass (aimable bridge gate, drop toward the glove, glove relaunch into the upper cluster)
 - `/3`: Turbo (Turbo ramp into the cluster, multiball, twin bonus bumpers, spinners, banks, stacked modifiers)
+
+- `/build-test/`: first roguelite slice. Factory table, score target, free pick of 3, shop, install into fixed mount spots within a Power budget, next challenge. See `docs/BUILD_LOOP_PLAYTEST.md`.
 
 Layouts are data in `src/machines/presets.ts`. Mechanism types are in `src/machines/mechanisms.ts`.
 
@@ -50,6 +53,7 @@ src/view/game.ts        board art, batter, ball, lit machines
 src/view/vfx.ts         machine-localized neon effects
 src/view/theme.ts       semantic color tokens (one theme: Broadcast Classic)
 src/machines/            mechanism types, map presets, power budget
+src/run/                 build-test loop: run state, catalog + mount spots, economy knobs, panels
 src/view/machines.ts     mechanism art (ramps, scoop, splitter, gate)
 src/telemetry/session.ts playtest metrics
 tests/                  rules, swing, sim/physics tests

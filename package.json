@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc -p .",
-    "bot": "node scripts/bot-playtest.ts"
+    "bot": "node scripts/bot-playtest.ts",
+    "bot:run": "node scripts/bot-run.ts"
   },
   "keywords": [],
   "author": "",

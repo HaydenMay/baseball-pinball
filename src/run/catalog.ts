@@ -1,0 +1,204 @@
+/**
+ * Build-test catalog: prevalidated mount sites on the factory table, installable machines (reusing
+ * the existing mechanism types and the geometry already proven on /2 and /3), and modifiers.
+ * Prices and costs are experimental test values (see economy.ts).
+ */
+import type { MechanismDef, Pt } from '../machines/mechanisms.ts';
+
+export type Mount = {
+  id: string;
+  name: string;
+  /** Where to draw the placement preview. */
+  anchor: Pt;
+  r: number;
+  /** Mounts that can't both be filled (overlapping footprint or blocked entrance/exit). */
+  conflicts?: string[];
+};
+
+/** Fixed mount sites. Each fits the ORIGINAL table without moving any factory part. */
+export const MOUNTS: Mount[] = [
+  { id: 'pocket-ul', name: 'Upper-left pocket', anchor: { x: 8.45, y: 6.2 }, r: 0.9 },
+  { id: 'pocket-ur', name: 'Upper-right pocket', anchor: { x: 11.55, y: 6.2 }, r: 0.9 },
+  { id: 'lane-l', name: 'Left lane', anchor: { x: 1.67, y: 5.6 }, r: 1.0 },
+  { id: 'lane-r', name: 'Right lane', anchor: { x: 18.33, y: 5.6 }, r: 1.0 },
+  { id: 'bank-cards', name: 'Left target bank', anchor: { x: 1.2, y: 13.9 }, r: 1.7 },
+  { id: 'bank-stars', name: 'Right target bank', anchor: { x: 18.8, y: 11.9 }, r: 1.7 },
+  { id: 'jackpot-lane', name: 'Jackpot lane', anchor: { x: 10, y: 11 }, r: 1.3 },
+  { id: 'orbit-l', name: 'Left orbit', anchor: { x: 4.6, y: 10.2 }, r: 2.2 },
+  // The bridge climbs right over the right-center spot (and the splitter's launch hatch), so only one of them.
+  { id: 'bridge', name: 'Center bridge', anchor: { x: 10.5, y: 11.5 }, r: 3.2, conflicts: ['center-r'] },
+  { id: 'center-r', name: 'Right-center', anchor: { x: 13.5, y: 14.0 }, r: 1.1, conflicts: ['bridge'] },
+  { id: 'pocket-r', name: 'Right pocket', anchor: { x: 16.9, y: 14.2 }, r: 1.2 },
+];
+
+const W = 20;
+const CARD_BANK = ['card-1', 'card-2', 'card-3'];
+const STAR_BANK = ['star-1', 'star-2', 'star-3'];
+
+export type MachineOffer = {
+  key: string;
+  kind: 'machine';
+  name: string;
+  desc: string;
+  power: number;
+  price: number;
+  /** Placed definition per compatible mount. Ids are made unique per mount at install. */
+  at: Record<string, MechanismDef>;
+};
+
+export const MACHINES: MachineOffer[] = [
+  {
+    key: 'bonus-bumper',
+    kind: 'machine',
+    name: 'Bonus Bumper',
+    desc: 'Pop bumper worth 300 a hit',
+    power: 1,
+    price: 6,
+    at: {
+      'pocket-ul': { type: 'bumper', id: 'bonus', powerCost: 1, x: 8.45, y: 6.2, r: 0.7, points: 300, kick: 16 },
+      'pocket-ur': { type: 'bumper', id: 'bonus', powerCost: 1, x: 11.55, y: 6.2, r: 0.7, points: 300, kick: 16 },
+    },
+  },
+  {
+    key: 'spinner',
+    kind: 'machine',
+    name: 'Lane Spinner',
+    desc: '40 per spin; faster balls spin it more',
+    power: 1,
+    price: 5,
+    at: {
+      'lane-l': { type: 'spinner', id: 'spinner', powerCost: 1, a: { x: 0.66, y: 5.6 }, b: { x: 2.68, y: 5.6 }, pointsPerSpin: 40, spinsPerSpeed: 0.7, maxSpins: 20 },
+      'lane-r': { type: 'spinner', id: 'spinner', powerCost: 1, a: { x: W - 2.68, y: 5.6 }, b: { x: W - 0.66, y: 5.6 }, pointsPerSpin: 40, spinsPerSpeed: 0.7, maxSpins: 20 },
+    },
+  },
+  {
+    key: 'bank',
+    kind: 'machine',
+    name: 'Target Bank',
+    desc: 'Hit all 3 targets in a pitch: +1,500',
+    power: 1,
+    price: 5,
+    at: {
+      'bank-cards': { type: 'bank', id: 'bank', powerCost: 1, name: 'BATTER UP', targetIds: CARD_BANK, bonus: 1500 },
+      'bank-stars': { type: 'bank', id: 'bank', powerCost: 1, name: 'ALL-STAR', targetIds: STAR_BANK, bonus: 1500 },
+    },
+  },
+  {
+    key: 'jackpot-gate',
+    kind: 'machine',
+    name: 'Jackpot Lane Gate',
+    desc: '+400 for a shot up between the bullseyes',
+    power: 1,
+    price: 5,
+    at: {
+      'jackpot-lane': { type: 'gate', id: 'gate', powerCost: 1, a: { x: 8.85, y: 11 }, b: { x: 11.15, y: 11 }, dir: { x: 0, y: -1 }, postR: 0, posts: false, points: 400, label: 'JACKPOT LANE' },
+    },
+  },
+  {
+    key: 'turbo-ramp',
+    kind: 'machine',
+    name: 'Turbo Ramp',
+    desc: 'Ramp with a +600 gate (+1,000 at the end); exits into the upper bumpers',
+    power: 2,
+    price: 9,
+    at: {
+      'orbit-l': {
+        type: 'ramp', id: 'ramp', name: 'TURBO', powerCost: 2,
+        path: [{ x: 5.5, y: 13.7 }, { x: 5.15, y: 12.0 }, { x: 4.35, y: 10.6 }, { x: 3.95, y: 9.0 }, { x: 4.0, y: 7.2 }, { x: 4.45, y: 6.25 }, { x: 5.25, y: 6.0 }],
+        mouthWidth: 1.5, climb: 3, climbDecel: 12, minRide: 9, maxRide: 18, exitMin: 11, exitMax: 15, points: 1000,
+        gate: { at: 0.55, points: 600 }, exit: { mode: 'release', fall: 0 },
+      },
+    },
+  },
+  {
+    key: 'bridge-ramp',
+    kind: 'machine',
+    name: 'Overpass Bridge',
+    desc: 'Aimable bridge with a +750 gate; drops the ball mid-field back toward the bat',
+    power: 3,
+    price: 10,
+    at: {
+      bridge: {
+        type: 'ramp', id: 'ramp', name: 'OVERPASS', powerCost: 3,
+        // On the factory table the low-left spot is a solid bumper (on /2 it's the catching glove), so the
+        // bridge drops mid-field instead and the ball falls back toward the bat.
+        path: [{ x: 13.2, y: 16.2 }, { x: 13.95, y: 14.2 }, { x: 14.35, y: 12.2 }, { x: 14.0, y: 10.4 }, { x: 12.7, y: 9.55 }, { x: 10, y: 9.35 }, { x: 7.9, y: 9.6 }, { x: 7.05, y: 10.6 }, { x: 7.05, y: 12.0 }, { x: 7.35, y: 13.1 }],
+        mouthWidth: 1.6, climb: 4, climbDecel: 12, minRide: 5, maxRide: 18, exitMin: 4, exitMax: 9, points: 600,
+        gate: { at: 0.52, points: 750 }, exit: { mode: 'drop', fall: 0.25 },
+      },
+    },
+  },
+  {
+    key: 'glove-scoop',
+    kind: 'machine',
+    name: 'Glove Scoop',
+    desc: 'Catches the ball for +1,000 and relaunches it into the upper bumpers',
+    power: 2,
+    price: 8,
+    at: {
+      'pocket-r': {
+        type: 'scoop', id: 'scoop', powerCost: 2, x: 16.9, y: 14.2, cupR: 0.95,
+        // opening faces up-left toward the field; relaunch heads for the right bumper cluster
+        mouthAngle: -2.3, mouthHalf: 1.0, holdSeconds: 0.85, ejectAngle: -2.0, ejectSpeed: 21, points: 1000, recatchDelay: 2.5,
+      },
+    },
+  },
+  {
+    key: 'splitter',
+    kind: 'machine',
+    name: 'Multiball Splitter',
+    desc: '3 hits launch an extra ball (up to 3 on the table)',
+    power: 3,
+    price: 12,
+    at: {
+      'center-r': { type: 'splitter', id: 'splitter', powerCost: 3, x: 13.5, y: 14.3, hw: 0.75, hh: 0.3, hitsToArm: 3, pointsPerHit: 150, hatch: { x: 13.5, y: 13.0 }, launchAngle: -1.88, launchSpeed: 17, maxBalls: 3, cooldown: 5 },
+    },
+  },
+];
+
+/** A modifier template; `targets(run)` lists the parts it can apply to right now. */
+export type ModTemplate = {
+  key: string;
+  name: string;
+  /** Effect text, e.g. "+100 points" or "×1.5 points". */
+  effect: string;
+  add?: number;
+  mul?: number;
+  price: number;
+  /** Which scoring keys it can target given what's installed (key = part id or "kind:*"). */
+  targets: (installed: { offerKey: string; id: string; mountId: string }[]) => { key: string; label: string }[];
+};
+
+const FACTORY_BUMPERS = [
+  { key: 'bumper-top-l', label: 'Top-left bumper' },
+  { key: 'bumper-top-r', label: 'Top-right bumper' },
+  { key: 'bumper-left', label: 'Left bumper' },
+  { key: 'bumper-right', label: 'Right bumper' },
+  { key: 'bumper-mid', label: 'Mid-right bumper' },
+  { key: 'glove', label: 'Glove bumper' },
+];
+const installedOf = (inst: { offerKey: string; id: string; mountId: string }[], key: string) => inst.filter(i => i.offerKey === key);
+const mountName = (id: string) => MOUNTS.find(m => m.id === id)?.name ?? id;
+
+export const MODS: ModTemplate[] = [
+  {
+    key: 'hot-corner', name: 'Hot Corner', effect: '+100 points', add: 100, price: 3,
+    targets: inst => [...FACTORY_BUMPERS, ...installedOf(inst, 'bonus-bumper').map(i => ({ key: i.id, label: `Bonus bumper (${mountName(i.mountId)})` }))],
+  },
+  {
+    key: 'power-alley', name: 'Power Alley', effect: '×1.5 points', mul: 1.5, price: 4,
+    targets: inst => [...FACTORY_BUMPERS, ...installedOf(inst, 'bonus-bumper').map(i => ({ key: i.id, label: `Bonus bumper (${mountName(i.mountId)})` }))],
+  },
+  { key: 'rally-cap', name: 'Rally Cap', effect: '×1.25 points', mul: 1.25, price: 6, targets: () => [{ key: 'bumper:*', label: 'Every bumper' }] },
+  { key: 'big-stage', name: 'Big Stage', effect: '×2 points', mul: 2, price: 4, targets: () => [{ key: 'jackpot', label: 'Jackpot' }] },
+  { key: 'sharp-eye', name: 'Sharp Eye', effect: '+50 points', add: 50, price: 3, targets: () => [{ key: 'target:*', label: 'Every standup target' }] },
+  { key: 'rubber', name: 'Live Rubber', effect: '+40 points', add: 40, price: 2, targets: () => [{ key: 'sling:*', label: 'Both blue slingshots' }] },
+  { key: 'rollover', name: 'Rollover', effect: '+100 points', add: 100, price: 2, targets: () => [{ key: 'lane:*', label: 'Both side lanes' }] },
+  { key: 'nitro', name: 'Nitro', effect: '×1.5 completion points', mul: 1.5, price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${mountName(i.mountId)} ramp finish` })) },
+  { key: 'toll-booth', name: 'Toll Booth', effect: '+500 gate points', add: 500, price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: `${i.id}-gate`, label: `${mountName(i.mountId)} ramp gate` })) },
+  { key: 'gold-glove', name: 'Gold Glove', effect: '×2 catch points', mul: 2, price: 4, targets: inst => installedOf(inst, 'glove-scoop').map(i => ({ key: i.id, label: 'Glove scoop' })) },
+  { key: 'spin-doctor', name: 'Spin Doctor', effect: '×2 points', mul: 2, price: 4, targets: inst => installedOf(inst, 'spinner').map(i => ({ key: i.id, label: `${mountName(i.mountId)} spinner` })) },
+  { key: 'full-count', name: 'Full Count', effect: '×2 bonus', mul: 2, price: 4, targets: inst => installedOf(inst, 'bank').map(i => ({ key: i.id, label: `${mountName(i.mountId)} bonus` })) },
+  { key: 'gate-keeper', name: 'Gatekeeper', effect: '+300 points', add: 300, price: 3, targets: inst => installedOf(inst, 'jackpot-gate').map(i => ({ key: i.id, label: 'Jackpot lane gate' })) },
+  { key: 'double-play', name: 'Double Play', effect: '+150 per hit', add: 150, price: 3, targets: inst => installedOf(inst, 'splitter').map(i => ({ key: i.id, label: 'Multiball splitter' })) },
+];

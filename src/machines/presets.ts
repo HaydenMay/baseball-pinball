@@ -242,3 +242,8 @@ export function presetForPath(pathname: string): Preset {
   const seg = pathname.replace(/\/+$/, '').split('/').pop() ?? '';
   return PRESETS.find(p => p.route !== '' && p.route === seg) ?? PRESETS[0];
 }
+
+/** The roguelite build-loop experiment lives at /build-test/ (shares everything with the map routes). */
+export function isBuildRoute(pathname: string) {
+  return (pathname.replace(/\/+$/, '').split('/').pop() ?? '') === 'build-test';
+}

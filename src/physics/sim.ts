@@ -27,6 +27,7 @@ export type SimEvent =
   | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback' | 'land'; x: number; y: number; points: number; ball: number }
   | { type: 'scoop'; id: string; phase: 'catch' | 'eject'; x: number; y: number; points: number; ball: number }
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
+  | { type: 'clear'; score: number; target: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
 
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
@@ -279,6 +280,11 @@ export class Simulation {
       else this.stepField(ball, dt);
     }
     this.stepSplitters();
+    // Challenge cleared during this step: stop play cleanly (no drain, no strike).
+    if (this.rules.phase === 'cleared' && this.balls.length) {
+      this.clearBalls();
+      this.emit({ type: 'clear', score: this.rules.score, target: this.rules.target ?? 0 });
+    }
   }
 
   private applyKicks() {

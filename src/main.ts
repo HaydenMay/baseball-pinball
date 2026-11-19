@@ -8,10 +8,12 @@ import { Simulation, type SimEvent } from './physics/sim.ts';
 import { Telemetry } from './telemetry/session.ts';
 import { GameView } from './view/game.ts';
 import { theme } from './view/theme.ts';
-import { PRESETS, presetForPath, validatePreset } from './machines/presets.ts';
+import { PRESETS, isBuildRoute, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
 import { Sfx } from './view/audio.ts';
+import { BuildUI } from './run/ui.ts';
 
-// Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Powerhouse.
+// Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Turbo, /build-test/ roguelite loop.
+const buildMode = isBuildRoute(location.pathname);
 const preset = presetForPath(location.pathname);
 const power = validatePreset(preset);
 console.info(`[machine] ${preset.name} · power ${power.installed}/${power.max}${power.ok ? '' : ' OVER BUDGET'}`, preset.mechanisms.map(m => `${m.id}:${m.powerCost}`));
@@ -30,28 +32,32 @@ const telemetry = new Telemetry();
 let paused = false;
 const sfx = new Sfx();
 
-const sim: Simulation = new Simulation({
-  preset,
-  seed: (Math.random() * 2 ** 32) >>> 0,
-  onEvent: (e: SimEvent) => {
-    view.onSimEvent(e);
-    sfx.onEvent(e);
-    telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
-    // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
-    if (e.type === 'drain' && e.strike) onDrain();
-  },
-});
+function onSimEvent(e: SimEvent) {
+  view.onSimEvent(e);
+  sfx.onEvent(e);
+  telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
+  // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
+  if (e.type === 'drain' && e.strike) onDrain();
+  if (e.type === 'clear') build?.onClear();
+}
+function makeSim(p: Preset, target: number | null) {
+  const s = new Simulation({ preset: p, seed: (Math.random() * 2 ** 32) >>> 0, onEvent: onSimEvent });
+  s.rules.target = target;
+  (window as any).sim = s;
+  return s;
+}
+let sim: Simulation = makeSim(preset, null);
 const view = new GameView(canvas, theme, sim.layout);
-$('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : 'BASELINE';
-document.title = `Baseball Pinball · ${preset.name}`;
+$('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? 'BUILD TEST' : 'BASELINE';
+document.title = `Baseball Pinball · ${buildMode ? 'Build Test' : preset.name}`;
 const modCount = Object.values(preset.modifiers ?? {}).reduce((n, l) => n + l.length, 0);
 $('#machineInfo').textContent = preset.route
   ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}${modCount ? ` · ${modCount} TEST MODS` : ''}`
   : `BASELINE TABLE · POWER ${power.installed}/${power.max}`;
 
 // ─── HUD ───
-const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes') };
-const shown = { ball: -1, score: -1, strikes: -1, state: '' };
+const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes'), target: $('#target'), scoreLabel: $('#scoreLabel'), bar: $('#targetBar') };
+const shown = { ball: -1, score: -1, strikes: -1, state: '', target: null as number | null | undefined };
 function pulse(el: HTMLElement) {
   el.classList.remove('pulse');
   void el.offsetWidth;
@@ -60,6 +66,13 @@ function pulse(el: HTMLElement) {
 }
 function updateHud() {
   const r = sim.rules;
+  if (r.target !== shown.target) {
+    hud.target.hidden = r.target === null;
+    hud.target.textContent = r.target === null ? '' : `/ ${r.target.toLocaleString()}`;
+    hud.scoreLabel.textContent = r.target === null ? 'SCORE' : 'SCORE / TARGET';
+    shown.target = r.target;
+  }
+  if (r.target !== null) hud.bar.style.width = `${Math.min(100, (r.score / r.target) * 100)}%`;
   if (r.ballScore !== shown.ball) {
     if (r.ballScore > shown.ball && shown.ball >= 0) pulse(hud.ballscore);
     hud.ballscore.textContent = r.ballScore.toLocaleString();
@@ -75,7 +88,7 @@ function updateHud() {
     shown.strikes = r.strikes;
   }
   const n = sim.balls.length;
-  const state = paused ? 'PAUSED' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  const state = paused ? 'PAUSED' : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
   if (state !== shown.state) {
     hud.state.textContent = state;
     shown.state = state;
@@ -83,11 +96,14 @@ function updateHud() {
 }
 
 // ─── Flow ───
-function showOverlay(kicker: string, title: string, text: string, button: string) {
+let overlayAction: () => void = () => onReady();
+function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string) {
   $('#overlayKicker').textContent = kicker;
   $('#overlayTitle').textContent = title;
   $('#overlayText').textContent = text;
+  if (info !== undefined) $('#machineInfo').textContent = info;
   readyBtn.textContent = button;
+  overlayAction = action;
   overlay.hidden = false;
   readyBtn.focus({ preventScroll: true });
 }
@@ -104,6 +120,11 @@ function onReady() {
 }
 function onDrain() {
   const r = sim.rules;
+  if (build && r.phase === 'over') return build.onFail();
+  if (build) {
+    const left = (r.target ?? 0) - r.score;
+    return showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', `+${r.ballScore.toLocaleString()} banked. ${left.toLocaleString()} to go for this challenge.`, 'READY');
+  }
   if (r.phase === 'over') showOverlay('THREE STRIKES', 'GAME OVER', `Final score ${r.score.toLocaleString()}. Run it back?`, 'PLAY AGAIN');
   else showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', r.ballScore > 0 ? `+${r.ballScore.toLocaleString()} banked. Batter re-centers for the next pitch.` : 'No points that ball. Batter re-centers for the next pitch.', 'READY');
 }
@@ -120,7 +141,7 @@ function togglePause() {
     readyBtn.blur();
   }
 }
-readyBtn.addEventListener('click', onReady);
+readyBtn.addEventListener('click', () => overlayAction());
 const muteBtn = $<HTMLButtonElement>('#mute');
 const showMute = () => {
   muteBtn.textContent = sfx.muted ? '🔇' : '🔊';
@@ -157,7 +178,7 @@ window.addEventListener('keydown', e => {
     // Enter always confirms the Ready card (the focused button already handles its own Enter/Space).
     if (k === 'enter' && !overlay.hidden && e.target !== readyBtn) {
       e.preventDefault();
-      onReady();
+      overlayAction();
     }
     return;
   }
@@ -241,3 +262,28 @@ w.playtest = {
     a.click();
   },
 };
+
+// ─── Build-test roguelite loop (/build-test/) ───
+const build: BuildUI | null = buildMode
+  ? new BuildUI(
+      {
+        view,
+        getSim: () => sim,
+        loadMachine: (p, target) => {
+          sim = makeSim(p, target);
+          view.setLayout(sim.layout);
+          shown.score = shown.ball = shown.strikes = -1;
+          shown.target = undefined;
+        },
+        showOverlay,
+        hideOverlay: () => {
+          overlay.hidden = true;
+          readyBtn.blur();
+        },
+        setTag: t => ($('.strip .tag').textContent = t),
+        startPitch: () => onReady(),
+      },
+      stage,
+    )
+  : null;
+build?.start();

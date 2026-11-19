@@ -3,7 +3,7 @@
  * Score banks immediately on every scoring collision. Only the loss of the LAST live ball is a
  * strike, so the accounting already works if multiball is added later.
  */
-export type Phase = 'ready' | 'live' | 'over';
+export type Phase = 'ready' | 'live' | 'over' | 'cleared';
 
 export class GameRules {
   phase: Phase = 'ready';
@@ -14,6 +14,8 @@ export class GameRules {
   hits = 0;
   ballsLive = 0;
   pitchNumber = 0;
+  /** Challenge score target (build-test route). null = free play, as on the original routes. */
+  target: number | null = null;
 
   /** Player pressed Ready. Returns true if exactly one new pitch should be served. */
   ready(): boolean {
@@ -30,6 +32,8 @@ export class GameRules {
     if (this.phase !== 'live' || points <= 0) return;
     this.score += points;
     this.ballScore += points;
+    // A challenge clears the instant the banked score reaches the target, exactly once.
+    if (this.target !== null && this.score >= this.target) this.phase = 'cleared';
   }
 
   /** A mechanism put another ball in play (multiball). */

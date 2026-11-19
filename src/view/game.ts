@@ -467,6 +467,9 @@ export class GameView {
   }
 
   /** Bulb positions along the rail (drawn dynamically so they can chase). */
+  /** Placement/target previews drawn over the board between challenges. */
+  highlights: { x: number; y: number; r: number }[] = [];
+  highlightLabel = '';
   /** Spinner flap angles (visual only). */
   spin = new Map<string, { angle: number }>();
   lastDt = 0;
@@ -799,7 +802,52 @@ export class GameView {
     drawMachinesRaised(ctx, this, sim);
     this.drawBalls(ctx, sim, dt, 'raised');
     this.vfx.draw(ctx);
+    if (this.highlights.length) this.drawHighlights(ctx);
     if (this.debug) this.drawDebug(ctx, sim);
+  }
+
+  /** Swap in a rebuilt machine (build-test installs) and redraw the static layers. */
+  setLayout(layout: Layout) {
+    this.layout = layout;
+    this.lit.clear();
+    this.spin.clear();
+    this.drawStatic();
+  }
+
+  private drawHighlights(ctx: CanvasRenderingContext2D) {
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    ctx.save();
+    for (const h of this.highlights) {
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, this.theme.energyPrimary, h.x, h.y, h.r * 1.8, 0.35 + pulse * 0.35);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = this.theme.energyPrimary;
+      ctx.lineWidth = 0.1;
+      ctx.setLineDash([0.3, 0.2]);
+      ctx.lineDashOffset = -this.time * 0.8;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, h.r + pulse * 0.15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    if (this.highlightLabel && this.highlights.length) {
+      const top = this.highlights.reduce((a, h) => (h.y - h.r < a.y - a.r ? h : a));
+      const y = Math.max(0.2, top.y - top.r - 0.55), x = Math.min(17.5, Math.max(2.5, top.x));
+      ctx.font = `italic 800 0.62px ${FONT}`;
+      const w = ctx.measureText(this.highlightLabel).width + 0.6;
+      ctx.fillStyle = '#06101ee6';
+      ctx.strokeStyle = this.theme.energyPrimary;
+      ctx.lineWidth = 0.05;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, y - 0.42, w, 0.8, 0.18);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.highlightLabel, x, y);
+    }
+    ctx.restore();
   }
 
   private drawBulbs(ctx: CanvasRenderingContext2D) {

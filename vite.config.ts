@@ -8,7 +8,7 @@ import { join } from 'node:path';
  * main page with asset URLs pointing one folder up. The page reads location.pathname to pick its map,
  * so /1 (redirected to /1/ by Pages), /2 and /3 load directly and survive a refresh.
  */
-const MAP_ROUTES = ['1', '2', '3'];
+const MAP_ROUTES = ['1', '2', '3', 'build-test'];
 function mapRoutes(): Plugin {
   let outDir = 'dist';
   return {
