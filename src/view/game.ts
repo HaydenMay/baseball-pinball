@@ -467,6 +467,9 @@ export class GameView {
   }
 
   /** Bulb positions along the rail (drawn dynamically so they can chase). */
+  /** Spinner flap angles (visual only). */
+  spin = new Map<string, { angle: number }>();
+  lastDt = 0;
   /** Pre-rendered raised ramp structures (drawn above floor balls). */
   rampLayer = document.createElement('canvas');
   bulbs: Pt[] = (() => {
@@ -777,6 +780,7 @@ export class GameView {
   draw(sim: Simulation, dt: number) {
     const ctx = this.ctx;
     this.time += dt;
+    this.lastDt = dt;
     for (const [k, v] of this.lit) {
       if (v - dt <= 0) this.lit.delete(k);
       else this.lit.set(k, v - dt);
@@ -1089,13 +1093,13 @@ export class GameView {
     const live = new Set(sim.balls.map(b => b.id));
     for (const id of this.trails.keys()) if (!live.has(id)) this.trails.delete(id);
     for (const b of sim.balls) {
-      const raised = b.mode === 'ramp';
+      const raised = b.mode === 'ramp' || b.mode === 'drop';
       if ((layer === 'raised') !== raised) continue;
       let v = { x: 0, y: 0 };
       if (b.mode === 'field') {
         const bv = b.body.getLinearVelocity();
         v = { x: bv.x, y: bv.y };
-      } else if (b.mode === 'ramp' && b.ramp) {
+      } else if (b.mode === 'ramp' || b.mode === 'drop') {
         const prev = this.trails.get(b.id)?.pts.at(-1);
         if (prev && dt > 0) v = { x: (b.pos.x - prev.x) / dt, y: (b.pos.y - prev.y) / dt };
       }

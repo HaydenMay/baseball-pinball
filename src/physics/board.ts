@@ -4,11 +4,11 @@
  */
 import * as P from 'planck';
 import { config } from '../config.ts';
-import { buildRampPath, type GateDef, type RampPath, type ScoopDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { buildRampPath, type BankDef, type GateDef, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type Pt = { x: number; y: number };
-export type MachineKind = 'bumper' | 'target' | 'jackpot' | 'post' | 'sling' | 'wall' | 'lane' | 'rail' | 'ramp' | 'scoop' | 'splitter' | 'gate' | 'multiball';
+export type MachineKind = 'bumper' | 'target' | 'jackpot' | 'post' | 'sling' | 'wall' | 'lane' | 'rail' | 'ramp' | 'scoop' | 'splitter' | 'gate' | 'multiball' | 'spinner';
 
 export type Bumper = { id: string; kind: 'bumper'; x: number; y: number; r: number; style: 'ball' | 'glove' | 'bonus'; points?: number; kick?: number };
 /** Side lane: a rail parallel to the outer wall with a rollover sensor that scores and lights the lane. */
@@ -131,11 +131,13 @@ export type Layout = {
   scoops: ScoopDef[];
   splitters: SplitterDef[];
   gates: GateDef[];
+  spinners: SpinnerDef[];
+  banks: BankDef[];
 };
 
 /** The factory table every map shares. */
 export function baseLayout(): Layout {
-  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [] };
+  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [] };
 }
 
 /** Base table minus the preset's displaced parts, plus its mechanisms. */
@@ -152,6 +154,8 @@ export function layoutFor(preset?: Preset): Layout {
     else if (m.type === 'scoop') l.scoops.push(m);
     else if (m.type === 'splitter') l.splitters.push(m);
     else if (m.type === 'gate') l.gates.push(m);
+    else if (m.type === 'spinner') l.spinners.push(m);
+    else if (m.type === 'bank') l.banks.push(m);
     else if (m.type === 'bumper') l.bumpers.push({ id: m.id, kind: 'bumper', x: m.x, y: m.y, r: m.r, style: 'bonus', points: m.points, kick: m.kick });
   }
   return l;
@@ -212,6 +216,7 @@ export function buildBoard(world: P.World, layout: Layout = baseLayout()) {
     body.createFixture(P.Polygon(splitterPoly(s).map(p => P.Vec2(p.x, p.y))), { restitution: config.target.restitution, friction: 0 }).setUserData({ kind: 'splitter', id: s.id, ref: s } satisfies FixtureData);
   }
   for (const g of layout.gates) {
+    if (g.posts === false) continue;
     for (const p of [g.a, g.b]) body.createFixture(P.Circle(P.Vec2(p.x, p.y), g.postR), { restitution: config.post.restitution, friction: 0 }).setUserData({ kind: 'post', id: g.id + '-post', ref: g } satisfies FixtureData);
   }
   return body;

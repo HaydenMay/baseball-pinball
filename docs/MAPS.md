@@ -1,98 +1,101 @@
-# Three machinery layout experiments
+# Endgame machine tests: Sidewinder, Overpass, Turbo
 
-The same game is served at four paths. Physics, batter, swing rules, score and strike rules, scoreboard and art are all shared. Only the machine configuration differs between paths.
+One game, four URL paths. Physics, batter, swing, slingshots, Ready pitch, three strikes, scoreboard and art are shared. Only the installed machinery differs.
 
-| Path | Map | What's added on top of the base table | Power |
+| Path | Map | Loadout | Power |
 |---|---|---|---|
-| `/` | Baseline | nothing (unchanged) | 0 / 8 |
-| `/1` | Sidewinder | long wall-hugging ramp (right side → over the top → left lane) + precision gate | 4 / 8 |
-| `/2` | Overpass | mid-field crossing ramp + glove scoop | 5 / 8 |
-| `/3` | Powerhouse | compact ramp into the bumper cluster + multiball splitter + bonus bumper | 6 / 8 |
+| `/` | Baseline | original table, untouched | 0 / 8 |
+| `/1` | Sidewinder | loop ramp (top gate, center drop) · right precision gate · left-lane spinner · BATTER UP + ALL-STAR banks · upper bonus bumper | 8 / 16 |
+| `/2` | Overpass | aimable bridge ramp (bridge gate, drop toward the glove) · glove scoop → upper cluster · upper bonus bumper · jackpot-lane gate · right-lane spinner · BATTER UP bank | 9 / 16 |
+| `/3` | Turbo | Turbo ramp (gate, release into the cluster) · multiball splitter · twin upper bonus bumpers · jackpot-lane gate · both lane spinners · both banks · heaviest stacked mods | 12 / 16 |
 
-All scores, kick strengths, timings and power numbers are **unbalanced placeholder test values**.
+**Every score, kick, timing and power value is a deliberately exaggerated placeholder.**
 
-## Is `/` unchanged?
+## What changed from the previous version
 
-Yes. A scripted player that tracks and hits the ball ran 270 s on `/` with the code from before this change and with the code after it. Both runs ended with identical results: 90 bat hits, 25,320 points, and the same ball position at every sample. All 24 original tests still pass without edits.
-
-## How it's built
-
-- **Routes.** `vite.config.ts` writes `dist/1/index.html`, `dist/2/index.html` and `dist/3/index.html`. Each is a copy of the main page with asset paths pointing one folder up, so GitHub Pages serves each path directly, and a reload works. `/1` is redirected to `/1/` by Pages itself. `presetForPath()` reads the last path segment, and anything unrecognized falls back to the baseline. There's no SPA fallback, no query string, and no change to the site's base path.
-- **Mechanisms are data.** `src/machines/mechanisms.ts` defines five types: `ramp`, `scoop`, `splitter`, `gate` and bonus `bumper`. Each has an id, a `powerCost`, geometry and tuning. `src/machines/presets.ts` lists the four presets. `layoutFor(preset)` starts from the base table, removes any parts the preset displaces, and adds its mechanisms. The physics (`sim.ts`) and the art (`view/machines.ts`) handle every instance of a type the same way, so a new map only needs new data.
-- **Displaced base parts.** Two maps remove one base part each to make room. Sidewinder removes the mid-right bumper, which sat where the ramp mouth is. Overpass replaces the glove bumper with the glove scoop in the same spot. Powerhouse removes nothing.
-- **Ball modes.** Each ball is in one of three modes: `field` (a normal physics body), `ramp` (body switched off, position driven along the ramp path), or `held` (in the scoop). Every ball in any mode counts as live.
-- **Ramps.** There's no rigid 3D geometry. A floor ball that crosses the mouth line while moving into it starts a ride. The ride decelerates up the climb and holds speed over the top. It releases at the exit with clamped speed along the path direction. A shot too weak to clear the climb rolls back out of the mouth. The ball is drawn larger with a shadow that falls further away the higher it is. The ramp is a see-through glass channel drawn above floor balls, so a ball passing underneath stays visible.
-- **Scoop.** It catches the ball once the ball reaches the bottom of the cup, holds it for 0.85 s on a fixed timer, then fires it out through the opening. It holds one ball at a time. The fixed timer is the anti-soft-lock guarantee.
-- **Multiball.** The splitter is a standup target facing the batter. Three real hits during a live ball arm it. The hatch opens and fires one extra ball. There's a maximum of 3 balls and a 5 s cooldown. Ready always serves exactly one ball. Extra-ball drains are free, and only the last live ball's drain is a strike.
-
-## Power capacity (data only, no UI)
-
-`MAX_POWER_TEST = 8`. That's enough for the densest map with room to spare, and deliberately not "6 slots." The illustrative costs are: long ramp 3, multiball 3, compact ramp 2, scoop 2, gate 1, bonus bumper 1. `validatePreset()` checks `sum(powerCost) <= maxPower`, and a test enforces it. The values are logged to the console on load and shown read-only on the Ready/Pause card. There's no shop and no machine manager.
-
-The future-only rules are recorded in `FUTURE_POWER_RULES` with `implemented: false`:
-
-- +1 max Power at innings 2/4/6/8
-- a brief pulse when power expands (no permanent glow)
-- no modifier slot caps
-- no purchasable expansions in V1
-
-## Measured playtest (bot, 300 balls per row, seed 11)
-
-The bot tracks the ball at keyboard speed and swings with Gaussian timing error. It does **not** aim for mechanisms, so hits on them come from its normal play. Humans who aim will hit them more.
-
-| Map | Timing error | Survival / ball | Bat hits / ball | Score / ball | Ramp enter / clear / roll back | Scoop | Multiball | Gate | Jackpot | Drains L/C/R |
-|---|---|---|---|---|---|---|---|---|---|---|
-| baseline | 70 ms | 44.4 s | 13.9 | 2,703 | – | – | – | – | 0.98 | 65/174/61 |
-| sidewinder | 70 ms | 44.9 s | 14.4 | 2,218 | 0.51 / 0.36 / 0.15 | – | – | 0.30 | 0.95 | 63/171/66 |
-| overpass | 70 ms | 48.1 s | 15.7 | 2,491 | 0.43 / 0.42 / 0.01 | 0.62 | – | – | 0.97 | 65/188/46 |
-| powerhouse | 70 ms | 60.8 s | 24.0 | 5,549 | 0.49 / 0.48 / 0.01 | – | 1.36 | – | 0.92 | 71/159/65 |
-| baseline | 110 ms | 21.9 s | 6.3 | 1,210 | – | – | – | – | 0.41 | 57/192/51 |
-| sidewinder | 110 ms | 22.9 s | 6.8 | 1,024 | 0.26 / 0.16 / 0.10 | – | – | 0.16 | 0.36 | 54/186/60 |
-| overpass | 110 ms | 23.2 s | 6.8 | 1,027 | 0.14 / 0.14 / 0.00 | 0.23 | – | – | 0.39 | 55/208/37 |
-| powerhouse | 110 ms | 23.9 s | 7.4 | 1,742 | 0.17 / 0.17 / 0.00 | – | 0.32 | – | 0.24 | 58/175/67 |
-
-Browser playthroughs used real keyboard events in headless Chrome at a 390×844 phone viewport. Every mechanism fired:
-
-- the ball rode the Sidewinder and Overpass ramps
-- the scoop caught and ejected
-- Powerhouse reached 3 balls
-- there were no page errors
-- frames averaged about 16.7 ms (p95 16.8 ms)
-
-Screenshots are in `docs/screenshots/maps/`.
-
-## Visual self-review (phone viewport)
-
-- **Batter lane and slingshots:** identical on every map. Nothing new goes below the mound row's height near the lane.
-- **Sidewinder:** the right leg of the ramp runs just inside the star targets and the top leg passes between the jackpot and the upper bumpers. Both stay readable through the glass. The right wall now carries the most visual detail on any map. The gate is small but labeled.
-- **Overpass:** the crossing reads clearly as a bridge. The ball under it stays visible. The ramp exit drops toward the glove, which gives a ramp → scoop → diagonal relaunch combo you can follow by eye.
-- **Powerhouse:**
-  - The upper-left area is the busiest: compact ramp exit, bonus bumper and two base bumpers.
-  - With 3 balls plus bumper VFX it's still readable at phone size, but it's the closest to "too much."
-  - The splitter target and hatch are small. The MULTIBALL flicker and hatch pulse do the explaining.
-- **Not verified yet:** none of this has been played on a real phone. Thumb feel with 2 to 3 balls is the biggest open question.
-
-## Where each map is weak
-
+- **Every ramp has a scoring gate** midway along the raised route.
+  - It sits after the climb, so a shot that rolls back never reaches it.
+  - It pays once per pass, and again on a new pass.
+  - On a pass, the arch's lamp bar blazes, a stitched ring and sparks burst at the gate, a small number pops beside the ramp (facing the table center, never on the ball), the scoreboard pulses, and it has its own rising chime.
+- **Drop exits.** The Sidewinder and Overpass ramps now end in a short open drop.
+  - The same ball leaves the raised level at full height, falls for about a quarter second (no collisions while airborne), lands with a ring and thud, then is ordinary physics again.
+  - It's not a new ball, a respawn, or a strike reset.
 - **Sidewinder:**
-  - The mouth needs a deliberate rightward shot from the right half of the lane.
-  - About 30% of entries roll back (they hit the mouth too slowly), which is intended, but it can feel bad if it happens often.
-  - Losing the mid-right bumper lowers score per ball versus baseline.
-- **Overpass:** the scoop holds for 0.85 s. Mostly that's a welcome breather, but with a 0.62/ball catch rate it could drift toward passive play if the scoop gets stronger.
-- **Powerhouse:**
-  - Survival and score jump. That's mostly multiball padding, because extra balls give free hits.
-  - Score per ball is about 2x baseline, the clearest sign of snowballing.
-  - If the splitter is too easy (3 hits, 5 s cooldown), it becomes the dominant target.
-
-## Recommendation
-
-**Overpass is the best chassis for the roguelite, with Powerhouse's splitter as the first "big" upgrade.**
-
+  - The ramp loops right wall → over the top (gate at top center) → down the left → curls inward and drops just left of the mound.
+  - The ball lands mid-field and rolls down into the batter's reach. A test checks every exit speed.
+  - Its old exit ended in the left lane, where the ball was hard to hit.
 - **Overpass:**
-  - Its two mechanisms chain into a readable combo (ramp → glove → relaunch).
-  - It barely changes survival, so it doesn't fight the batting game.
-  - Its crossing route leaves the side walls free for future installs.
-- **Sidewinder's long ramp:** a great showpiece, but it eats a whole wall and a base bumper. Better as a later, expensive install than a default.
-- **Powerhouse:** proves multiball and density work, and shows that score scales fast once balls multiply. That's useful evidence for pricing multiball high (it's 3 power here).
+  - The mouth moved down and angled toward the batter, so a late swing from the starting spot goes in.
+  - The bridge drop falls toward the glove. Whether the glove catches it depends on how hard the ramp was hit (about 70% of completed runs).
+  - The glove pays a catch bonus (Gold Glove ×2) and relaunches into the upper bumper cluster. A 2.5 s re-catch lockout stops endless glove loops.
+- **Turbo:** the same pattern as before (the ramp feeds the upper cluster), now the densest build:
+  - multiball splitter (3 hits to arm, max 3 balls)
+  - twin bonus bumpers
+  - a jackpot-lane gate (the bullseye pair is its edges)
+  - two lane spinners
+  - two target banks
+  - stacked modifiers, e.g. bumpers (base + 50) × 2 × 1.5, jackpot × 3, banks × 2, spinners × 2
+- **New reusable parts:**
+  - **spinner:** spins scale with ball speed; one award per crossing
+  - **target bank:** completing it pays a bonus, then resets; progress also resets each pitch; lamps on each target
+  - **gate without posts**
+  - **modifier tables:** `(base + Σadd) × Πmul`, no stack cap
+- **Sound:** synthesized WebAudio for bat, bumpers, targets, gates, spinner, ramp in/out/land, glove catch/eject, banks, multiball and drain.
+  - Each sound is rate-limited and voices are capped.
+  - There's a mute button (also the M key), and the setting is remembered.
 
-Stop point: review these before building any upgrade, shop or progression systems.
+## Is `/` still the original?
+
+Yes. All earlier tests pass unchanged, and the baseline preset has no mechanisms or modifiers. The deterministic 270 s replay from the last round still matches the old build. The bot's baseline numbers below match the previous report exactly.
+
+## Measured (bot, 300 balls per row, seed 11)
+
+The bot tracks the ball at keyboard speed and swings with Gaussian timing error. It does not aim for mechanisms. "No-bat" columns measure the longest time the machine kept a ball alive, and the most points it scored, with no bat contact. That's the check for self-sustaining loops.
+
+| Map | Timing error | Survival / ball | Bat hits / ball | Score / ball | Ramp enter / clear | Glove catches | Multiball | Longest no-bat stretch | Most points without bat | Drains L/C/R |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 70 ms | 44.4 s | 13.9 | 2,703 | – | – | – | 17.5 s | 1,875 | 65/174/61 |
+| sidewinder | 70 ms | 47.8 s | 15.3 | 6,327 | 0.69 / 0.46 | – | – | 23.0 s | 4,975 | 51/152/97 |
+| overpass | 70 ms | 42.6 s | 13.0 | 7,892 | 0.45 / 0.45 | 0.80 | – | 15.3 s | 6,750 | 113/154/33 |
+| turbo | 70 ms | 56.0 s | 23.0 | 28,359 | 0.45 / 0.45 | – | 1.21 | 16.2 s | 20,700 | 62/165/72 |
+| baseline | 110 ms | 21.9 s | 6.3 | 1,210 | – | – | – | 16.1 s | 2,400 | 57/192/51 |
+| sidewinder | 110 ms | 24.2 s | 6.8 | 2,651 | 0.30 / 0.20 | – | – | 17.4 s | 6,750 | 48/167/85 |
+| overpass | 110 ms | 23.0 s | 6.3 | 3,447 | 0.19 / 0.19 | 0.36 | – | 23.3 s | 6,600 | 97/157/46 |
+| turbo | 110 ms | 24.0 s | 8.2 | 9,736 | 0.20 / 0.20 | – | 0.37 | 19.4 s | 15,750 | 62/170/68 |
+
+**Skill shots exist on every map.** A search over batter offset and swing timing on the straight pitch found direct hits into each ramp: 13 swing combos for Sidewinder, 17 for Overpass, 17 for Turbo. Replayed in the browser (phone viewport, real key events), each produced its full chain. Frames are in `docs/screenshots/chains/`.
+
+- **Sidewinder:** bat → enter → top gate (+750) → complete (+1,000) → drop near the mound → rolls back to the batter.
+- **Overpass:** bat → bridge gate (+750) → complete → drop → glove catch (+2,000) → relaunch → top bumper → **jackpot** → bonus bumper → cluster.
+- **Turbo:** bat → gate (+600) → complete (+1,500) → into the twin bonus bumpers → 8+ bumper hits. That's 9,760 points off one swing.
+
+## Issues found and fixed during testing
+
+- **Sidewinder's first bonus bumper was a drain machine.** It sat low on the right, and about 1 in 4 strikes ran through it. Moving it to the upper cluster raised survival from 27 s to 48 s.
+- **The Overpass drop never fed the glove.** It hit the rim every time, and the exit speed was clamped to a constant, so every run was identical. Now ride speed carries into the drop: harder ramp shots fall into the glove, softer ones miss.
+- **The glove relaunch clipped its own lip.** It ejected too close to the opening's edge, so I re-aimed it about 11° right.
+- **Gate numbers drew over the JACKPOT banner.** They now always appear on the side facing the table center.
+- **Keyboard Ready, for the record:** Enter starts the game on first load (fixed in the earlier round). Scripted demos must anchor to the Ready time.
+
+## Remaining issues and risks
+
+- **No real phone has been tested yet.** Biggest unknowns: three balls plus Turbo's effects on a small screen, and sound levels on a phone speaker.
+- **Turbo scores about 10x baseline per ball.** That's the intended "late-run fantasy," and it's where pricing multiball and modifiers will matter most.
+- **Sidewinder sees more right-side drains** (the mid-right bumper is gone to make room for the ramp mouth). It's acceptable, but noticeable.
+- **Overpass sees more left-side drains:** missed glove follow-ups fall down the left. The glove is a reward, not a safety net, which is by design.
+- **Spinners and banks are mostly found by ricochet.** They make the board busy and rewarding but aren't strong aim targets yet.
+
+## Which feels most like a believable late-run machine?
+
+**Turbo.** One good swing produces a readable chain: ramp → gate → cluster, possibly into multiball. Survival goes up without the batter becoming irrelevant (the longest no-bat stretch matches baseline's). The stacked modifiers make the score feel like a built-up run. **Overpass** has the most satisfying *designed* combo (bridge → glove → upper cluster → jackpot) and is the best showcase for a "glove" upgrade. **Sidewinder** is the most cinematic ride and now returns the ball to the bat properly, but it pays mainly through its own ramp.
+
+## Power capacity (data only)
+
+- **Test values:** `MAX_POWER_ENDGAME = 16` is a test value that fits every loadout. The baseline keeps 8.
+- **Placeholder costs:** long ramp 3, multiball 3, compact ramp 2, scoop 2, and 1 each for gate, spinner, bank and bonus bumper.
+- **Modifiers cost nothing** (there's no modifier system yet). They live in each preset's `modifiers` table.
+- **Future rules:** recorded in `FUTURE_POWER_RULES` with `implemented: false`, not built:
+  - +1 max Power at innings 2/4/6/8, free and permanent
+  - a brief celebratory pulse with no lasting glow
+  - no modifier caps
+  - no purchasable generators

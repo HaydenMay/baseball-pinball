@@ -27,7 +27,17 @@ while (batAngleAt(tCenter) > config.swing.centerAngle) tCenter += 0.0005;
 const DT = 1 / config.physicsHz, g = config.gravity;
 const tel = new Telemetry();
 const preset = PRESETS.find(p => p.id === (process.argv[5] ?? 'baseline'))!;
-const sim = new Simulation({ preset, onEvent: e => tel.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber) });
+let lastTouch = 0, maxNoTouch = 0, maxNoTouchScore = 0, scoreAtTouch = 0;
+const sim = new Simulation({
+  preset,
+  onEvent: e => {
+    tel.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
+    if (e.type === 'bat' || e.type === 'serve') {
+      lastTouch = sim.time;
+      scoreAtTouch = sim.rules.score;
+    }
+  },
+});
 const c = makeControls();
 const reaction = 0.18; // s, before the bot notices the ball changed direction
 let plan: { swingAt: number; targetX: number; aimBias: number } | null = null;
@@ -64,10 +74,14 @@ for (let n = 0; n < BALLS; n++) {
       if (sim.time >= plan.swingAt && sim.swingState === 'rest') { c.swingPressed = true; plan = null; downSince = sim.time; }
     }
     sim.step(DT, c);
+    if (sim.balls.length) {
+      maxNoTouch = Math.max(maxNoTouch, sim.time - lastTouch);
+      maxNoTouchScore = Math.max(maxNoTouchScore, sim.rules.score - scoreAtTouch);
+    }
   }
 }
 const r = tel.report();
 delete (r as any).perBall;
 delete (r as any).frameMs;
 const hitsPerSwing = r.swings ? (r.swings - r.missedSwings) / r.swings : 0;
-console.log(JSON.stringify({ map: preset.id, timingErrorMs: JITTER * 1000, ...r, contactRate: +hitsPerSwing.toFixed(2) }, null, 2));
+console.log(JSON.stringify({ map: preset.id, longestNoBatSeconds: +maxNoTouch.toFixed(1), mostPointsWithoutBat: maxNoTouchScore, timingErrorMs: JITTER * 1000, ...r, contactRate: +hitsPerSwing.toFixed(2) }, null, 2));

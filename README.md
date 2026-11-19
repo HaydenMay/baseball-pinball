@@ -7,7 +7,7 @@ A portrait, baseball-themed pinball physics prototype. You slide a batter, time 
 ```bash
 npm ci
 npm run dev        # open the printed URL (works on your phone over LAN)
-npm test           # 39 rule/swing/physics/mechanism tests
+npm test           # 50 rule/swing/physics/mechanism tests
 npm run typecheck
 npm run build      # → dist/
 npm run bot -- 300 50 1 powerhouse   # headless bot: balls, timing error (ms), seed, map
@@ -20,9 +20,9 @@ Pushing to `main` builds and deploys to GitHub Pages through `.github/workflows/
 The same game at four URL paths. Only the machine layout changes. See `docs/MAPS.md` for the details and measurements.
 
 - `/`: Baseline
-- `/1`: Sidewinder (long wall ramp + precision gate)
-- `/2`: Overpass (crossing ramp + glove scoop)
-- `/3`: Powerhouse (compact ramp + multiball + bonus bumper)
+- `/1`: Sidewinder (loop ramp with a top gate and a center drop, plus spinner, banks, gate, bonus bumper)
+- `/2`: Overpass (aimable bridge gate, drop toward the glove, glove relaunch into the upper cluster)
+- `/3`: Turbo (Turbo ramp into the cluster, multiball, twin bonus bumpers, spinners, banks, stacked modifiers)
 
 Layouts are data in `src/machines/presets.ts`. Mechanism types are in `src/machines/mechanisms.ts`.
 
@@ -30,6 +30,7 @@ Layouts are data in `src/machines/presets.ts`. Mechanism types are in `src/machi
 
 - **Desktop:** A/D or ←/→ to move, Space to swing, Enter for Ready, P or Esc to pause.
 - **Phone:** drag with your left thumb anywhere on the left half to move. The drag is relative and never teleports the batter. Tap anywhere on the right half to swing. Both thumbs work at the same time.
+- **Sound:** the 🔊 button or M toggles mute.
 - **Dev:** press `` ` `` (or add `?debug` to the URL) to show the bat hit envelope, the batting line and the reason a hit was or wasn't eligible. In the console, `tune.*` changes physics live, `playtest.report()` returns session stats and `playtest.download()` exports them.
 
 ## How the bat works

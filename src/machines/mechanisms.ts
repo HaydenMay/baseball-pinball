@@ -30,7 +30,15 @@ export type RampDef = Base & {
   /** Speed at the exit is clamped into this range. */
   exitMin: number;
   exitMax: number;
+  /** Points for reaching the end of the ramp. */
   points: number;
+  /** Scoring gate on the raised route: fraction of the path length, and its award (once per pass). */
+  gate?: { at: number; points: number };
+  /**
+   * How the ball leaves: 'release' rolls straight off the end; 'drop' leaves the raised level at
+   * full height and falls for `fall` seconds onto the field below before it can collide again.
+   */
+  exit?: { mode: 'release' | 'drop'; fall: number };
 };
 
 /** Glove scoop: a cup that catches the ball, holds it, then fires it back onto the field. */
@@ -48,6 +56,8 @@ export type ScoopDef = Base & {
   ejectAngle: number;
   ejectSpeed: number;
   points: number;
+  /** Seconds after an eject before the same ball can be caught again (stops endless catch loops). */
+  recatchDelay?: number;
 };
 
 /** Multiball splitter: a standup target that, after `hitsToArm` hits, launches an extra ball from its hatch. */
@@ -68,13 +78,39 @@ export type SplitterDef = Base & {
   cooldown: number;
 };
 
-/** Precision gate: two posts with an opening; passing through in `dir` scores a bonus. */
-export type GateDef = Base & { type: 'gate'; a: Pt; b: Pt; dir: Pt; points: number; postR: number };
+/**
+ * Precision gate: an opening between a and b; passing through in `dir` scores a bonus.
+ * `posts: false` reuses existing machinery as the gate edges (e.g. the bullseye pair).
+ */
+export type GateDef = Base & { type: 'gate'; a: Pt; b: Pt; dir: Pt; points: number; postR: number; posts?: boolean; label?: string };
+
+/** Spinner: a flap across a lane. Passing through either way spins it; points per spin, spins scale with speed. */
+export type SpinnerDef = Base & { type: 'spinner'; a: Pt; b: Pt; pointsPerSpin: number; spinsPerSpeed: number; maxSpins: number };
+
+/** Target bank: hitting every listed target (in any order, during one pitch) pays a completion bonus and resets. */
+export type BankDef = Base & { type: 'bank'; name: string; targetIds: string[]; bonus: number };
 
 /** Extra pop bumper with its own point value. */
 export type BonusBumperDef = Base & { type: 'bumper'; x: number; y: number; r: number; points: number; kick: number };
 
-export type MechanismDef = RampDef | ScoopDef | SplitterDef | GateDef | BonusBumperDef;
+export type MechanismDef = RampDef | ScoopDef | SplitterDef | GateDef | BonusBumperDef | SpinnerDef | BankDef;
+
+/**
+ * Score modifiers, pre-stacked in config to imitate a mature build (no modifier SYSTEM yet).
+ * Keys are a mechanism/part id ("jackpot") or a whole kind ("bumper:*"). Lists have no cap:
+ * points = (base + Σadd) × Πmul.
+ */
+export type Modifier = { add?: number; mul?: number; note?: string };
+export type ModifierTable = Record<string, Modifier[]>;
+
+export function applyModifiers(base: number, mods: Modifier[]) {
+  let add = 0, mul = 1;
+  for (const m of mods) {
+    add += m.add ?? 0;
+    mul *= m.mul ?? 1;
+  }
+  return Math.round((base + add) * mul);
+}
 
 // ───────────── ramp path geometry ─────────────
 
@@ -90,6 +126,8 @@ export type RampPath = {
   posts: [Pt, Pt];
   exit: Pt;
   exitDir: Pt;
+  /** Distance along the path of the scoring gate (or -1). */
+  gateS: number;
 };
 
 /** Catmull-Rom smoothing, sampled roughly every 0.12 units. */
@@ -131,6 +169,7 @@ export function buildRampPath(def: RampDef): RampPath {
     ],
     exit: pts[pts.length - 1],
     exitDir: unit(pts[Math.max(0, pts.length - 4)], pts[pts.length - 1]),
+    gateS: def.gate ? def.gate.at * cum[cum.length - 1] : -1,
   };
 }
 
@@ -150,10 +189,10 @@ export function rampAt(r: RampPath, s: number): { p: Pt; t: Pt } {
   return { p: { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }, t: { x: (b.x - a.x) / l, y: (b.y - a.y) / l } };
 }
 
-/** Visual height 0..1 along the ride: rises over the climb, level on top, drops into the exit. */
+/** Visual height 0..1 along the ride: rises over the climb, level on top, drops into the exit (unless it's a drop exit). */
 export function rampHeight(r: RampPath, s: number) {
   const up = Math.min(1, s / Math.max(0.01, r.def.climb));
-  const down = Math.min(1, (r.length - s) / 2.2);
+  const down = r.def.exit?.mode === 'drop' ? 1 : Math.min(1, (r.length - s) / 2.2);
   const e = (x: number) => x * x * (3 - 2 * x);
   return Math.max(0, Math.min(e(up), e(down)));
 }
@@ -165,4 +204,11 @@ export function crossedLine(prev: Pt, cur: Pt, center: Pt, dir: Pt, halfWidth: n
   if (!(d0 < 0 && d1 >= 0)) return false;
   const lat = Math.abs((cur.x - center.x) * -dir.y + (cur.y - center.y) * dir.x);
   return lat <= halfWidth;
+}
+
+/** Where a drop-exit ball touches down for a given exit speed (ballistic on the tilted table). */
+export function dropLanding(r: RampPath, speed: number, gravity: number) {
+  const T = r.def.exit?.fall ?? 0;
+  const v = { x: r.exitDir.x * speed, y: r.exitDir.y * speed };
+  return { p: { x: r.exit.x + v.x * T, y: r.exit.y + v.y * T + 0.5 * gravity * T * T }, v: { x: v.x, y: v.y + gravity * T } };
 }

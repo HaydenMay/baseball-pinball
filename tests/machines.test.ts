@@ -35,7 +35,7 @@ test('power metadata: every preset fits its budget; factory parts cost nothing',
     assert.ok(v.ok, `${p.id} ${v.installed}/${v.max}`);
   }
   assert.equal(installedPower(preset('baseline')), 0);
-  assert.deepEqual(PRESETS.map(installedPower), [0, 4, 5, 6]);
+  assert.deepEqual(PRESETS.map(installedPower), [0, 8, 9, 12]);
 });
 
 test('every map: Ready serves exactly one centered ball', () => {
@@ -142,7 +142,7 @@ test('ramp: a strong shot enters, rides the whole path visibly, scores once and 
     const end = seen[seen.length - 1];
     assert.ok(Math.hypot(end.x - r.exit.x, end.y - r.exit.y) < 0.3, `${id} reaches the exit`);
     const complete = ramp.find(e => e.phase === 'complete')!;
-    assert.equal(complete.points, r.def.points);
+    assert.equal(complete.points, s.pts(r.def.id, 'ramp', r.def.points));
     void collisionsWhileRiding;
   }
 });
@@ -266,7 +266,8 @@ test('bonus bumper: real collision, kick and its own score', () => {
   s.spawnBall(b.x, b.y + b.r + 1.2, 0, -10);
   run(s, 0.3);
   const hit = s.events.find(e => e.type === 'machine' && e.id === b.id) as Extract<SimEvent, { type: 'machine' }>;
-  assert.equal(hit?.points, b.points);
+  assert.equal(hit?.points, s.pts(b.id, 'bumper', b.points!));
+  assert.ok(hit!.points > b.points!, 'stacked modifiers apply');
 });
 
 test('every map: no soft-locks, traps or tunneling under random play', () => {

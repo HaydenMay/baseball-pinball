@@ -12,7 +12,7 @@
  * (long ramp 3, multiball 3, compact ramp 2, scoop 2, gate 1, bonus bumper 1). None are final, and
  * 8 is deliberately not the six "slots" of the earlier design.
  */
-import { type MechanismDef } from './mechanisms.ts';
+import { type MechanismDef, type ModifierTable } from './mechanisms.ts';
 
 export const MAX_POWER_TEST = 8;
 
@@ -42,7 +42,20 @@ export type Preset = {
   /** Base-table parts this preset displaces to make physical room (ids from board.ts). */
   removeBase: string[];
   mechanisms: MechanismDef[];
+  /** Pre-stacked test modifiers imitating a mature build (config only; no modifier system yet). */
+  modifiers?: ModifierTable;
 };
+
+/** Test capacity for the endgame-style presets: big enough for every loadout, not a balance value. */
+export const MAX_POWER_ENDGAME = 16;
+
+const W = 20;
+const LEFT_LANE_SPINNER = { a: { x: 0.66, y: 5.6 }, b: { x: 2.68, y: 5.6 } };
+const RIGHT_LANE_SPINNER = { a: { x: W - 2.68, y: 5.6 }, b: { x: W - 0.66, y: 5.6 } };
+/** The bullseye pair already frames the jackpot lane; this gate uses them as its edges (no new posts). */
+const JACKPOT_LANE_GATE = { a: { x: 8.85, y: 11 }, b: { x: 11.15, y: 11 }, dir: { x: 0, y: -1 }, postR: 0, posts: false };
+const CARD_BANK = ['card-1', 'card-2', 'card-3'];
+const STAR_BANK = ['star-1', 'star-2', 'star-3'];
 
 export const PRESETS: Preset[] = [
   {
@@ -55,12 +68,12 @@ export const PRESETS: Preset[] = [
     mechanisms: [],
   },
   {
+    // Long loop → mid gate over the top → short open drop above the center → another bat chance.
     id: 'sidewinder',
     route: '1',
     name: 'Sidewinder',
-    tagline: 'Wall-hugging ramp + precision gate',
-    maxPower: MAX_POWER_TEST,
-    // The ramp mouth needs the mid-right bumper's floor space.
+    tagline: 'Loop ramp · top gate · center drop',
+    maxPower: MAX_POWER_ENDGAME,
     removeBase: ['bumper-mid'],
     mechanisms: [
       {
@@ -70,28 +83,39 @@ export const PRESETS: Preset[] = [
         powerCost: 3,
         path: [
           { x: 16.4, y: 18.4 }, { x: 17.25, y: 16.2 }, { x: 17.95, y: 13.2 }, { x: 18.05, y: 9.0 }, { x: 17.95, y: 4.8 },
-          { x: 17.25, y: 3.3 }, { x: 15.6, y: 2.75 }, { x: 10, y: 2.75 }, { x: 4.4, y: 2.75 }, { x: 2.7, y: 3.25 },
-          { x: 1.8, y: 4.3 }, { x: 1.7, y: 5.1 },
+          { x: 17.25, y: 3.3 }, { x: 15.6, y: 2.75 }, { x: 10, y: 2.75 }, { x: 4.4, y: 2.75 }, { x: 2.75, y: 3.2 },
+          { x: 2.15, y: 4.6 }, { x: 2.2, y: 7.4 }, { x: 2.9, y: 9.7 }, { x: 4.5, y: 11.5 }, { x: 6.6, y: 12.6 },
+          { x: 7.8, y: 13.6 }, { x: 8.3, y: 14.6 },
         ],
         mouthWidth: 1.6,
         climb: 9,
         climbDecel: 11,
-        minRide: 9,
+        minRide: 10,
         maxRide: 20,
-        exitMin: 7,
-        exitMax: 13,
-        points: 500,
+        exitMin: 6,
+        exitMax: 9,
+        points: 1000,
+        gate: { at: 0.5, points: 750 },
+        exit: { mode: 'drop', fall: 0.28 },
       },
-      { type: 'gate', id: 'gate-left', powerCost: 1, a: { x: 4.85, y: 14.1 }, b: { x: 6.35, y: 14.1 }, dir: { x: 0, y: -1 }, points: 150, postR: 0.2 },
+      { type: 'gate', id: 'gate-right', powerCost: 1, a: { x: 13.2, y: 13.6 }, b: { x: 14.7, y: 13.6 }, dir: { x: 0, y: -1 }, points: 300, postR: 0.2 },
+      { type: 'spinner', id: 'spinner-left', powerCost: 1, ...LEFT_LANE_SPINNER, pointsPerSpin: 40, spinsPerSpeed: 0.7, maxSpins: 20 },
+      { type: 'bank', id: 'bank-cards', powerCost: 1, name: 'BATTER UP', targetIds: CARD_BANK, bonus: 1500 },
+      { type: 'bank', id: 'bank-stars', powerCost: 1, name: 'ALL-STAR', targetIds: STAR_BANK, bonus: 1500 },
+      { type: 'bumper', id: 'bonus-upper', powerCost: 1, x: 11.55, y: 6.2, r: 0.7, points: 300, kick: 16 },
     ],
+    modifiers: {
+      'bumper:*': [{ add: 50, note: 'Hot Corners' }, { mul: 1.5, note: 'Power Alley' }],
+      jackpot: [{ mul: 2, note: 'Big Stage' }],
+    },
   },
   {
+    // Skill shot into the Overpass → bridge gate → drop toward the glove → glove relaunch into the upper cluster.
     id: 'overpass',
     route: '2',
     name: 'Overpass',
-    tagline: 'Crossing ramp + glove scoop',
-    maxPower: MAX_POWER_TEST,
-    // The scoop replaces the glove bumper in the same spot.
+    tagline: 'Bridge gate · glove relaunch',
+    maxPower: MAX_POWER_ENDGAME,
     removeBase: ['glove'],
     mechanisms: [
       {
@@ -100,17 +124,20 @@ export const PRESETS: Preset[] = [
         name: 'OVERPASS',
         powerCost: 3,
         path: [
-          { x: 14.6, y: 13.5 }, { x: 14.75, y: 11.7 }, { x: 14.5, y: 10.25 }, { x: 13.5, y: 9.5 }, { x: 10, y: 9.35 },
-          { x: 6.5, y: 9.5 }, { x: 5.1, y: 10.1 }, { x: 4.4, y: 11.1 }, { x: 4.2, y: 12.2 },
+          { x: 13.2, y: 16.2 }, { x: 13.95, y: 14.2 }, { x: 14.35, y: 12.2 }, { x: 14.0, y: 10.4 }, { x: 12.7, y: 9.55 },
+          { x: 10, y: 9.35 }, { x: 7.3, y: 9.55 }, { x: 6.1, y: 10.4 }, { x: 5.75, y: 11.8 }, { x: 5.6, y: 13.0 },
         ],
         mouthWidth: 1.6,
         climb: 4,
         climbDecel: 12,
-        minRide: 8,
+        // Ride speed carries through to the drop, so how hard the ramp was hit decides the glove chance.
+        minRide: 5,
         maxRide: 18,
-        exitMin: 6,
-        exitMax: 11,
-        points: 300,
+        exitMin: 3,
+        exitMax: 12,
+        points: 600,
+        gate: { at: 0.52, points: 750 },
+        exit: { mode: 'drop', fall: 0.25 },
       },
       {
         type: 'scoop',
@@ -122,18 +149,29 @@ export const PRESETS: Preset[] = [
         mouthAngle: -0.75,
         mouthHalf: 1.0,
         holdSeconds: 0.85,
-        ejectAngle: -0.95,
-        ejectSpeed: 20,
-        points: 200,
+        // up the left side into the bumper cluster
+        ejectAngle: -1.2,
+        ejectSpeed: 22,
+        points: 1000,
+        recatchDelay: 2.5,
       },
+      { type: 'bumper', id: 'bonus-upper', powerCost: 1, x: 8.45, y: 6.2, r: 0.7, points: 300, kick: 16 },
+      { type: 'gate', id: 'gate-jackpot-lane', powerCost: 1, ...JACKPOT_LANE_GATE, points: 400, label: 'JACKPOT LANE' },
+      { type: 'spinner', id: 'spinner-right', powerCost: 1, ...RIGHT_LANE_SPINNER, pointsPerSpin: 40, spinsPerSpeed: 0.7, maxSpins: 20 },
+      { type: 'bank', id: 'bank-cards', powerCost: 1, name: 'BATTER UP', targetIds: CARD_BANK, bonus: 1500 },
     ],
+    modifiers: {
+      'scoop-glove': [{ mul: 2, note: 'Gold Glove' }],
+      'bumper:*': [{ mul: 1.5, note: 'Power Alley' }],
+    },
   },
   {
+    // Densest build: Turbo ramp feeds the upper cluster; multiball, twin bonus bumpers, spinners, banks, lane gate.
     id: 'powerhouse',
     route: '3',
-    name: 'Powerhouse',
-    tagline: 'Compact ramp + multiball + bonus bumper',
-    maxPower: MAX_POWER_TEST,
+    name: 'Turbo',
+    tagline: 'Turbo ramp · multiball · stacked mods',
+    maxPower: MAX_POWER_ENDGAME,
     removeBase: [],
     mechanisms: [
       {
@@ -152,7 +190,9 @@ export const PRESETS: Preset[] = [
         maxRide: 18,
         exitMin: 11,
         exitMax: 15,
-        points: 250,
+        points: 1000,
+        gate: { at: 0.55, points: 600 },
+        exit: { mode: 'release', fall: 0 },
       },
       {
         type: 'splitter',
@@ -163,15 +203,28 @@ export const PRESETS: Preset[] = [
         hw: 0.75,
         hh: 0.3,
         hitsToArm: 3,
-        pointsPerHit: 75,
+        pointsPerHit: 150,
         hatch: { x: 13.5, y: 13.0 },
         launchAngle: -1.88,
         launchSpeed: 17,
         maxBalls: 3,
         cooldown: 5,
       },
-      { type: 'bumper', id: 'bonus-1', powerCost: 1, x: 8.45, y: 6.2, r: 0.7, points: 150, kick: 16 },
+      { type: 'bumper', id: 'bonus-1', powerCost: 1, x: 8.45, y: 6.2, r: 0.7, points: 300, kick: 16 },
+      { type: 'bumper', id: 'bonus-2', powerCost: 1, x: 11.55, y: 6.2, r: 0.7, points: 300, kick: 16 },
+      { type: 'gate', id: 'gate-jackpot-lane', powerCost: 1, ...JACKPOT_LANE_GATE, points: 500, label: 'JACKPOT LANE' },
+      { type: 'spinner', id: 'spinner-left', powerCost: 1, ...LEFT_LANE_SPINNER, pointsPerSpin: 50, spinsPerSpeed: 0.7, maxSpins: 20 },
+      { type: 'spinner', id: 'spinner-right', powerCost: 1, ...RIGHT_LANE_SPINNER, pointsPerSpin: 50, spinsPerSpeed: 0.7, maxSpins: 20 },
+      { type: 'bank', id: 'bank-cards', powerCost: 1, name: 'BATTER UP', targetIds: CARD_BANK, bonus: 2000 },
+      { type: 'bank', id: 'bank-stars', powerCost: 1, name: 'ALL-STAR', targetIds: STAR_BANK, bonus: 2000 },
     ],
+    modifiers: {
+      'bumper:*': [{ add: 50, note: 'Hot Corners' }, { mul: 2, note: 'Power Alley' }, { mul: 1.5, note: 'Rally Cap' }],
+      jackpot: [{ mul: 3, note: 'Big Stage' }],
+      'spinner:*': [{ mul: 2, note: 'Spin Doctor' }],
+      'bank:*': [{ mul: 2, note: 'Full Count' }],
+      'ramp-compact': [{ mul: 1.5, note: 'Nitro' }],
+    },
   },
 ];
 

@@ -6,7 +6,7 @@
  * rolling underneath stays visible and a ball on top is drawn larger with a far shadow.
  */
 import { config } from '../config.ts';
-import { rampAt, rampHeight, type Pt, type RampPath } from '../machines/mechanisms.ts';
+import { dropLanding, rampAt, rampHeight, type Pt, type RampPath, type SpinnerDef } from '../machines/mechanisms.ts';
 import { scoopArc, splitterPoly } from '../physics/board.ts';
 import type { Simulation, SimEvent } from '../physics/sim.ts';
 import { drawGlow } from './vfx.ts';
@@ -41,6 +41,8 @@ export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: Gam
   for (const s of L.splitters) drawSplitterStatic(ctx, s);
   for (const g of L.gates) drawGateStatic(ctx, g);
   for (const r of L.ramps) drawRampMouthFloor(ctx, r);
+  for (const sp of L.spinners) drawSpinnerStatic(ctx, sp);
+  for (const r of L.ramps) if (r.def.exit?.mode === 'drop') drawLandingMarker(ctx, r, view.theme.energyPrimary);
 
   // Raised ramps go in their own layer, composited above floor balls each frame.
   const rl = view.rampLayer.getContext('2d')!;
@@ -152,14 +154,87 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath) {
   ctx.textBaseline = 'middle';
   ctx.fillText(r.def.name, 0, 0.02);
   ctx.restore();
-  // exit lip
-  ctx.strokeStyle = '#c9d3df';
-  ctx.lineWidth = 0.08;
   const ex = r.exit, en = { x: -r.exitDir.y, y: r.exitDir.x };
+  if (r.def.exit?.mode === 'drop') {
+    // open end: rails stop short with gold caps, the ball visibly leaves the raised level here
+    ctx.fillStyle = '#e3b45c';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(ex.x + en.x * RAIL * side, ex.y + en.y * RAIL * side, 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(255,215,106,0.8)';
+    ctx.lineWidth = 0.08;
+    const tip = { x: ex.x + r.exitDir.x * 0.25, y: ex.y + r.exitDir.y * 0.25 };
+    ctx.beginPath();
+    ctx.moveTo(tip.x - r.exitDir.x * 0.3 + en.x * 0.28, tip.y - r.exitDir.y * 0.3 + en.y * 0.28);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(tip.x - r.exitDir.x * 0.3 - en.x * 0.28, tip.y - r.exitDir.y * 0.3 - en.y * 0.28);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#c9d3df';
+    ctx.lineWidth = 0.08;
+    ctx.beginPath();
+    ctx.moveTo(ex.x + en.x * RAIL, ex.y + en.y * RAIL);
+    ctx.lineTo(ex.x - en.x * RAIL, ex.y - en.y * RAIL);
+    ctx.stroke();
+  }
+  if (r.gateS > 0) drawRampGateArch(ctx, r);
+}
+
+/** The mid-ramp scoring gate: an arch over the channel with a lamp bar. */
+function drawRampGateArch(ctx: CanvasRenderingContext2D, r: RampPath) {
+  const { p, t } = rampAt(r, r.gateS);
+  const n = { x: -t.y, y: t.x }, w = RAIL + 0.22;
+  ctx.save();
+  ctx.translate(0.25, 0.32);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 0.34;
   ctx.beginPath();
-  ctx.moveTo(ex.x + en.x * RAIL, ex.y + en.y * RAIL);
-  ctx.lineTo(ex.x - en.x * RAIL, ex.y - en.y * RAIL);
+  ctx.moveTo(p.x + n.x * w, p.y + n.y * w);
+  ctx.lineTo(p.x - n.x * w, p.y - n.y * w);
   ctx.stroke();
+  ctx.restore();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#0d1a33';
+  ctx.lineWidth = 0.36;
+  ctx.beginPath();
+  ctx.moveTo(p.x + n.x * w, p.y + n.y * w);
+  ctx.lineTo(p.x - n.x * w, p.y - n.y * w);
+  ctx.stroke();
+  ctx.strokeStyle = '#e3b45c';
+  ctx.lineWidth = 0.07;
+  ctx.stroke();
+  for (const side of [-1, 1]) drawChromePost(ctx, p.x + n.x * w * side, p.y + n.y * w * side, 0.17);
+}
+
+/** Painted ring where a drop-exit ball lands (mid exit speed). */
+function drawLandingMarker(ctx: CanvasRenderingContext2D, r: RampPath, color: string) {
+  const { p } = dropLanding(r, (r.def.exitMin + r.def.exitMax) / 2, config.gravity);
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.06;
+  ctx.setLineDash([0.15, 0.12]);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 0.62, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 0.12, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSpinnerStatic(ctx: CanvasRenderingContext2D, sp: SpinnerDef) {
+  ctx.strokeStyle = '#3a4656';
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.moveTo(sp.a.x, sp.a.y);
+  ctx.lineTo(sp.b.x, sp.b.y);
+  ctx.stroke();
+  for (const q of [sp.a, sp.b]) drawChromePost(ctx, q.x, q.y, 0.12);
 }
 
 function chevron(ctx: CanvasRenderingContext2D, r: RampPath, s: number, size: number) {
@@ -299,12 +374,12 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
   ctx.setLineDash([0.12, 0.1]);
   ctx.stroke();
   ctx.setLineDash([]);
-  for (const p of [g.a, g.b]) drawChromePost(ctx, p.x, p.y, g.postR + 0.06);
+  if (g.posts !== false) for (const p of [g.a, g.b]) drawChromePost(ctx, p.x, p.y, g.postR + 0.06);
   ctx.fillStyle = '#ffe8a8';
   ctx.font = `italic 800 0.4px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('GATE', c.x, c.y + 1.05);
+  ctx.fillText(g.label ?? 'GATE', c.x, c.y + (g.posts === false ? 0.55 : 1.05));
 }
 
 // ───────────────────────── dynamic ─────────────────────────
@@ -336,6 +411,54 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
   }
   ctx.globalCompositeOperation = 'source-over';
 
+  // spinners: the flap turns while it has spins left
+  for (const sp of L.spinners) {
+    const left = sim.spinners.get(sp.id) ?? 0;
+    const st = view.spin.get(sp.id) ?? { angle: 0 };
+    if (left > 0) {
+      const rate = 14; // spins per second
+      const used = Math.min(left, rate * view.lastDt);
+      sim.spinners.set(sp.id, left - used);
+      st.angle += used * Math.PI * 2;
+    }
+    view.spin.set(sp.id, st);
+    const c = { x: (sp.a.x + sp.b.x) / 2, y: (sp.a.y + sp.b.y) / 2 };
+    const L2 = Math.hypot(sp.b.x - sp.a.x, sp.b.y - sp.a.y), u = { x: (sp.b.x - sp.a.x) / L2, y: (sp.b.y - sp.a.y) / L2 };
+    const w = Math.abs(Math.cos(st.angle)) * 0.28 + 0.03;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(Math.atan2(u.y, u.x));
+    ctx.fillStyle = left > 0 ? th.impactCore : '#d5dde8';
+    ctx.fillRect(-L2 / 2 + 0.15, -w / 2, L2 - 0.3, w);
+    ctx.fillStyle = th.jackpotAccent;
+    ctx.fillRect(-0.12, -w / 2, 0.24, w);
+    ctx.restore();
+    if (left > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, th.energyPrimary, c.x, c.y, 1.1, Math.min(1, left / 6) * 0.8);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  // bank progress lamps on each target face
+  for (const bank of L.banks) {
+    const done = sim.banks.get(bank.id);
+    const flash = view.lit.get(bank.id) ?? 0;
+    for (const id of bank.targetIds) {
+      const t = L.boxTargets.find(t => t.id === id);
+      if (!t) continue;
+      const on = done?.has(id) || flash > 0;
+      const lx = t.x + t.face.x * (t.hw + 0.28), ly = t.y;
+      ctx.fillStyle = on ? th.jackpotAccent : '#2a3550';
+      ctx.beginPath();
+      ctx.arc(lx, ly, 0.13, 0, Math.PI * 2);
+      ctx.fill();
+      if (on) {
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, flash > 0 ? th.impactCore : th.jackpotAccent, lx, ly, 0.55 + flash, 0.7 + flash);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+  }
   for (const s of L.scoops) {
     const held = sim.balls.find(b => b.held?.scoop === s);
     if (held?.held) {
@@ -408,6 +531,24 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
       ctx.globalCompositeOperation = 'source-over';
     }
     ctx.globalAlpha = 1;
+    if (r.gateS > 0) {
+      const { p, t } = rampAt(r, r.gateS);
+      const n = { x: -t.y, y: t.x }, w = RAIL + 0.22;
+      const lit = view.lit.get(r.def.id + '-gate') ?? 0;
+      // idle: slow lamp chase on the bar; on a pass: the whole gate blazes
+      for (let i = 0; i < 5; i++) {
+        const k = (i / 4) * 2 - 1;
+        const q = { x: p.x + n.x * w * k * 0.8, y: p.y + n.y * w * k * 0.8 };
+        const on = lit > 0 || Math.floor(view.time * 6) % 5 === i;
+        ctx.fillStyle = lit > 0 ? th.impactCore : on ? th.jackpotAccent : '#5b4a25';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 0.07, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, lit > 0 ? th.energySecondary : th.jackpotAccent, p.x, p.y, 1.1 + lit * 2.2, 0.18 + lit * 1.6);
+      ctx.globalCompositeOperation = 'source-over';
+    }
   }
 }
 
@@ -424,9 +565,36 @@ export function onMechanismEvent(view: GameView, e: SimEvent) {
       v.ring(e.x, e.y, 0.3, 1.6, th.energyPrimary, 0.3);
       v.sparks(e.x, e.y, 10, 8, th.impactCore, r.exitDir.x, r.exitDir.y, 0.8);
       v.flicker(e.x + 0.9, e.y - 0.5, '+' + e.points, th.jackpotAccent);
+    } else if (e.phase === 'land') {
+      v.ring(e.x, e.y, 0.2, 1.1, th.energyPrimary, 0.3, false, 0.08);
+      v.sparks(e.x, e.y, 8, 4, th.impactCore);
     } else {
       v.flash(e.x, e.y, 0.8, th.machineGlow, 0.15);
     }
+  } else if (e.type === 'rampGate') {
+    const r = L.ramps.find(r => r.def.id === e.id)!;
+    const { t } = rampAt(r, r.gateS);
+    view.lit.set(e.id + '-gate', 0.6);
+    v.flash(e.x, e.y, 2.4, th.energySecondary, 0.35);
+    v.flash(e.x, e.y, 0.9, th.impactCore, 0.1);
+    v.ring(e.x, e.y, 0.5, 2.3, th.jackpotAccent, 0.45, true, 0.13);
+    v.sparks(e.x, e.y, 18, 10, th.jackpotAccent);
+    // number beside the ramp (perpendicular), never on the ball's path
+    let side = { x: -t.y, y: t.x };
+    // put the number on the side facing the middle of the table, clear of rails and banners
+    if ((10 - e.x) * side.x + (16 - e.y) * side.y < 0) side = { x: -side.x, y: -side.y };
+    v.flicker(e.x + side.x * 1.3, e.y + side.y * 1.3 + 0.2, '+' + e.points.toLocaleString(), th.jackpotAccent);
+  } else if (e.type === 'bank') {
+    const bank = L.banks.find(b => b.id === e.id)!;
+    view.lit.set(e.id, 0.7);
+    const ts = bank.targetIds.map(id => L.boxTargets.find(t => t.id === id)!).filter(Boolean);
+    const cx = ts.reduce((a, t) => a + t.x, 0) / ts.length, cy = ts.reduce((a, t) => a + t.y, 0) / ts.length;
+    const fx = cx + ts[0].face.x * 2.2;
+    for (const t of ts) v.targetHit(t.x + t.face.x * t.hw, t.y, -t.face.x, 0, true);
+    v.flicker(fx, cy, `${bank.name} +${e.points.toLocaleString()}`, th.jackpotAccent);
+  } else if (e.type === 'machine' && e.kind === 'spinner') {
+    const sp = L.spinners.find(s => s.id === e.id)!;
+    v.flicker((sp.a.x + sp.b.x) / 2, (sp.a.y + sp.b.y) / 2 + 0.8, '+' + e.points.toLocaleString(), th.impactCore);
   } else if (e.type === 'scoop') {
     const s = L.scoops.find(s => s.id === e.id)!;
     if (e.phase === 'catch') {

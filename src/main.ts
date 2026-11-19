@@ -9,6 +9,7 @@ import { Telemetry } from './telemetry/session.ts';
 import { GameView } from './view/game.ts';
 import { theme } from './view/theme.ts';
 import { PRESETS, presetForPath, validatePreset } from './machines/presets.ts';
+import { Sfx } from './view/audio.ts';
 
 // Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Powerhouse.
 const preset = presetForPath(location.pathname);
@@ -27,11 +28,13 @@ const touch = new TouchInput();
 const keys = new Set<string>();
 const telemetry = new Telemetry();
 let paused = false;
+const sfx = new Sfx();
 
 const sim: Simulation = new Simulation({
   preset,
   onEvent: (e: SimEvent) => {
     view.onSimEvent(e);
+    sfx.onEvent(e);
     telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
     // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
     if (e.type === 'drain' && e.strike) onDrain();
@@ -40,7 +43,10 @@ const sim: Simulation = new Simulation({
 const view = new GameView(canvas, theme, sim.layout);
 $('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : 'BASELINE';
 document.title = `Baseball Pinball · ${preset.name}`;
-$('#machineInfo').textContent = preset.route ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}` : `BASELINE TABLE · POWER ${power.installed}/${power.max}`;
+const modCount = Object.values(preset.modifiers ?? {}).reduce((n, l) => n + l.length, 0);
+$('#machineInfo').textContent = preset.route
+  ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}${modCount ? ` · ${modCount} TEST MODS` : ''}`
+  : `BASELINE TABLE · POWER ${power.installed}/${power.max}`;
 
 // ─── HUD ───
 const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes') };
@@ -85,6 +91,7 @@ function showOverlay(kicker: string, title: string, text: string, button: string
   readyBtn.focus({ preventScroll: true });
 }
 function onReady() {
+  sfx.unlock();
   if (paused) return togglePause();
   if (!sim.ready()) return;
   overlay.hidden = true;
@@ -113,6 +120,18 @@ function togglePause() {
   }
 }
 readyBtn.addEventListener('click', onReady);
+const muteBtn = $<HTMLButtonElement>('#mute');
+const showMute = () => {
+  muteBtn.textContent = sfx.muted ? '🔇' : '🔊';
+  muteBtn.setAttribute('aria-label', sfx.muted ? 'Unmute sound' : 'Mute sound');
+};
+showMute();
+muteBtn.addEventListener('click', () => {
+  sfx.unlock();
+  sfx.setMuted(!sfx.muted);
+  showMute();
+  muteBtn.blur();
+});
 pauseBtn.addEventListener('click', () => {
   togglePause();
   pauseBtn.blur();
@@ -123,6 +142,10 @@ window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === '`') {
     view.debug = !view.debug;
+    return;
+  }
+  if (k === 'm') {
+    muteBtn.click();
     return;
   }
   if (k === 'p' || k === 'escape') {
@@ -152,6 +175,7 @@ document.addEventListener('touchmove', e => {
   if (sim.rules.phase === 'live') e.preventDefault();
 }, { passive: false });
 canvas.addEventListener('pointerdown', e => {
+  sfx.unlock();
   if (sim.rules.phase !== 'live' || paused) return;
   e.preventDefault();
   const r = canvas.getBoundingClientRect();

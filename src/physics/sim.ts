@@ -14,15 +14,17 @@ import { GameRules } from '../core/rules.ts';
 import { batAngleAt, findContact, swingStateAt, type Contact } from '../core/swing.ts';
 import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
-import { crossedLine, rampAt, rampHeight, type Pt, type RampPath, type ScoopDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type ModifierTable, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type SimEvent =
-  | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number }
+  | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
+  | { type: 'rampGate'; id: string; x: number; y: number; points: number; ball: number }
+  | { type: 'bank'; id: string; points: number; ball: number }
   | { type: 'bat'; contact: Contact; x: number; y: number; ball: number }
   | { type: 'swing' }
   | { type: 'serve' }
-  | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback'; x: number; y: number; points: number; ball: number }
+  | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback' | 'land'; x: number; y: number; points: number; ball: number }
   | { type: 'scoop'; id: string; phase: 'catch' | 'eject'; x: number; y: number; points: number; ball: number }
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
@@ -32,12 +34,14 @@ export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; lay
 export type Ball = {
   id: number;
   body: P.Body;
-  mode: 'field' | 'ramp' | 'held';
+  mode: 'field' | 'ramp' | 'held' | 'drop';
   prev: Pt;
   hitSwingId: number;
   stillTime: number;
   ramp?: { r: RampPath; s: number; v: number; dir: 1 | -1 };
   held?: { scoop: ScoopDef; t: number };
+  /** Falling off a drop-exit ramp onto the field (no collisions until it lands). */
+  drop?: { r: RampPath; t: number; v: Pt };
   /** Mechanism id → sim time until which it ignores this ball (prevents instant re-capture). */
   ignore: Record<string, number>;
   /** Position used for drawing (body position on the field, ramp position otherwise). */
@@ -59,6 +63,11 @@ export class Simulation {
   events: SimEvent[] = [];
   /** Splitter state per id. */
   splitters = new Map<string, { charge: number; lastHit: number; readyAt: number; launchAt: number | null }>();
+  /** Bank progress: bank id → target ids hit this pitch. */
+  banks = new Map<string, Set<string>>();
+  /** Spinner animation state (read by the view): id → remaining spins. */
+  spinners = new Map<string, number>();
+  mods: ModifierTable;
   private onEvent?: (e: SimEvent) => void;
   private pendingKicks: { kind: 'bumper' | 'sling'; ref: unknown; ball: Ball }[] = [];
   private lastSlingKick = -10;
@@ -68,10 +77,18 @@ export class Simulation {
   constructor(opts: SimOptions = {}) {
     this.onEvent = opts.onEvent;
     this.layout = opts.layout ?? layoutFor(opts.preset);
+    this.mods = opts.preset?.modifiers ?? {};
+    for (const b of this.layout.banks) this.banks.set(b.id, new Set());
     this.world = new P.World({ gravity: P.Vec2(0, config.gravity) });
     buildBoard(this.world, this.layout);
     for (const s of this.layout.splitters) this.splitters.set(s.id, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
     this.world.on('begin-contact', c => this.beginContact(c));
+  }
+
+  /** Base points after the preset's stacked modifiers for this part id and its kind. */
+  pts(id: string, kind: string, base: number) {
+    const mods = [...(this.mods[id] ?? []), ...(this.mods[kind + ':*'] ?? [])];
+    return mods.length ? applyModifiers(base, mods) : base;
   }
 
   emit(e: SimEvent) {
@@ -117,6 +134,7 @@ export class Simulation {
     this.batterX = config.batter.startX;
     this.swingStart = -100;
     for (const st of this.splitters.values()) Object.assign(st, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
+    for (const b of this.banks.values()) b.clear();
     this.addBall(config.pitch.x, config.pitch.y, 0, config.pitch.speed);
     this.emit({ type: 'serve' });
     return true;
@@ -187,8 +205,24 @@ export class Simulation {
       points = this.hitSplitter(d.ref as SplitterDef);
       if (points < 0) return;
     }
+    points = this.pts(d.id, d.kind, points);
     if (points) this.rules.addScore(points);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
+    if (d.kind === 'target' || d.kind === 'jackpot') this.markBanks(d.id, ball);
+  }
+
+  private markBanks(targetId: string, ball: Ball) {
+    for (const b of this.layout.banks) {
+      if (!b.targetIds.includes(targetId)) continue;
+      const set = this.banks.get(b.id)!;
+      set.add(targetId);
+      if (set.size === b.targetIds.length) {
+        set.clear();
+        const p = this.pts(b.id, 'bank', b.bonus);
+        this.rules.addScore(p);
+        this.emit({ type: 'bank', id: b.id, points: p, ball: ball.id });
+      }
+    }
   }
 
   /** Count a splitter hit (debounced). Returns points, or -1 if this contact is a duplicate. */
@@ -231,6 +265,7 @@ export class Simulation {
       if (!this.balls.includes(ball)) continue;
       if (ball.mode === 'ramp') this.stepRamp(ball, dt);
       else if (ball.mode === 'held') this.stepHeld(ball, dt);
+      else if (ball.mode === 'drop') this.stepDrop(ball, dt);
       else this.stepField(ball, dt);
     }
     this.stepSplitters();
@@ -296,8 +331,26 @@ export class Simulation {
       const half = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) / 2 - g.postR;
       if (crossedLine(ball.prev, p, c, g.dir, half)) {
         ball.ignore[g.id] = this.time + 0.5;
-        this.rules.addScore(g.points);
-        this.emit({ type: 'machine', kind: 'gate', id: g.id, x: c.x, y: c.y, points: g.points, nx: g.dir.x, ny: g.dir.y, ball: ball.id });
+        const pts = this.pts(g.id, 'gate', g.points);
+        this.rules.addScore(pts);
+        this.emit({ type: 'machine', kind: 'gate', id: g.id, x: c.x, y: c.y, points: pts, nx: g.dir.x, ny: g.dir.y, ball: ball.id });
+      }
+    }
+    // Spinners: either direction through the flap; faster balls spin it more.
+    for (const sp of this.layout.spinners) {
+      if ((ball.ignore[sp.id] ?? 0) > this.time) continue;
+      const c = { x: (sp.a.x + sp.b.x) / 2, y: (sp.a.y + sp.b.y) / 2 };
+      const L = Math.hypot(sp.b.x - sp.a.x, sp.b.y - sp.a.y);
+      const n = { x: -(sp.b.y - sp.a.y) / L, y: (sp.b.x - sp.a.x) / L };
+      const neg = { x: -n.x, y: -n.y };
+      if (crossedLine(ball.prev, p, c, n, L / 2) || crossedLine(ball.prev, p, c, neg, L / 2)) {
+        ball.ignore[sp.id] = this.time + 0.3;
+        const v = body.getLinearVelocity();
+        const spins = Math.max(1, Math.min(sp.maxSpins, Math.round(Math.hypot(v.x, v.y) * sp.spinsPerSpeed)));
+        const pts = this.pts(sp.id, 'spinner', spins * sp.pointsPerSpin);
+        this.spinners.set(sp.id, (this.spinners.get(sp.id) ?? 0) + spins);
+        this.rules.addScore(pts);
+        this.emit({ type: 'machine', kind: 'spinner', id: sp.id, x: c.x, y: c.y, points: pts, nx: n.x, ny: n.y, ball: ball.id, spins });
       }
     }
     // Scoops: reaching the bottom of the cup catches the ball.
@@ -350,17 +403,36 @@ export class Simulation {
     } else {
       st.v += d.climbDecel * dt;
     }
+    const prevS = st.s;
     st.s += st.dir * st.v * dt;
+    // Mid-ramp scoring gate: once per forward pass (a rollback never reaches it, the climb is before it).
+    if (st.dir === 1 && d.gate && prevS < st.r.gateS && st.s >= st.r.gateS) {
+      const g = rampAt(st.r, st.r.gateS).p;
+      const pts = this.pts(d.id + '-gate', 'rampGate', d.gate.points);
+      this.rules.addScore(pts);
+      this.emit({ type: 'rampGate', id: d.id, x: g.x, y: g.y, points: pts, ball: ball.id });
+    }
     const { p, t } = rampAt(st.r, st.s);
     ball.pos = p;
     ball.height = rampHeight(st.r, st.s);
 
     if (st.dir === 1 && st.s >= st.r.length) {
       const sp = Math.max(d.exitMin, Math.min(d.exitMax, st.v));
-      this.releaseToField(ball, st.r.exit, { x: st.r.exitDir.x * sp, y: st.r.exitDir.y * sp });
-      ball.ignore[d.id] = this.time + 1;
-      this.rules.addScore(d.points);
-      this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: d.points, ball: ball.id });
+      const v = { x: st.r.exitDir.x * sp, y: st.r.exitDir.y * sp };
+      const pts = this.pts(d.id, 'ramp', d.points);
+      this.rules.addScore(pts);
+      this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
+      if (d.exit?.mode === 'drop') {
+        // Leave the raised level and fall onto the field; collisions resume on landing.
+        ball.mode = 'drop';
+        ball.ramp = undefined;
+        ball.drop = { r: st.r, t: 0, v };
+        ball.pos = { ...st.r.exit };
+        ball.height = 1;
+      } else {
+        this.releaseToField(ball, st.r.exit, v);
+        ball.ignore[d.id] = this.time + 1;
+      }
     } else if (st.dir === -1 && st.s <= 0) {
       const sp = Math.max(3, st.v);
       // Back out of the mouth, a touch in front of it so it doesn't immediately re-cross.
@@ -371,14 +443,29 @@ export class Simulation {
     }
   }
 
+  private stepDrop(ball: Ball, dt: number) {
+    const dr = ball.drop!, T = dr.r.def.exit?.fall ?? 0.2;
+    dr.t += dt;
+    dr.v.y += config.gravity * dt;
+    ball.pos = { x: ball.pos.x + dr.v.x * dt, y: ball.pos.y + dr.v.y * dt };
+    ball.height = Math.max(0, 1 - dr.t / T);
+    if (dr.t >= T) {
+      const r = dr.r;
+      this.releaseToField(ball, ball.pos, dr.v);
+      ball.ignore[r.def.id] = this.time + 1;
+      this.emit({ type: 'ramp', id: r.def.id, phase: 'land', x: ball.pos.x, y: ball.pos.y, points: 0, ball: ball.id });
+    }
+  }
+
   private catchInScoop(ball: Ball, s: ScoopDef) {
     ball.mode = 'held';
     ball.body.setActive(false);
     ball.held = { scoop: s, t: 0 };
     ball.pos = { x: s.x, y: s.y };
     ball.height = 0;
-    this.rules.addScore(s.points);
-    this.emit({ type: 'scoop', id: s.id, phase: 'catch', x: s.x, y: s.y, points: s.points, ball: ball.id });
+    const pts = this.pts(s.id, 'scoop', s.points);
+    this.rules.addScore(pts);
+    this.emit({ type: 'scoop', id: s.id, phase: 'catch', x: s.x, y: s.y, points: pts, ball: ball.id });
   }
 
   private stepHeld(ball: Ball, dt: number) {
@@ -389,7 +476,7 @@ export class Simulation {
       const s = h.scoop;
       const v = { x: Math.cos(s.ejectAngle) * s.ejectSpeed, y: Math.sin(s.ejectAngle) * s.ejectSpeed };
       this.releaseToField(ball, { x: s.x, y: s.y }, v);
-      ball.ignore[s.id] = this.time + 0.8;
+      ball.ignore[s.id] = this.time + (s.recatchDelay ?? 0.8);
       this.emit({ type: 'scoop', id: s.id, phase: 'eject', x: s.x, y: s.y, points: 0, ball: ball.id });
     }
   }
@@ -398,6 +485,7 @@ export class Simulation {
     ball.mode = 'field';
     ball.ramp = undefined;
     ball.held = undefined;
+    ball.drop = undefined;
     ball.body.setPosition(P.Vec2(at.x, at.y));
     ball.body.setLinearVelocity(P.Vec2(v.x, v.y));
     ball.body.setActive(true);
