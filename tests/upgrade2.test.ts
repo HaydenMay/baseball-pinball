@@ -144,7 +144,7 @@ test('gate: simultaneous multiball passes each count; a teleport (ramp/scoop rel
 
 // ───────── 3. Global multiplier rules ─────────
 
-test('global multiplier: ×1 start, later scoring only, applied once, extra-ball drain keeps it, strike resets it', () => {
+test('global multiplier: ×1 start, later scoring only, extra-ball drains and strikes preserve it', () => {
   const r = new GameRules();
   r.ready();
   assert.equal(r.mult, 1);
@@ -158,15 +158,28 @@ test('global multiplier: ×1 start, later scoring only, applied once, extra-ball
   assert.equal(r.drain(), false, 'extra ball drain is not a strike');
   assert.equal(r.multTenths, 13, 'extra ball drain keeps the multiplier');
   assert.equal(r.drain(), true);
-  assert.equal(r.multTenths, 10, 'strike resets to ×1.0');
+  assert.equal(r.multTenths, 13, 'first strike preserves ×1.3');
   assert.equal(r.score, 663, 'points earned before the drain stay banked');
   assert.ok(!r.gainMult(1), 'no gains between pitches');
   r.ready();
-  assert.equal(r.multTenths, 10);
+  assert.equal(r.multTenths, 13, 'second pitch retains ×1.3');
+  assert.equal(r.award(100), 130, 'second pitch scores with retained multiplier');
+  r.gainMult(2);
+  assert.equal(r.drain(), true);
+  assert.equal(r.multTenths, 15, 'second strike preserves ×1.5');
+  r.ready();
+  assert.equal(r.multTenths, 15, 'third pitch retains ×1.5');
+  assert.equal(r.award(100), 150);
   // display-safe: tenths never accumulate float noise
   for (let i = 0; i < 37; i++) r.gainMult(1);
-  assert.equal(r.multTenths, 47);
-  assert.equal((r.multTenths / 10).toFixed(1), '4.7');
+  assert.equal(r.multTenths, 52);
+  assert.equal((r.multTenths / 10).toFixed(1), '5.2');
+  assert.equal(r.drain(), true);
+  assert.equal(r.multTenths, 52, 'third strike retains multiplier until challenge exits');
+  assert.equal(r.phase, 'over');
+  r.reset();
+  assert.equal(r.multTenths, 10, 'new run/challenge resets multiplier to ×1.0');
+  assert.equal(new GameRules().multTenths, 10, 'fresh challenge starts at ×1.0');
 });
 
 test('global multiplier is the final layer: part modifiers first, then × global once', () => {
@@ -297,11 +310,12 @@ test('bank generator pays on completion; bank and generator progress carry acros
   (s as any).markBanks('card-2', ball);
   assert.equal(mults().length, 0);
   for (let i = 0; i < 3; i++) (s as any).generate('bumper-left', 'bumper');
-  // strike: multiplier resets, progress does not
+  // strike: multiplier and progress both persist until the next challenge
   s.rules.gainMult(5);
   s.balls.slice().forEach(b => (s as any).drainBall(b));
-  assert.equal(s.rules.multTenths, 10);
+  assert.equal(s.rules.multTenths, 15);
   s.ready();
+  assert.equal(s.rules.multTenths, 15, 'multiplier survives the next serve');
   assert.equal(s.banks.get(bank)!.size, 2, 'bank lamps survive the strike');
   assert.equal(s.genCount.get('bumper-left#5'), 3, 'bumper counter survives the strike (experimental rule)');
   (s as any).markBanks('card-3', s.balls[0]);
@@ -312,6 +326,7 @@ test('bank generator pays on completion; bank and generator progress carry acros
   const next = liveSim(r).s;
   assert.equal(next.genCount.size, 0);
   assert.equal(next.banks.get(bank)!.size, 0);
+  assert.equal(next.rules.multTenths, 10, 'new challenge resets global multiplier');
 });
 
 // ───────── 6. Draft / shop split ─────────

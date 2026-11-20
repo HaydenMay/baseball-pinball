@@ -5,7 +5,7 @@ golden replay of the original table still passes, and no legacy map can produce 
 
 ## Approved rules (implemented as specified)
 
-- **Global strike multiplier** starts at ×1.0 every strike. It's stored as integer tenths (`rules.multTenths`), so the
+- **Global challenge multiplier** starts at ×1.0 each challenge. It's stored as integer tenths (`rules.multTenths`), so the
   readout never shows float noise.
   - It's applied exactly once, at the central scoring boundary (`GameRules.award`):
     `awarded = round((base + Σadd) × Πmul × global)`.
@@ -13,7 +13,7 @@ golden replay of the original table still passes, and no legacy map can produce 
     finishes, scoops, banks and splitter hits.
   - **Bat hits follow the global multiplier**, which is the default choice.
   - A gain affects later scoring only. The event that triggers it scores at the old value.
-  - It resets on the strike, when the last live ball drains. An extra multiball ball draining doesn't reset it.
+  - It **persists across all three strikes within the same challenge**, including the next Ready/serve; a drain (including the final multiball ball) does not reset it. It resets to ×1.0 when a new challenge/run begins.
   - No cap, and points banked before a drain stay banked.
 - **Multiplier Gate** is a physical machine, chosen in the free draft. It costs 1 Power, and you pick the left or
   right alley top. Owning both costs 2 Power.
@@ -66,12 +66,14 @@ Each modifier is tied to one part, so a copy raises the payout, never the freque
 
 - Bumper cadence is `BUMPER_GEN_EVERY = 5` (`catalog.ts`). Every payout amount and price above is a test value.
 - **Generator counter lifetime** (experimental): progress toward "every 5 hits" carries across strikes within a
-  challenge and resets at the next challenge, the same as bank and splitter progress. The multiplier itself still
-  resets every strike.
+  challenge and resets at the next challenge, the same as bank and splitter progress. The global multiplier
+  now also persists across strikes within a challenge.
 - Draft machine share is `draftMachineShare = 0.6` (`economy.ts`). The gate costs $6; the shop never sells it.
 - Gate line position and size: y=4.75, from the wall to 0.1 past the rail, with a 0.15 dead band.
 
 ## Bot measurements
+
+> The following bot figures are from the earlier strike-reset build (before challenge-long multiplier persistence). They are retained as historical comparisons, not new balance results.
 
 These come from `scripts/bot-run.ts` with 70 ms timing error and 30 runs per strategy, to challenge 5. The bot doesn't
 aim for alleys or bumpers, so it understates skilled gate play.

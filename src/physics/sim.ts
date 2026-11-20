@@ -78,7 +78,8 @@ export class Simulation {
   /**
    * Generator progress: `${key}#${every}` → events counted toward the next payout.
    * EXPERIMENTAL rule: carries across strikes within a challenge (like bank/splitter progress) and
-   * resets at the start of the next challenge (first pitch). The multiplier itself always resets per strike.
+   * resets at the start of the next challenge (first pitch). The global multiplier now shares
+   * that challenge lifetime, carrying across strikes.
    */
   genCount = new Map<string, number>();
   private seed: number;

@@ -82,7 +82,7 @@ hud.multWrap.addEventListener('animationend', e => {
 });
 function updateHud() {
   const r = sim.rules;
-  // Always the actual current global multiplier (also after a strike reset and during multiball).
+  // Always the actual global multiplier (persists across strikes, resets per challenge; shared in multiball).
   if (r.multTenths !== shown.mult) {
     hud.mult.textContent = fmtMult(r.multTenths);
     shown.mult = r.multTenths;
