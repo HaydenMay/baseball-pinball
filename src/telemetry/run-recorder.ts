@@ -12,7 +12,10 @@
 import type { SimEvent } from '../physics/sim.ts';
 import type { Modifier } from '../machines/mechanisms.ts';
 
-export const SCHEMA = 'baseball-pinball/dev-run@1';
+/** v2: bundles (item → parts), sales, dormancy, offer weighting origin, 15-challenge victory. */
+export const SCHEMA = 'baseball-pinball/dev-run@2';
+/** Older records still load in the report. */
+export const SCHEMAS_READABLE = ['baseball-pinball/dev-run@1', SCHEMA];
 export const STORE_KEYS = { current: 'bp.devRun.current', archive: 'bp.devRun.archive' } as const;
 /** Bounds: memory/storage never grow without limit. */
 export const LIMITS = { ledger: 4000, highlights: 25, pitchesPerChallenge: 12, archivedRuns: 3 };
@@ -53,18 +56,38 @@ export type RunView = {
   powerUsed: number;
   rerolls: number;
   rerollPrice: number;
-  installed: { offerKey: string; mountId: string; id: string; name: string; def: { powerCost: number; type: string } }[];
+  installed: { uid?: string; offerKey: string; mountId: string; mounts?: string[]; id: string; name: string; power?: number; parts?: { id: string; type: string }[]; via?: string; paid?: number; def: { powerCost: number; type: string } }[];
   mods: Record<string, Modifier[]>;
   powerGrant: { inning: number; gained: number; maxPower: number } | null;
+  dormantKeys?: () => string[];
 };
 
-export type OfferSummary = { kind: 'machine' | 'modifier'; key: string; name: string; desc: string; price: number; power?: number; target?: string; targetLabel?: string };
+export type OfferSummary = {
+  kind: 'machine' | 'modifier';
+  key: string;
+  name: string;
+  desc: string;
+  price: number;
+  power?: number;
+  pieces?: number;
+  target?: string;
+  targetLabel?: string;
+  scope?: string;
+  /** Developer data only: why this candidate was likely (weights.ts). */
+  origin?: string;
+  weight?: number;
+  synergies?: string[];
+  /** Installable right now / only after selling (developer data). */
+  feasibility?: 'now' | 'after-selling';
+};
 
 export type BuildSnapshot = {
   money: number;
   maxPower: number;
   powerUsed: number;
-  installed: { id: string; offerKey: string; name: string; mount: string; power: number; type: string }[];
+  installed: { id: string; uid?: string; offerKey: string; name: string; mount: string; mounts?: string[]; power: number; type: string; parts?: string[]; via?: string; paid?: number }[];
+  /** Modifier keys whose anchor part isn't on the board. */
+  dormant?: string[];
   /** Modifiers grouped by their actual target, every copy kept. */
   mods: { target: string; copies: number; byName: Record<string, number>; items: Modifier[] }[];
   modCount: number;
@@ -206,19 +229,35 @@ export function snapshotBuild(run: RunView): BuildSnapshot {
     money: run.money,
     maxPower: run.maxPower,
     powerUsed: run.powerUsed,
-    installed: run.installed.map(i => ({ id: i.id, offerKey: i.offerKey, name: i.name, mount: i.mountId, power: i.def.powerCost, type: i.def.type })),
+    installed: run.installed.map(i => ({
+      id: i.id, uid: i.uid, offerKey: i.offerKey, name: i.name, mount: i.mountId, mounts: i.mounts, power: i.power ?? i.def.powerCost, type: i.def.type,
+      parts: i.parts?.map(p => p.id), via: i.via, paid: i.paid,
+    })),
     mods,
     modCount: mods.reduce((n, m) => n + m.copies, 0),
+    dormant: run.dormantKeys?.() ?? [],
   };
 }
 
-export function summarizeOffer(o: { kind: 'machine' | 'modifier'; key: string; name: string; desc: string; price: number; power?: number; target?: { key: string; label: string } }): OfferSummary {
+type OfferLike = {
+  kind: 'machine' | 'modifier'; key: string; name: string; desc: string; price: number; power?: number; pieces?: number;
+  target?: { key: string; label: string }; scope?: string; origin?: string; weight?: number; synergies?: string[];
+};
+export function summarizeOffer(o: OfferLike, check?: (o: OfferLike) => { ok: boolean }): OfferSummary {
   const s: OfferSummary = { kind: o.kind, key: o.key, name: o.name, desc: o.desc, price: o.price };
-  if (o.kind === 'machine') s.power = o.power;
+  if (o.kind === 'machine') {
+    s.power = o.power;
+    if (o.pieces) s.pieces = o.pieces;
+    if (check) s.feasibility = check(o).ok ? 'now' : 'after-selling';
+  }
   if (o.target) {
     s.target = o.target.key;
     s.targetLabel = o.target.label;
   }
+  if (o.scope) s.scope = o.scope;
+  if (o.origin) s.origin = o.origin;
+  if (o.weight !== undefined) s.weight = o.weight;
+  if (o.synergies?.length) s.synergies = o.synergies;
   return s;
 }
 
@@ -292,7 +331,7 @@ export class RunRecorder {
       this.safeRemove(STORE_KEYS.current);
       return null;
     }
-    if (r.schema !== SCHEMA) return null;
+    if (!SCHEMAS_READABLE.includes(r.schema)) return null;
     if (this.rec && r.runId === this.rec.runId) return null;
     // A run with no played pitch carries no data (e.g. reload on the first READY screen): drop it so it
     // can never push a real run out of the archive.
@@ -319,7 +358,7 @@ export class RunRecorder {
     if (!raw) return [];
     try {
       const list = JSON.parse(raw);
-      return Array.isArray(list) ? list.filter(r => r?.schema === SCHEMA) : [];
+      return Array.isArray(list) ? list.filter(r => SCHEMAS_READABLE.includes(r?.schema)) : [];
     } catch {
       return [];
     }
@@ -422,19 +461,19 @@ export class RunRecorder {
       r.money.earned += earned;
       this.log('clearReward', { earned, money: run.money });
       if (run.powerGrant) this.log('powerGrant', { ...run.powerGrant });
-      this.log('draftOffers', { offers: run.draft.map(summarizeOffer) });
+      this.log('draftOffers', { offers: run.draft.map(o => summarizeOffer(o, (run as any).check?.bind(run))) });
       this.save();
     }
   }
 
   draftTaken(run: RunView, offer: Parameters<typeof summarizeOffer>[0], declined: Parameters<typeof summarizeOffer>[0][], mount?: string) {
-    this.log('draftTaken', { offer: summarizeOffer(offer), declined: declined.map(summarizeOffer), mount });
+    this.log('draftTaken', { offer: summarizeOffer(offer), declined: declined.map(o => summarizeOffer(o)), mount });
     this.logAcquire(run, offer, 'draft', mount);
     this.save();
   }
 
   shopOffers(run: RunView & { shop: Parameters<typeof summarizeOffer>[0][] }, reason: 'open' | 'reroll') {
-    this.log('shopOffers', { reason, offers: run.shop.map(summarizeOffer), money: run.money });
+    this.log('shopOffers', { reason, offers: run.shop.map(o => summarizeOffer(o)), money: run.money });
   }
 
   purchase(run: RunView, offer: Parameters<typeof summarizeOffer>[0], moneyBefore: number, mount?: string) {
@@ -456,14 +495,40 @@ export class RunRecorder {
     this.log('reroll', { price, moneyBefore, moneyAfter: run.money });
   }
 
+  /** A sale between challenges: refund, Power reclaimed, modifiers going dormant / waking. */
+  sale(run: RunView, info: { uid: string; name: string; refund: number; powerFreed: number; powerBefore: string; powerAfter: string; dormant: { key: string; names: string[] }[]; waking: { key: string; names: string[] }[] }, dormantBefore: string[]) {
+    const r = this.rec;
+    if (!r) return;
+    r.money.earned += info.refund;
+    (r.money as any).refunds = ((r.money as any).refunds ?? 0) + info.refund;
+    (r.money as any).sales = ((r.money as any).sales ?? 0) + 1;
+    this.log('sale', { item: info.uid, name: info.name, refund: info.refund, powerFreed: info.powerFreed, power: `${info.powerBefore} → ${info.powerAfter}`, money: run.money, dormant: info.dormant, waking: info.waking });
+    this.boardDiff(run, dormantBefore);
+    this.save();
+  }
+
+  /** Log modifiers that became dormant or reactivated since `dormantBefore` (install / sale). */
+  boardDiff(run: RunView, dormantBefore: string[]) {
+    const now = run.dormantKeys?.() ?? [];
+    const woke = dormantBefore.filter(k => !now.includes(k));
+    const slept = now.filter(k => !dormantBefore.includes(k));
+    const names = (k: string) => (run.mods[k] ?? []).map(m => m.note ?? '?');
+    if (woke.length) this.log('modsReactivated', { keys: woke.map(k => ({ key: k, names: names(k) })) });
+    if (slept.length) this.log('modsDormant', { keys: slept.map(k => ({ key: k, names: names(k) })) });
+  }
+
   nextChallenge(run: RunView) {
     this.log('next', { toChallenge: run.challenge, money: run.money, power: `${run.powerUsed}/${run.maxPower}` });
   }
 
   private logAcquire(run: RunView, offer: Parameters<typeof summarizeOffer>[0], via: 'draft' | 'shop', mount?: string) {
     if (offer.kind === 'machine') {
-      const inst = [...run.installed].reverse().find(i => i.offerKey === offer.key && (!mount || i.mountId === mount));
-      if (inst) this.log('install', { via, id: inst.id, offerKey: inst.offerKey, name: inst.name, mount: inst.mountId, power: inst.def.powerCost, powerAfter: `${run.powerUsed}/${run.maxPower}` });
+      const inst = [...run.installed].reverse().find(i => i.offerKey === offer.key && (!mount || i.mountId === mount || (i as any).placement === mount));
+      if (inst)
+        this.log('install', {
+          via, item: inst.uid, id: inst.id, offerKey: inst.offerKey, name: inst.name, mount: inst.mountId, mounts: inst.mounts,
+          parts: inst.parts?.map(p => p.id), power: inst.power ?? inst.def.powerCost, paid: inst.paid ?? 0, powerAfter: `${run.powerUsed}/${run.maxPower}`,
+        });
     } else if (offer.target) {
       const stack = run.mods[offer.target.key] ?? [];
       const copy = stack.filter(m => m.note === offer.name).length;

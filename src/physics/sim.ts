@@ -14,7 +14,7 @@ import { GameRules } from '../core/rules.ts';
 import { batAngleAt, findContact, swingStateAt, type Contact } from '../core/swing.ts';
 import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
-import { applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { RALLY_CHARGES, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type SimEvent =
@@ -30,6 +30,8 @@ export type SimEvent =
   | { type: 'scoop'; id: string; phase: 'catch' | 'eject'; x: number; y: number; points: number; ball: number }
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
   | { type: 'clear'; score: number; target: number }
+  /** Cross-family charge pool refilled (a full ramp ride with Rally Fuel/Momentum installed). */
+  | { type: 'rally'; charges: number }
   /**
    * Observation only (analytics): one per banked award, emitted by the single scoring boundary.
    * `base` = the part's own base points, `modified` = after the part's own +/× modifiers,
@@ -125,9 +127,25 @@ export class Simulation {
   }
 
   /** Base points after the preset's stacked modifiers for this part id and its kind. */
-  pts(id: string, kind: string, base: number) {
-    const mods = [...(this.mods[id] ?? []), ...(this.mods[kind + ':*'] ?? [])];
+  /**
+   * A part's own points: (base + Σadd) × Πmul over its own modifiers, its kind's group ("bumper:*") and,
+   * when given, its family group ("ramps:*" for every ramp checkpoint). The global multiplier is NOT here.
+   */
+  pts(id: string, kind: string, base: number, family?: string, extra?: Modifier[]) {
+    const mods = [...(this.mods[id] ?? []), ...(this.mods[kind + ':*'] ?? []), ...(family ? (this.mods[family + ':*'] ?? []) : []), ...(extra ?? [])];
     return mods.length ? applyModifiers(base, mods) : base;
+  }
+
+  /**
+   * Cross-family "ride → bumpers" (Rally Fuel / Momentum): a full ramp ride sets a shared pool of charged
+   * bumper hits to RALLY charges (refills, never stacks, so multiball can't multiply it); each bumper hit
+   * consumes one and adds the modifiers' bonus to that hit's own points. Resets with the challenge.
+   */
+  rallyCharges = 0;
+  private rallyRefill() {
+    if (!(this.mods['cross:ride-bumpers']?.length)) return;
+    this.rallyCharges = RALLY_CHARGES;
+    this.emit({ type: 'rally', charges: this.rallyCharges });
   }
 
   /**
@@ -298,7 +316,9 @@ export class Simulation {
       if (points < 0) return;
     }
     const base = points;
-    points = this.pts(d.id, d.kind, points);
+    const rally = d.kind === 'bumper' && this.rallyCharges > 0 ? this.mods['cross:ride-bumpers'] : undefined;
+    if (rally?.length) this.rallyCharges--;
+    points = this.pts(d.id, d.kind, points, undefined, rally);
     if (points) points = this.award(d.kind, d.id, base, points, ball);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
     if (d.kind === 'bumper') this.boost('bumper', d.id, pos.x, pos.y, this.generate(d.id, 'bumper'), ball);
@@ -534,6 +554,7 @@ export class Simulation {
         this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
         // Only a completed ride counts toward ramp generators (entering or rolling back never does).
         this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
+        this.rallyRefill();
       }
       if (d.exit?.mode === 'drop') {
         // Leave the raised level and fall onto the field; collisions resume on landing.
@@ -621,9 +642,12 @@ export class Simulation {
     const st = ball.ramp!, d = st.r.def, c = d.checkpoints!, last = i === st.r.cpS.length - 1;
     const [key, kind] = last ? [d.id, 'ramp'] : i === st.r.cpGate ? [d.id + '-gate', 'rampGate'] : [d.id + '-cp', 'rampCheckpoint'];
     const at = rampAt(st.r, st.r.cpS[i]).p;
-    const pts = this.award(kind, key, c.points, this.pts(key, kind, c.points), ball, `cp${i}`);
+    const pts = this.award(kind, key, c.points, this.pts(key, kind, c.points, 'ramps'), ball, `cp${i}`);
     this.emit({ type: 'rampCheckpoint', id: d.id, index: i, count: st.r.cpS.length, x: at.x, y: at.y, points: pts, ball: ball.id });
-    if (last) this.boost('ramp', d.id, at.x, at.y, this.generate(d.id, 'ramp'), ball);
+    if (last) {
+      this.boost('ramp', d.id, at.x, at.y, this.generate(d.id, 'ramp'), ball);
+      this.rallyRefill();
+    }
   }
 
   /** Record which side of each multiplier gate a ball is on (nothing if it's inside the dead band). */

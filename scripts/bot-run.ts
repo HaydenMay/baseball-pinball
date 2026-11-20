@@ -34,7 +34,7 @@ let REC: RunRecorder | null = null;
 // BOT_RAMPS=legacy (old gate + finish payouts instead of 8 × 1,000 checkpoints).
 if (process.env.BOT_GROWTH) ECONOMY.targetGrowth = +process.env.BOT_GROWTH;
 if (process.env.BOT_POWER === 'flat5') Object.assign(ECONOMY, { startPower: 5, powerPerInning: 0 });
-if (process.env.BOT_RAMPS === 'legacy') for (const m of MACHINES) for (const d of Object.values(m.at)) if (d.type === 'ramp') delete d.checkpoints;
+if (process.env.BOT_RAMPS === 'legacy') for (const m of MACHINES) for (const d of Object.values(m.at).flat()) if (d.type === 'ramp') delete d.checkpoints;
 const rampStats = { enter: 0, complete: 0, checkpoints: 0, points: 0, allPoints: 0 };
 
 const STRAT = (process.argv[6] ?? 'any') as 'any' | 'gate' | 'nogate' | 'bumper' | 'objective';

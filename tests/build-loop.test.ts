@@ -5,7 +5,7 @@ import { config } from '../src/config.ts';
 import { Simulation, type SimEvent } from '../src/physics/sim.ts';
 import { makeControls } from '../src/core/input.ts';
 import { Run, type Offer } from '../src/run/run.ts';
-import { MACHINES, MOUNTS } from '../src/run/catalog.ts';
+import { MACHINES, placementsOf, MOUNTS } from '../src/run/catalog.ts';
 import { ECONOMY } from '../src/run/economy.ts';
 import { OUTER_WALL } from '../src/physics/board.ts';
 import { presetForPath, isBuildRoute } from '../src/machines/presets.ts';
@@ -174,7 +174,7 @@ test('power: over-capacity installs are blocked; factory parts cost 0', () => {
   assert.ok(buyMachine(r, 'splitter').ok); // 3
   assert.ok(buyMachine(r, 'glove-scoop').ok); // 2 → 5/5
   const res = buyMachine(r, 'spinner', 'lane-l');
-  assert.ok(!res.ok && /Needs ⚡1; 0 free/.test(res.reason!), JSON.stringify(res));
+  assert.ok(!res.ok && /needs 1 more free Power/.test(res.reason!) && (res as any).fixable, JSON.stringify(res));
   assert.equal(r.powerUsed, 5);
   const v = r.preset();
   assert.ok(v.mechanisms.reduce((s, m) => s + m.powerCost, 0) <= v.maxPower);
@@ -283,16 +283,32 @@ function staticOverlap(s: Simulation, x: number, y: number, r: number) {
   return hit;
 }
 
-test('every mount fits the factory table, and all non-conflicting machines fit together', () => {
-  // full build: every machine on every mount except declared conflicts (take orbit-l, skip bridge), then the other side
-  for (const skip of ['bridge', 'center-r']) {
-    const r = new Run(1);
-    r.maxPower = 99;
-    for (const m of MACHINES) for (const mount of Object.keys(m.at)) {
-      if (mount === skip) continue;
-      const def = { ...structuredClone(m.at[mount]), id: `${m.at[mount].id}@${mount}` } as any;
-      r.installed.push({ offerKey: m.key, mountId: mount, id: def.id, def, name: m.name });
-    }
+/**
+ * Full builds that together use every placement of every machine (bundles, spans and all three ramps
+ * included). Each is a set the mount conflicts allow at once.
+ */
+const FULL_BUILDS: [string, string][][] = [
+  [['mult-gate', 'gate-l'], ['mult-gate', 'gate-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur'], ['spinner', 'lane-l'], ['spinner', 'lane-r'], ['bank', 'bank-cards'], ['bank', 'bank-stars'], ['jackpot-gate', 'jackpot-lane'], ['turbo-ramp', 'orbit-l'], ['glove-scoop', 'pocket-r'], ['splitter', 'center-r'], ['twin-bumpers', 'flank-l'], ['twin-bumpers', 'flank-r']],
+  [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur'], ['spinner', 'lane-l'], ['spinner', 'lane-r'], ['bank', 'bank-cards'], ['bank', 'bank-stars'], ['jackpot-gate', 'jackpot-lane'], ['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['glove-scoop', 'pocket-r'], ['twin-bumpers', 'flank-l'], ['twin-bumpers', 'flank-r']],
+  [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['spinner', 'lane-l'], ['bank', 'bank-stars'], ['turbo-ramp', 'orbit-l'], ['glove-scoop', 'pocket-r'], ['splitter', 'center-r'], ['twin-bumpers', 'flank-l'], ['bumper-cluster', 'cluster-r']],
+  [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur'], ['spinner', 'lane-l'], ['spinner', 'lane-r'], ['bank', 'bank-cards'], ['bank', 'bank-stars'], ['jackpot-gate', 'jackpot-lane'], ['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['long-loop', 'loop-r']],
+];
+function fullBuild(list: [string, string][]) {
+  const r = new Run(1);
+  r.maxPower = 99;
+  for (const [k, p] of list) {
+    const res = r.installForTest(k, p);
+    assert.ok(res.ok, `${k} @ ${p}: ${(res as any).reason}`);
+  }
+  return r;
+}
+
+test('full builds cover every placement, and every machine fits the factory table with the others', () => {
+  const covered = new Set(FULL_BUILDS.flat().map(([k, p]) => `${k}|${p}`));
+  for (const m of MACHINES) for (const p of placementsOf(m)) assert.ok(covered.has(`${m.key}|${p.id}`), `${m.key} @ ${p.id} is exercised`);
+  for (const [bi, list] of FULL_BUILDS.entries()) {
+    const skip = `build ${bi + 1}`;
+    const r = fullBuild(list);
     const s = new Simulation({ preset: r.preset() });
     // no mechanism collider overlaps another static collider
     const fixtures: P.Fixture[] = [];
@@ -319,18 +335,13 @@ test('every mount fits the factory table, and all non-conflicting machines fit t
     }
     for (const sp of s.layout.splitters) assert.ok(!staticOverlap(s, sp.hatch.x, sp.hatch.y, rad), 'hatch open');
   }
-  assert.equal(MOUNTS.length, 13, '11 original mounts + left/right alley-top gate mounts');
+  assert.equal(MOUNTS.length, 17, '11 original + 2 alley-top gate + left/right flank, right mid-field and Long Loop sites');
 });
 
 test('fully built machines: no traps, soft-locks or tunneling under random play', () => {
-  for (const skip of ['bridge', 'center-r']) {
-    const r = new Run(1);
-    r.maxPower = 99;
-    for (const m of MACHINES) for (const mount of Object.keys(m.at)) {
-      if (mount === skip) continue;
-      const def = { ...structuredClone(m.at[mount]), id: `${m.at[mount].id}@${mount}` } as any;
-      r.installed.push({ offerKey: m.key, mountId: mount, id: def.id, def, name: m.name });
-    }
+  for (const [bi, list] of FULL_BUILDS.entries()) {
+    const skip = `build ${bi + 1}`;
+    const r = fullBuild(list);
     let maxStill = 0, maxCaptured = 0, escapes = 0;
     for (let i = 0; i < 30; i++) {
       const s = new Simulation({ preset: r.preset(), seed: i + 1 });
@@ -378,7 +389,8 @@ test('build-test bridge: a real swing reaches it, and its drop returns the ball 
   const r = new Run(1);
   r.maxPower = 9;
   const m = MACHINES.find(m => m.key === 'bridge-ramp')!;
-  r.installed.push({ offerKey: m.key, mountId: 'bridge', id: 'ramp@bridge', name: m.name, def: { ...structuredClone(m.at.bridge), id: 'ramp@bridge' } as any });
+  void m;
+  assert.ok(r.installForTest('bridge-ramp', 'bridge').ok);
   let entries = 0, backToBat = 0;
   for (let off = -1.2; off <= 0.6; off += 0.3) for (let st = 0.7; st <= 0.88; st += 0.005) {
     const s = new Simulation({ preset: r.preset() });

@@ -1,26 +1,110 @@
 /**
- * One build-test run: the machine (installed mechanisms + stacked modifiers), Power, money, and the
- * challenge → draft → shop → next challenge cycle. Headless and deterministic per seed so it can be
- * tested; the browser UI and the bot drive the same object.
+ * One build-test run: the machine (installed items + board modifiers), Power, money, and the
+ * challenge → draft → shop → next challenge cycle over 5 innings (15 challenges). Headless and
+ * deterministic per seed so it can be tested; the browser UI and the bot drive the same object.
+ *
+ * Board model (Upgrade System 3.0):
+ * - An installed ITEM is one owned acquisition (single machine or bundle) with 1+ physical PARTS.
+ * - Part ids are stable site anchors `${base}@${mount}`. Targeted modifiers are keyed by part id, so they
+ *   belong to the board location + compatible part type, not to an owned object. A part that's not on
+ *   the board makes its modifiers DORMANT (the sim never sees that id); a compatible reinstall at the
+ *   same site (same id) wakes them exactly once, because they never moved or got copied.
+ * - Group modifiers ("bumper:*", "multgate:*", "ramps:*", "ramp:*", "cross:*") apply to every compatible
+ *   part, present and future, and are never dormant.
+ * - Selling (between challenges only) removes the whole item, frees 100% of its Power and mounts, refunds
+ *   floor(actual price paid / 2) (free draft rewards refund $0), and never deletes a modifier.
  */
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
-import { MACHINES, MODS, MOUNTS, type MachineOffer, type Mount } from './catalog.ts';
+import { MACHINES, MODS, MOUNTS, familyOfKey, placementsOf, type BoardView, type Family, type MachineOffer, type Mount, type Placement } from './catalog.ts';
 import { ECONOMY, inningOf, targetFor } from './economy.ts';
+import { OFFER_WEIGHTS, investment, pickWeighted, weigh } from './weights.ts';
 
-export type Installed = { offerKey: string; mountId: string; id: string; def: MechanismDef; name: string };
+export type Installed = {
+  /** Ownership id (one per acquisition; a bundle is one item). */
+  uid: string;
+  offerKey: string;
+  name: string;
+  family: Family;
+  /** Placement chosen (a mount id, or "a+b" for multi-mount spans). */
+  placement: string;
+  /** Every mount this item occupies; `mountId` is the first (kept for older callers). */
+  mounts: string[];
+  mountId: string;
+  /** Physical parts with their site-anchored ids. */
+  parts: MechanismDef[];
+  /** First part (kept for older callers). */
+  id: string;
+  def: MechanismDef;
+  /** Total Power occupied (every part's powerCost). */
+  power: number;
+  /** Factory parts removed while this is installed. */
+  displaces: string[];
+  /** Acquisition provenance, for refunds. */
+  via: 'draft' | 'shop' | 'test';
+  paid: number;
+};
 
 export type Offer =
-  | { uid: number; kind: 'machine'; key: string; name: string; desc: string; power: number; price: number; mounts: string[] }
-  | { uid: number; kind: 'modifier'; key: string; name: string; desc: string; price: number; target: { key: string; label: string }; mod: Modifier };
+  | {
+      uid: number;
+      kind: 'machine';
+      key: string;
+      name: string;
+      desc: string;
+      power: number;
+      price: number;
+      /** Placement ids (mount id, or "a+b" for spans). */
+      mounts: string[];
+      pieces?: number;
+      origin?: 'synergy' | 'family' | 'wildcard';
+      weight?: number;
+      synergies?: string[];
+    }
+  | {
+      uid: number;
+      kind: 'modifier';
+      key: string;
+      name: string;
+      desc: string;
+      price: number;
+      target: { key: string; label: string };
+      mod: Modifier;
+      scope?: 'this' | 'all' | 'cross';
+      origin?: 'synergy' | 'family' | 'wildcard';
+      weight?: number;
+      synergies?: string[];
+    };
 
-export type MountStatus = { mount: Mount; state: 'free' | 'taken' | 'blocked'; by?: string };
-export type Check = { ok: true; mounts: string[] } | { ok: false; reason: string };
+export type MountStatus = { mount: Mount; state: 'free' | 'taken' | 'blocked'; by?: string; byUid?: string };
+/**
+ * ok: installable right now on these placements. Otherwise a reason; `fixable` = it would fit after
+ * selling the listed items (`sellUids`, minimal for one placement) and/or freeing `needPower`.
+ */
+export type Check =
+  | { ok: true; mounts: string[] }
+  | { ok: false; reason: string; fixable?: boolean; needPower?: number; blockers?: { uid: string; name: string }[] };
 
-export type Phase = 'challenge' | 'draft' | 'shop' | 'failed';
+export type Phase = 'challenge' | 'draft' | 'shop' | 'failed' | 'won';
+
+export type SaleInfo = {
+  uid: string;
+  name: string;
+  refund: number;
+  powerFreed: number;
+  powerBefore: string;
+  powerAfter: string;
+  /** Modifiers that go dormant (their part leaves the board) and factory-part modifiers that wake up. */
+  dormant: { key: string; names: string[] }[];
+  waking: { key: string; names: string[] }[];
+};
 
 /** Factory parts left off the build-test starter table (playtest finding, see BUILD_LOOP_PLAYTEST.md). */
 export const BUILD_TEST_REMOVED = ['post-l', 'post-r'];
+
+const isGroupKey = (k: string) => k.includes(':');
+/** Anchor part id of a targeted key ("ramp@orbit-l-gate" → "ramp@orbit-l"). */
+export const anchorOf = (k: string) => k.replace(/-(gate|cp)$/, '');
 
 export class Run {
   challenge = 1;
@@ -41,6 +125,7 @@ export class Run {
   powerGrant: { inning: number; gained: number; maxPower: number } | null = null;
   private seed: number;
   private uid = 1;
+  private itemSeq = 1;
 
   constructor(seed = 1) {
     this.seed = seed >>> 0 || 1;
@@ -58,14 +143,27 @@ export class Run {
   }
 
   get powerUsed() {
-    return this.installed.reduce((s, i) => s + i.def.powerCost, 0);
+    return this.installed.reduce((s, i) => s + i.power, 0);
   }
 
   get rerollPrice() {
     return ECONOMY.rerollBase + this.rerolls * ECONOMY.rerollStep;
   }
 
-  /** The current machine as a preset: factory table + installed mechanisms + stacked modifiers. */
+  /** Factory parts currently displaced by installed items. */
+  get displaced() {
+    return [...new Set(this.installed.flatMap(i => i.displaces))];
+  }
+
+  /** Every physical part on the board right now (for targeting, weighting and dormancy). */
+  board(): BoardView {
+    return {
+      parts: this.installed.flatMap(i => i.parts.map((d, k) => ({ id: d.id, type: d.type, offerKey: i.offerKey, name: i.name, mount: partMount(i, k), family: i.family }))),
+      displaced: this.displaced,
+    };
+  }
+
+  /** The current machine as a preset: factory table + installed parts + board modifiers. */
   preset(): Preset {
     return {
       id: 'baseline',
@@ -75,105 +173,196 @@ export class Run {
       maxPower: this.maxPower,
       // Player playtest: the two front pegs just above the batter deflect the ball too late to react to.
       // Removed on the build-test factory table only; / keeps them as the frozen comparison.
-      removeBase: [...BUILD_TEST_REMOVED],
-      mechanisms: this.installed.map(i => i.def),
+      removeBase: [...BUILD_TEST_REMOVED, ...this.displaced],
+      mechanisms: this.installed.flatMap(i => i.parts),
       modifiers: structuredClone(this.mods),
     };
   }
 
+  // ───────── placement / feasibility ─────────
+
   mountStatus(id: string): MountStatus {
     const mount = MOUNTS.find(m => m.id === id)!;
-    const here = this.installed.find(i => i.mountId === id);
-    if (here) return { mount, state: 'taken', by: here.name };
-    const blocker = this.installed.find(i => mount.conflicts?.includes(i.mountId));
-    if (blocker) return { mount, state: 'blocked', by: blocker.name };
+    const here = this.installed.find(i => i.mounts.includes(id));
+    if (here) return { mount, state: 'taken', by: here.name, byUid: here.uid };
+    const blocker = this.installed.find(i => i.mounts.some(m => mount.conflicts?.includes(m)));
+    if (blocker) return { mount, state: 'blocked', by: blocker.name, byUid: blocker.uid };
     return { mount, state: 'free' };
   }
 
-  /** Can this offer be taken right now (ignoring price)? Never displaces anything already installed. */
-  check(o: Offer): Check {
-    if (o.kind === 'modifier') return { ok: true, mounts: [] };
-    const m = MACHINES.find(m => m.key === o.key)!;
-    if (this.powerUsed + m.power > this.maxPower) return { ok: false, reason: `Needs ⚡${m.power}; ${this.maxPower - this.powerUsed} free` };
-    const free = Object.keys(m.at).filter(id => this.mountStatus(id).state === 'free');
-    if (!free.length) {
-      const st = Object.keys(m.at).map(id => this.mountStatus(id));
-      const by = st.find(s => s.by)?.by;
-      return { ok: false, reason: by ? `No room: blocked by ${by}` : 'No free mount' };
+  /** Items standing in the way of a placement (occupying or conflicting with any of its mounts). */
+  blockersOf(p: Placement) {
+    const uids = new Set<string>();
+    for (const id of p.mounts) {
+      const mount = MOUNTS.find(m => m.id === id)!;
+      for (const i of this.installed) if (i.mounts.includes(id) || i.mounts.some(m => mount.conflicts?.includes(m))) uids.add(i.uid);
     }
-    return { ok: true, mounts: free };
-  }
-
-  private makeMachineOffer(m: MachineOffer): Offer {
-    return { uid: this.uid++, kind: 'machine', key: m.key, name: m.name, desc: m.desc, power: m.power, price: m.price, mounts: Object.keys(m.at) };
-  }
-
-  /** A modifier offer from the given pool: the free draft's premium pool or the shop's. */
-  private makeModOffer(where: 'draft' | 'shop'): Offer | null {
-    const inst = this.installed.map(i => ({ offerKey: i.offerKey, id: i.id, mountId: i.mountId }));
-    const pool = MODS.filter(t => t.tier === where || t.tier === 'both')
-      .map(t => ({ t, targets: t.targets(inst) }))
-      .filter(x => x.targets.length);
-    if (!pool.length) return null;
-    const { t, targets } = pool[Math.floor(this.random() * pool.length)];
-    const target = targets[Math.floor(this.random() * targets.length)];
-    const mod: Modifier = { note: t.name };
-    if (t.add) mod.add = t.add;
-    if (t.mul) mod.mul = t.mul;
-    if (t.gen) mod.gen = { ...t.gen };
-    return { uid: this.uid++, kind: 'modifier', key: t.key, name: t.name, desc: t.effect, price: where === 'draft' ? 0 : t.price, target, mod };
+    return this.installed.filter(i => uids.has(i.uid));
   }
 
   /**
-   * Roll n offers.
-   * - draft (free pick): new physical machines that fit right now + premium upgrades. Premium upgrades
-   *   always have a factory-bumper target, so at full Power there is still a usable pick.
-   * - shop: modifiers only, never a physical machine.
-   * No duplicates in one roll.
+   * Can this offer be installed right now? If not, could it be after selling (always possible when it
+   * fits within max Power at all, since every installed item can be sold)? Never displaces anything.
    */
-  private roll(n: number, where: 'draft' | 'shop'): Offer[] {
-    const out: Offer[] = [];
-    let guard = 0;
-    while (out.length < n && guard++ < 200) {
-      const machines = where === 'draft' ? MACHINES.filter(m => !out.some(o => o.key === m.key) && this.check(this.makeMachineOffer(m)).ok) : [];
-      let o: Offer | null = null;
-      if (machines.length && (this.random() < ECONOMY.draftMachineShare || guard > 100)) o = this.makeMachineOffer(machines[Math.floor(this.random() * machines.length)]);
-      else o = this.makeModOffer(where);
-      if (!o) continue;
-      if (o.kind === 'modifier' && out.some(x => x.kind === 'modifier' && x.key === o!.key && x.target.key === o!.target.key)) continue;
-      out.push(o);
+  check(o: Offer): Check {
+    if (o.kind === 'modifier') return { ok: true, mounts: [] };
+    const m = MACHINES.find(m => m.key === o.key)!;
+    if (m.power > this.maxPower) return { ok: false, reason: `Needs ⚡${m.power}; max Power is ${this.maxPower}`, fixable: false };
+    const places = placementsOf(m);
+    const free = places.filter(p => this.blockersOf(p).length === 0);
+    const room = this.maxPower - this.powerUsed;
+    if (free.length && m.power <= room) return { ok: true, mounts: free.map(p => p.id) };
+    // Over capacity or blocked: find the placement needing the least Power to be freed.
+    let best: { p: Placement; blockers: Installed[]; needPower: number } | null = null;
+    for (const p of places) {
+      const blockers = this.blockersOf(p);
+      const freed = blockers.reduce((s, i) => s + i.power, 0);
+      const needPower = Math.max(0, m.power - room - freed);
+      const cost = blockers.length * 100 + needPower;
+      if (!best || cost < blockers.length * 100 + best.needPower + (best.blockers.length - blockers.length) * 100) best = { p, blockers, needPower };
+    }
+    const b = best!;
+    const parts: string[] = [];
+    if (b.blockers.length) parts.push(`blocked by ${b.blockers.map(i => i.name).join(' + ')}`);
+    const short = Math.max(0, m.power - room);
+    if (short) parts.push(`needs ${short} more free Power`);
+    return {
+      ok: false,
+      reason: `${parts.join('; ')} — use Manage Machine`,
+      fixable: true,
+      needPower: short,
+      blockers: b.blockers.map(i => ({ uid: i.uid, name: i.name })),
+    };
+  }
+
+  /**
+   * Worth offering: fits within max Power, and at least one placement isn't held only by the same machine
+   * type (never offer "sell your Turbo to take a Turbo"). Everything else can be freed via Manage Machine.
+   */
+  feasible(m: MachineOffer) {
+    if (m.power > this.maxPower) return false;
+    return placementsOf(m).some(p => !this.blockersOf(p).some(i => i.offerKey === m.key || sameParts(i, m)));
+  }
+
+  // ───────── offers ─────────
+
+  private modFamilies(): Family[] {
+    const b = this.board();
+    const out: Family[] = [];
+    for (const [k, list] of Object.entries(this.mods)) {
+      const f = familyOfKey(k, b);
+      if (f) for (let i = 0; i < list.length; i++) out.push(f);
     }
     return out;
   }
 
-  /** Challenge cleared: bank money and open the free draft. Returns money earned. */
+  private makeMachineOffer(m: MachineOffer, w?: ReturnType<typeof weigh>): Offer {
+    return {
+      uid: this.uid++, kind: 'machine', key: m.key, name: m.name, desc: m.desc, power: m.power, price: m.price,
+      mounts: placementsOf(m).map(p => p.id), pieces: m.pieces,
+      ...(w ? { origin: w.origin, weight: +w.weight.toFixed(2), synergies: w.synergies } : {}),
+    };
+  }
+
+  private modCandidates(where: 'draft' | 'shop', board: BoardView, inv: Record<string, number>) {
+    return MODS.filter(t => t.tier === where || t.tier === 'both')
+      .map(t => ({ t, targets: t.targets(board), w: weigh(t.key, t.family, board, inv, where) }))
+      .filter(x => x.targets.length);
+  }
+
+  /**
+   * Roll n offers with hybrid weights (see weights.ts).
+   * - draft (free pick): machines that fit within max Power (installable now OR after selling) and premium
+   *   upgrades; always at least one immediately claimable modifier.
+   * - shop: modifiers only, never a physical machine; full 4-card restock on every roll.
+   * No duplicate cards in one roll; repeats across a run are fine.
+   */
+  private roll(n: number, where: 'draft' | 'shop'): Offer[] {
+    const board = this.board();
+    const inv = investment(board, this.modFamilies());
+    const out: Offer[] = [];
+    const mods = this.modCandidates(where, board, inv);
+    const pickMod = (): Offer | null => {
+      const pool = mods.filter(x => x.targets.some(tg => !out.some(o => o.kind === 'modifier' && o.key === x.t.key && o.target.key === tg.key)));
+      if (!pool.length) return null;
+      const x = pool[pickWeighted(pool.map(p => p.w.weight), this.random())];
+      const targets = x.targets.filter(tg => !out.some(o => o.kind === 'modifier' && o.key === x.t.key && o.target.key === tg.key));
+      const target = targets[Math.floor(this.random() * targets.length)];
+      const mod: Modifier = { note: x.t.name };
+      if (x.t.add) mod.add = x.t.add;
+      if (x.t.mul) mod.mul = x.t.mul;
+      if (x.t.gen) mod.gen = { ...x.t.gen };
+      return {
+        uid: this.uid++, kind: 'modifier', key: x.t.key, name: x.t.name, desc: x.t.effect, price: where === 'draft' ? 0 : x.t.price,
+        target, mod, scope: x.t.scope, origin: x.w.origin, weight: +x.w.weight.toFixed(2), synergies: x.w.synergies,
+      };
+    };
+    let guard = 0;
+    while (out.length < n && guard++ < 200) {
+      const machines = where === 'draft' ? MACHINES.filter(m => !out.some(o => o.key === m.key) && this.feasible(m)) : [];
+      let o: Offer | null = null;
+      if (machines.length && this.random() < OFFER_WEIGHTS.draftMachineShare) {
+        const ws = machines.map(m => weigh(m.key, m.family, board, inv, where));
+        const k = pickWeighted(ws.map(w => w.weight), this.random());
+        o = this.makeMachineOffer(machines[k], ws[k]);
+      } else o = pickMod();
+      if (o) out.push(o);
+    }
+    // A player who doesn't want to sell is never stuck: at least one immediately claimable modifier.
+    if (where === 'draft' && !out.some(o => o.kind === 'modifier')) {
+      const idx = out.map((o, i) => [o, i] as const).reverse().find(([o]) => !this.check(o).ok)?.[1] ?? out.length - 1;
+      const keep = out.splice(idx, 1);
+      const m = pickMod();
+      out.splice(idx, 0, m ?? keep[0]);
+    }
+    return out;
+  }
+
+  // ───────── lifecycle ─────────
+
+  /** Challenge cleared: bank money; open the free draft, or win the run on the last challenge. */
   clear(strikesLeft: number) {
     if (this.phase !== 'challenge') return 0;
     const earned = ECONOMY.clearBase + ECONOMY.clearPerStrikeLeft * strikesLeft;
     this.money += earned;
+    this.history.push(`C${this.challenge} cleared (+$${earned})`);
+    if (this.challenge >= ECONOMY.lastChallenge) {
+      // Final Closer: the run is won. No Power grant, no draft, no shop, no next challenge.
+      this.phase = 'won';
+      this.draft = [];
+      this.shop = [];
+      this.history.push('Run complete');
+      return earned;
+    }
     this.phase = 'draft';
     // Finished an inning: +1 permanent max Power BEFORE rolling this clear's draft, so the extra capacity
-    // is usable right away. The phase guard above makes this once per clear; no grant after the last challenge.
-    if (this.challenge % ECONOMY.challengesPerInning === 0 && this.challenge < ECONOMY.lastChallenge) {
+    // is usable right away. The phase guard above makes this once per clear.
+    if (this.challenge % ECONOMY.challengesPerInning === 0) {
       this.maxPower += ECONOMY.powerPerInning;
       this.powerGrant = { inning: inningOf(this.challenge) + 1, gained: ECONOMY.powerPerInning, maxPower: this.maxPower };
       this.history.push(`Inning ${this.powerGrant.inning} unlocked: max Power ${this.maxPower}`);
     }
     this.draft = this.roll(ECONOMY.draftSize, 'draft');
-    this.history.push(`C${this.challenge} cleared (+$${earned})`);
     return earned;
+  }
+
+  get won() {
+    return this.phase === 'won';
   }
 
   fail() {
     if (this.phase === 'challenge') this.phase = 'failed';
   }
 
-  /** Take one draft offer for free. Exactly one per clear. */
+  /**
+   * Take one draft offer for free. Exactly one per clear, and only on a successful install: a blocked or
+   * over-capacity pick is a no-op that keeps the draft open (sell first via Manage Machine).
+   */
   takeDraft(uid: number, mountId?: string) {
     if (this.phase !== 'draft') return { ok: false as const, reason: 'Not drafting' };
     const o = this.draft.find(d => d.uid === uid);
     if (!o) return { ok: false as const, reason: 'No such offer' };
-    const r = this.apply(o, mountId);
+    const r = this.apply(o, mountId, 'draft', 0);
     if (!r.ok) return r;
     this.history.push(`  draft: ${label(o, mountId)}`);
     this.draft = [];
@@ -187,14 +376,14 @@ export class Run {
     this.shop = this.roll(ECONOMY.shopSize, 'shop');
   }
 
-  /** Buy from the shop. No purchase cap: money, Power and room are the only limits. */
+  /** Buy from the shop. No purchase cap: money is the only limit. */
   buy(uid: number, mountId?: string) {
     if (this.phase !== 'shop') return { ok: false as const, reason: 'Shop closed' };
     const o = this.shop.find(d => d.uid === uid);
     if (!o) return { ok: false as const, reason: 'No such offer' };
     if (o.kind !== 'modifier') return { ok: false as const, reason: 'The shop sells modifiers only' };
     if (o.price > this.money) return { ok: false as const, reason: `Costs $${o.price}; you have $${this.money}` };
-    const r = this.apply(o, mountId);
+    const r = this.apply(o, mountId, 'shop', o.price);
     if (!r.ok) return r;
     this.money -= o.price;
     this.shop = this.shop.filter(s => s.uid !== uid);
@@ -202,6 +391,7 @@ export class Run {
     return r;
   }
 
+  /** Full restock (4 new cards) at an escalating price. */
   reroll() {
     if (this.phase !== 'shop' || this.money < this.rerollPrice) return false;
     this.money -= this.rerollPrice;
@@ -210,24 +400,76 @@ export class Run {
     return true;
   }
 
-  /** Install a machine on a mount or stack a modifier. Never removes or displaces anything. */
-  private apply(o: Offer, mountId?: string) {
+  /** Install a machine on a placement (atomic: all parts or none) or stack a modifier. Never displaces installs. */
+  private apply(o: Offer, mountId: string | undefined, via: Installed['via'], paid: number) {
     if (o.kind === 'modifier') {
       (this.mods[o.target.key] ??= []).push({ ...o.mod });
       return { ok: true as const };
     }
     const c = this.check(o);
     if (!c.ok) return c;
-    const mount = mountId ?? (c.mounts.length === 1 ? c.mounts[0] : undefined);
-    if (!mount) return { ok: false as const, reason: 'Pick a mount', mounts: c.mounts };
-    if (!c.mounts.includes(mount)) {
-      const st = this.mountStatus(mount);
-      return { ok: false as const, reason: st.by ? `${st.mount.name} is ${st.state} by ${st.by}` : 'Not a valid mount' };
+    const placement = mountId ?? (c.mounts.length === 1 ? c.mounts[0] : undefined);
+    if (!placement) return { ok: false as const, reason: 'Pick a spot', mounts: c.mounts };
+    if (!c.mounts.includes(placement)) {
+      const st = MOUNTS.find(m => m.id === placement) ? this.mountStatus(placement) : null;
+      return { ok: false as const, reason: st?.by ? `${st.mount.name} is ${st.state} by ${st.by}` : 'Not a valid spot' };
     }
     const m = MACHINES.find(m => m.key === o.key)!;
-    const id = `${m.at[mount].id}@${mount}`;
-    this.installed.push({ offerKey: m.key, mountId: mount, id, name: m.name, def: { ...structuredClone(m.at[mount]), id } as MechanismDef });
+    this.installed.push(buildItem(m, placementsOf(m).find(p => p.id === placement)!, `${m.key}#${this.itemSeq++}`, via, paid));
     return { ok: true as const };
+  }
+
+  /** Test/driver helper: install directly (no offer, no draft spent). */
+  installForTest(key: string, placement?: string) {
+    const m = MACHINES.find(m => m.key === key)!;
+    const o = this.makeMachineOffer(m);
+    const c = this.check(o);
+    if (!c.ok) return c;
+    const p = placement ?? c.mounts[0];
+    if (!c.mounts.includes(p)) return { ok: false as const, reason: `${p} not free` };
+    this.installed.push(buildItem(m, placementsOf(m).find(x => x.id === p)!, `${m.key}#${this.itemSeq++}`, 'test', 0));
+    return { ok: true as const, mounts: [p] };
+  }
+
+  // ───────── selling / dormancy ─────────
+
+  /** Modifier keys whose anchor part is not on the board (factory parts displaced count too). */
+  dormantKeys(): string[] {
+    const onBoard = new Set(this.installed.flatMap(i => i.parts.map(d => d.id)));
+    const displaced = new Set(this.displaced);
+    return Object.keys(this.mods).filter(k => {
+      if (isGroupKey(k) || !this.mods[k].length) return false;
+      const a = anchorOf(k);
+      return a.includes('@') ? !onBoard.has(a) : displaced.has(a);
+    });
+  }
+
+  /** What selling this item would do (no changes). */
+  saleInfo(uid: string): SaleInfo | null {
+    const it = this.installed.find(i => i.uid === uid);
+    if (!it) return null;
+    const ids = new Set(it.parts.map(d => d.id));
+    const others = this.installed.filter(i => i !== it);
+    const stillDisplaced = new Set(others.flatMap(i => i.displaces));
+    const names = (k: string) => this.mods[k].map(m => m.note ?? '?');
+    const dormant = Object.keys(this.mods).filter(k => !isGroupKey(k) && this.mods[k].length && ids.has(anchorOf(k))).map(k => ({ key: k, names: names(k) }));
+    const waking = Object.keys(this.mods).filter(k => !isGroupKey(k) && this.mods[k].length && it.displaces.includes(anchorOf(k)) && !stillDisplaced.has(anchorOf(k))).map(k => ({ key: k, names: names(k) }));
+    return {
+      uid, name: it.name, refund: Math.floor(it.paid / 2), powerFreed: it.power,
+      powerBefore: `${this.powerUsed}/${this.maxPower}`, powerAfter: `${this.powerUsed - it.power}/${this.maxPower}`,
+      dormant, waking,
+    };
+  }
+
+  /** Sell/dismantle a whole item between challenges. Modifiers are never deleted. */
+  sell(uid: string) {
+    if (this.phase !== 'draft' && this.phase !== 'shop') return { ok: false as const, reason: 'Selling is only allowed between challenges' };
+    const info = this.saleInfo(uid);
+    if (!info) return { ok: false as const, reason: 'Not installed' };
+    this.installed = this.installed.filter(i => i.uid !== uid);
+    this.money += info.refund;
+    this.history.push(`  sold ${info.name} (+$${info.refund}, ⚡${info.powerFreed} freed)`);
+    return { ok: true as const, ...info };
   }
 
   /** Leave the shop: next challenge on the same machine. */
@@ -239,6 +481,25 @@ export class Run {
     this.shop = [];
     return true;
   }
+}
+
+/** A paired-gate bundle and single gates hold the same part types: treat as the same machine for offers. */
+function sameParts(i: Installed, m: MachineOffer) {
+  const types = new Set(placementsOf(m).flatMap(p => p.parts.map(x => x.def.type)));
+  return types.size === 1 && i.parts.every(d => types.has(d.type)) && (types.has('multgate'));
+}
+
+/** Mount of the k-th part of an item. */
+function partMount(i: Installed, k: number) {
+  return i.def && i.parts[k] ? (i.parts[k].id.split('@')[1] ?? i.mountId) : i.mountId;
+}
+
+function buildItem(m: MachineOffer, p: Placement, uid: string, via: Installed['via'], paid: number): Installed {
+  const parts = p.parts.map(({ mount, def }) => ({ ...structuredClone(def), id: `${def.id}@${mount}` }) as MechanismDef);
+  return {
+    uid, offerKey: m.key, name: m.name, family: m.family, placement: p.id, mounts: [...p.mounts], mountId: p.mounts[0],
+    parts, id: parts[0].id, def: parts[0], power: parts.reduce((s, d) => s + d.powerCost, 0), displaces: [...(m.displaces ?? [])], via, paid,
+  };
 }
 
 function label(o: Offer, mountId?: string) {

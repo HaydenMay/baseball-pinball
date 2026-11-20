@@ -126,7 +126,8 @@ function nameOf(r: RunRecord, id: string) {
 }
 
 function ledgerText(e: LedgerEntry): string {
-  const o = (x: any) => (x ? `${x.name}${x.targetLabel ? ` → ${x.targetLabel}` : ''}${x.kind === 'machine' ? ` (⚡${x.power})` : ''}${x.price ? ` $${x.price}` : ''}` : '');
+  const o = (x: any) =>
+    x ? `${x.name}${x.targetLabel ? ` → ${x.targetLabel}` : ''}${x.kind === 'machine' ? ` (⚡${x.power}${x.pieces ? `, ${x.pieces} pieces` : ''}${x.feasibility === 'after-selling' ? ', needs room' : ''})` : ''}${x.price ? ` $${x.price}` : ''}${x.origin ? ` [${x.origin}${x.weight !== undefined ? ` w${x.weight}` : ''}]` : ''}` : '';
   switch (e.type) {
     case 'challengeStart':
       return `Challenge start · target ${n(e.target as number)} · $${e.money} · ⚡${e.power}`;
@@ -147,9 +148,15 @@ function ledgerText(e: LedgerEntry): string {
     case 'reroll':
       return `Reroll $${e.price} · $${e.moneyBefore} → $${e.moneyAfter}`;
     case 'install':
-      return `Installed ${e.name} @ ${e.mount} (${e.id}) ⚡${e.power} · Power ${e.powerAfter} · via ${e.via}`;
+      return `Installed ${e.name} @ ${(e.mounts as string[] | undefined)?.join(' + ') ?? e.mount} (${(e.parts as string[] | undefined)?.join(', ') ?? e.id}) ⚡${e.power} · Power ${e.powerAfter} · via ${e.via}${e.paid ? ` · paid $${e.paid}` : ''}`;
     case 'modifier':
       return `Modifier ${e.name} (${e.effect}) → ${e.targetLabel} · copy #${e.copy} of this name · ${e.stackOnTarget} on target · via ${e.via}`;
+    case 'sale':
+      return `Sold ${e.name} · +$${e.refund} · ⚡${e.powerFreed} freed (${e.power})${(e.dormant as any[]).length ? ` · dormant: ${(e.dormant as any[]).map((d: any) => `${d.names.join(', ')} @ ${d.key}`).join('; ')}` : ''}${(e.waking as any[]).length ? ` · waking: ${(e.waking as any[]).map((d: any) => d.key).join(', ')}` : ''}`;
+    case 'modsReactivated':
+      return `Modifiers reactivated: ${(e.keys as any[]).map((d: any) => `${d.names.join(', ')} @ ${d.key}`).join('; ')}`;
+    case 'modsDormant':
+      return `Modifiers now dormant: ${(e.keys as any[]).map((d: any) => `${d.names.join(', ')} @ ${d.key}`).join('; ')}`;
     case 'next':
       return `Next → challenge ${e.toChallenge} · $${e.money} · ⚡${e.power}`;
     case 'runEnd':

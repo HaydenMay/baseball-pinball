@@ -9,8 +9,8 @@ export const ECONOMY = {
   challengesPerInning: 3,
   /** Max Power granted on clearing the last challenge of an inning (before that clear's draft). */
   powerPerInning: 1,
-  /** A full game is 9 innings = 27 challenges; no grant after the last one. */
-  lastChallenge: 27,
+  /** APPROVED: a full run is 5 innings × 3 (Starter, Reliever, Closer) = 15 challenges; clearing C15 wins. */
+  lastChallenge: 15,
   /** Challenge score targets for the first challenges; past the list, each target is the last × growth. */
   targets: [1500, 4000, 8000],
   /** EXPERIMENTAL test value (was 1.6): growth per challenge after the seeded targets. Not final tuning. */
@@ -24,11 +24,7 @@ export const ECONOMY = {
   /** Reroll starts at this price and rises by `rerollStep` each reroll within one shop visit. */
   rerollBase: 1,
   rerollStep: 1,
-  /**
-   * Chance a free-draft slot rolls a physical machine (vs a premium upgrade) when one fits.
-   * The shop never rolls machines (Upgrade System 2.0 split).
-   */
-  draftMachineShare: 0.6,
+  // Draft machine share and all offer weights live in weights.ts (OFFER_WEIGHTS).
 };
 
 export function targetFor(challenge: number) {

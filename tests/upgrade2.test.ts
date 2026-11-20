@@ -331,7 +331,7 @@ test('bank generator pays on completion; bank and generator progress carry acros
 
 // ───────── 6. Draft / shop split ─────────
 
-test('draft: exactly 3 free offers of machines or premium upgrades, always ≥1 usable even at full Power', () => {
+test('draft: exactly 3 free offers of machines or premium upgrades, always ≥1 claimable modifier even at full Power', () => {
   for (let seed = 1; seed <= 60; seed++) {
     const r = new Run(seed);
     if (seed % 3 === 0) {
@@ -347,12 +347,14 @@ test('draft: exactly 3 free offers of machines or premium upgrades, always ≥1 
         const t = MODS.find(t => t.key === o.key)!;
         assert.ok(t.tier === 'draft' || t.tier === 'both', `${o.name} is a premium/draft upgrade`);
         assert.equal(o.price, 0);
+      } else {
+        const c = r.check(o);
+        assert.ok(c.ok || c.fixable, `${o.name} is installable now or after selling`);
+        assert.ok(o.power <= r.maxPower, 'never more Power than the machine has');
       }
     }
-    const usable = r.draft.filter(o => r.check(o).ok);
-    assert.ok(usable.length >= 1, `seed ${seed}: a usable free pick`);
-    if (r.powerUsed >= r.maxPower) assert.ok(r.draft.every(o => o.kind === 'modifier'), 'no dead machine offers at cap');
-    const pick = usable[0];
+    assert.ok(r.draft.some(o => o.kind === 'modifier' && r.check(o).ok), `seed ${seed}: a claimable modifier`);
+    const pick = r.draft.find(o => r.check(o).ok)!;
     const c = r.check(pick);
     assert.ok(r.takeDraft(pick.uid, c.ok ? c.mounts[0] : undefined).ok);
   }

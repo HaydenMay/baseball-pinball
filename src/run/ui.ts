@@ -3,8 +3,8 @@
  * Panels sit in the lower part of the stage so the board (and the placement preview) stays visible.
  * Live play is never covered: panels only open when no ball is in play.
  */
-import { MOUNTS } from './catalog.ts';
-import { Run, type Offer } from './run.ts';
+import { MOUNTS, mountName } from './catalog.ts';
+import { Run, anchorOf, type Offer } from './run.ts';
 import { ECONOMY } from './economy.ts';
 import { anchorsFor } from '../view/anchors.ts';
 import type { GameView } from '../view/game.ts';
@@ -29,6 +29,10 @@ export type BuildHost = {
 };
 
 const fmt = (n: number) => n.toLocaleString();
+const ROLES = ['STARTER', 'RELIEVER', 'CLOSER'];
+/** "INNING 2 · RELIEVER" for a challenge number. */
+export const roleOf = (c: number) => `INNING ${Math.ceil(c / ECONOMY.challengesPerInning)} · ${ROLES[(c - 1) % ECONOMY.challengesPerInning]}`;
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export class BuildUI {
   run: Run;
@@ -37,6 +41,13 @@ export class BuildUI {
   /** Selected offer + mount in the open panel. */
   private sel: { uid: number; mount?: string } | null = null;
   private lastEarned = 0;
+  /** Panel mode: the offers (draft/shop) or the optional Manage Machine screen (returns to the offers). */
+  private mode: 'offers' | 'manage' = 'offers';
+  /** Manage Machine selection and whether the sale confirmation is showing. */
+  private msel: string | null = null;
+  private confirming = false;
+  /** Short result line after a sale (shown on the manage screen). */
+  private saleNote = '';
   /** The Run the recorder is currently recording (a new Run object starts a new recorded run). */
   private recordedRun: Run | null = null;
   private runSeed = 0;
@@ -70,7 +81,7 @@ export class BuildUI {
     this.host.loadMachine(this.run.preset(), this.run.target);
     this.tag();
     this.host.showOverlay(
-      `BUILD TEST · CHALLENGE ${this.run.challenge}`,
+      `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} OF ${ECONOMY.lastChallenge}`,
       `TARGET ${fmt(this.run.target)}`,
       this.run.challenge === 1
         ? 'Factory table. Reach the target within three strikes to earn an upgrade.'
@@ -100,11 +111,29 @@ export class BuildUI {
     rec?.endChallenge(this.run, sim, 'cleared');
     this.lastEarned = this.run.clear(sim.rules.maxStrikes - sim.rules.strikes);
     rec?.afterClear(this.run, this.lastEarned);
-    const victory = this.run.challenge >= ECONOMY.lastChallenge;
-    if (victory) rec?.endRun('completed');
+    const victory = this.run.won;
+    if (victory) {
+      rec?.endRun('completed');
+      this.tag();
+      this.host.showOverlay(
+        'FINAL CLOSER CLEARED · 5 INNINGS',
+        'RUN COMPLETE',
+        `${fmt(sim.rules.score)} / ${fmt(this.run.target)} on challenge ${this.run.challenge}. Final machine: ${this.machineLine()}.`,
+        'NEW RUN',
+        () => {
+          this.runSeed = (Math.random() * 2 ** 32) >>> 0;
+          this.run = new Run(this.runSeed);
+          (window as any).buildRun = this.run;
+          this.start();
+        },
+        `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
+      );
+      if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
+      return;
+    }
     this.tag();
     this.host.showOverlay(
-      `CHALLENGE ${this.run.challenge} CLEARED`,
+      `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} CLEARED`,
       `${fmt(sim.rules.score)} / ${fmt(this.run.target)}`,
       `${this.run.powerGrant ? `INNING ${this.run.powerGrant.inning} UNLOCKED — MAX POWER +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} TOTAL). ` : ''}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
       'CHOOSE REWARD',
@@ -114,7 +143,6 @@ export class BuildUI {
       },
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
     );
-    if (victory && rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
   }
 
   /** Third strike short of the target. */
@@ -142,6 +170,9 @@ export class BuildUI {
 
   private openPanel() {
     this.sel = null;
+    this.mode = 'offers';
+    this.msel = null;
+    this.confirming = false;
     this.panel.hidden = false;
     this.render();
   }
@@ -161,15 +192,29 @@ export class BuildUI {
     const v = this.host.view;
     v.highlights = [];
     v.highlightLabel = '';
+    if (this.mode === 'manage') {
+      const it = this.run.installed.find(i => i.uid === this.msel);
+      if (!it) return;
+      const L = this.host.getSim().layout;
+      for (const d of it.parts) v.highlights.push(...anchorsFor(L, d.id));
+      for (const m of it.mounts) if (!v.highlights.length) {
+        const mm = MOUNTS.find(x => x.id === m)!;
+        v.highlights.push({ x: mm.anchor.x, y: mm.anchor.y, r: mm.r });
+      }
+      v.highlightLabel = `${it.name} · ${it.mounts.map(mountName).join(' + ')}`;
+      return;
+    }
     const o = this.offers().find(o => o.uid === this.sel?.uid);
     if (!o) return;
     if (o.kind === 'machine') {
-      const mounts = this.sel?.mount ? [this.sel.mount] : o.mounts.filter(id => this.run.mountStatus(id).state === 'free');
-      for (const id of mounts) {
+      // every child site of every candidate placement (bundles show all their pieces' sites)
+      const chk = this.run.check(o);
+      const places = this.sel?.mount ? [this.sel.mount] : chk.ok ? chk.mounts : o.mounts;
+      for (const pid of places) for (const id of pid.split('+')) {
         const m = MOUNTS.find(m => m.id === id)!;
         v.highlights.push({ x: m.anchor.x, y: m.anchor.y, r: m.r });
       }
-      v.highlightLabel = mounts.length === 1 ? MOUNTS.find(m => m.id === mounts[0])!.name : 'Pick a spot';
+      v.highlightLabel = places.length === 1 ? places[0].split('+').map(mountName).join(' + ') : chk.ok ? 'Pick a spot' : 'Needs room: Manage Machine';
     } else {
       v.highlights = anchorsFor(this.host.getSim().layout, o.target.key);
       v.highlightLabel = `${o.name}: ${o.desc}`;
@@ -182,32 +227,39 @@ export class BuildUI {
     const selected = this.sel?.uid === o.uid;
     const afford = !isShop || o.price <= r.money;
     let where = '', mountsHtml = '';
+    const placeName = (pid: string) => pid.split('+').map(mountName).join(' + ');
     if (o.kind === 'machine') {
       if (chk.ok && chk.mounts.length > 1) {
         mountsHtml = `<div class="mounts">${chk.mounts
-          .map(id => `<button class="mount ${selected && this.sel?.mount === id ? 'on' : ''}" data-uid="${o.uid}" data-mount="${id}">${MOUNTS.find(m => m.id === id)!.name}</button>`)
+          .map(id => `<button class="mount ${selected && this.sel?.mount === id ? 'on' : ''}" data-uid="${o.uid}" data-mount="${id}">${placeName(id)}</button>`)
           .join('')}</div>`;
-      } else if (chk.ok) where = `Installs at: ${MOUNTS.find(m => m.id === chk.mounts[0])!.name}`;
-    } else where = `Applies to: ${o.target.label}`;
+      } else if (chk.ok) where = `Installs at: ${placeName(chk.mounts[0])}`;
+      else if (chk.fixable) where = `Needs room: ${esc(chk.reason.replace(/ — use Manage Machine$/, ''))}`;
+    } else where = `Applies to: ${esc(o.target.label)}`;
     const needsMount = o.kind === 'machine' && chk.ok && chk.mounts.length > 1 && !(selected && this.sel?.mount);
     const disabled = !chk.ok || !afford || needsMount;
-    const reason = !chk.ok ? chk.reason : !afford ? `Need $${o.price}` : needsMount ? 'Pick a spot' : '';
+    const reason = !chk.ok ? (chk.fixable ? 'NEEDS ROOM' : chk.reason) : !afford ? `Need $${o.price}` : needsMount ? 'Pick a spot' : '';
     const action = isShop ? `BUY $${o.price}` : 'TAKE FREE';
+    const scope = o.kind === 'modifier' ? (o.scope === 'all' ? 'ALL' : o.scope === 'cross' ? 'CROSS' : 'THIS') : '';
+    const tag = o.kind === 'machine' ? `MACHINE${o.pieces ? ` · ${o.pieces} PIECES` : ''} · ⚡${o.power}` : `MODIFIER · ${scope} · no power`;
+    const manage = o.kind === 'machine' && !chk.ok && chk.fixable ? `<button class="omanage" data-act="manage" data-uid="${o.uid}">MANAGE MACHINE</button>` : '';
     return `<div class="offer ${o.kind} ${selected ? 'sel' : ''} ${!chk.ok ? 'locked' : ''}" data-uid="${o.uid}">
-      <div class="otag">${o.kind === 'machine' ? `MACHINE · ⚡${o.power}` : 'MODIFIER · no power'}</div>
+      <div class="otag">${tag}</div>
       <div class="oname">${o.name}</div>
       <div class="odesc">${o.desc}</div>
       ${where ? `<div class="owhere">${where}</div>` : ''}${mountsHtml}
-      <button class="obuy" data-act="take" data-uid="${o.uid}" ${disabled ? 'disabled' : ''}>${reason || action}</button>
+      ${manage || `<button class="obuy" data-act="take" data-uid="${o.uid}" ${disabled ? 'disabled' : ''}>${reason || action}</button>`}
     </div>`;
   }
 
   private render() {
     const r = this.run;
     const draft = r.phase === 'draft';
+    if (this.mode === 'manage') return this.renderManage();
+    const manageBtn = `<button class="pmanage" data-act="manage">MANAGE MACHINE</button>`;
     const head = draft
-      ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · ⚡${r.powerUsed}/${r.maxPower} used · tap a card to preview it</span></div>`
-      : `<div class="phead"><b>SHOP</b><span>$${r.money} · ⚡${r.powerUsed}/${r.maxPower} used · buy as many as you can afford</span></div>`;
+      ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · ⚡${r.powerUsed}/${r.maxPower} used · tap a card to preview it</span>${manageBtn}</div>`
+      : `<div class="phead"><b>SHOP</b><span>$${r.money} · ⚡${r.powerUsed}/${r.maxPower} used · buy as many as you can afford</span>${manageBtn}</div>`;
     // Small, non-blocking reward line when this clear finished an inning.
     const grant = r.powerGrant
       ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>`
@@ -236,7 +288,86 @@ export class BuildUI {
     this.tag();
   }
 
+  /**
+   * Optional Manage Machine screen (from the free pick or the shop). Lists every installed item with its
+   * sites, Power, refund and the modifiers anchored to it; selling needs Sell → Confirm. Returns to the
+   * originating screen with offers, prices and the selected card untouched.
+   */
+  private renderManage() {
+    const r = this.run;
+    this.panel.classList.remove('focus');
+    const dormant = r.dormantKeys();
+    const rows = r.installed
+      .map(it => {
+        const on = it.uid === this.msel;
+        const anchored = Object.keys(r.mods).filter(k => !k.includes(':') && r.mods[k].length && it.parts.some(d => d.id === anchorOf(k)));
+        const modCount = anchored.reduce((n, k) => n + r.mods[k].length, 0);
+        const refund = Math.floor(it.paid / 2);
+        return `<div class="mrow ${on ? 'on' : ''}" data-act="msel" data-item="${esc(it.uid)}">
+          <div class="mname">${esc(it.name)}${it.parts.length > 1 ? ` <span class="mpieces">${it.parts.length} pieces</span>` : ''}</div>
+          <div class="mmeta">${it.mounts.map(mountName).join(' + ')} · ⚡${it.power} · ${it.via === 'shop' ? `paid $${it.paid} → refund $${refund}` : 'free reward → $0'}${modCount ? ` · ${modCount} modifier${modCount > 1 ? 's' : ''} here` : ''}${it.displaces.length ? ` · replaces ${it.displaces.join(', ')}` : ''}</div>
+        </div>`;
+      })
+      .join('');
+    let detail = '';
+    const it = r.installed.find(i => i.uid === this.msel);
+    if (it) {
+      const info = r.saleInfo(it.uid)!;
+      const list = (xs: { key: string; names: string[] }[]) => xs.map(x => `${esc(x.names.join(', '))} <span class="dim">(${esc(x.key)})</span>`).join('<br>');
+      detail = this.confirming
+        ? `<div class="mconfirm"><b>Sell ${esc(info.name)}?</b>
+            <div>Power ⚡${info.powerBefore} → ⚡${info.powerAfter} · refund $${info.refund}</div>
+            ${info.dormant.length ? `<div>Stays on the board, dormant until a compatible part returns to this site:<br>${list(info.dormant)}</div>` : '<div>No modifiers are anchored to it.</div>'}
+            ${info.waking.length ? `<div>Factory part returns; these wake up:<br>${list(info.waking)}</div>` : ''}
+            <div class="mbtns"><button data-act="mcancel">CANCEL</button><button class="danger" data-act="mconfirm">CONFIRM SELL</button></div></div>`
+        : `<div class="mconfirm"><div>Selling frees ⚡${info.powerFreed} (⚡${info.powerBefore} → ⚡${info.powerAfter}) and pays $${info.refund}. Modifiers are never deleted.</div>
+            <div class="mbtns"><button class="danger" data-act="msell">SELL / DISMANTLE</button></div></div>`;
+    }
+    const dorm = dormant.length
+      ? `<div class="mdorm">Dormant modifiers (waiting for a compatible part at their site): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))} @ ${esc(k)}`).join(' · ')}</div>`
+      : '';
+    this.panel.innerHTML = `<div class="phead"><button class="back" data-act="mback">◀ BACK TO ${r.phase === 'draft' ? 'FREE PICK' : 'SHOP'}</button><b>MANAGE</b><span>⚡${r.powerUsed}/${r.maxPower} · $${r.money}</span></div>
+      ${this.saleNote ? `<div class="pgrant">${esc(this.saleNote)}</div>` : ''}
+      <div class="mlist">${rows || '<div class="empty">Factory table only: nothing installed to sell.</div>'}</div>${detail}${dorm}`;
+    this.preview();
+    this.tag();
+  }
+
   private onClick(e: MouseEvent) {
+    const mel = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+    const act = mel?.dataset.act;
+    if (act === 'manage') {
+      this.mode = 'manage';
+      this.msel = null;
+      this.confirming = false;
+      this.saleNote = '';
+      e.stopPropagation();
+      return this.render();
+    }
+    if (this.mode === 'manage') {
+      if (act === 'mback') this.mode = 'offers';
+      else if (act === 'msel') {
+        this.msel = mel!.dataset.item ?? null;
+        this.confirming = false;
+      } else if (act === 'msell') this.confirming = true;
+      else if (act === 'mcancel') this.confirming = false;
+      else if (act === 'mconfirm' && this.msel) {
+        const dormantBefore = this.run.dormantKeys();
+        const res = this.run.sell(this.msel);
+        if (res.ok) {
+          this.host.recorder?.sale(this.run, res, dormantBefore);
+          this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${res.dormant.length ? `, ${res.dormant.reduce((n, d) => n + d.names.length, 0)} modifier(s) dormant` : ''}.`;
+          this.host.loadMachine(this.run.preset(), this.run.target);
+        }
+        this.msel = null;
+        this.confirming = false;
+      }
+      return this.render();
+    }
+    this.onOfferClick(e);
+  }
+
+  private onOfferClick(e: MouseEvent) {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-mount],.offer');
     if (!el) return;
     const uid = Number(el.dataset.uid ?? el.closest<HTMLElement>('.offer')?.dataset.uid);
@@ -248,10 +379,12 @@ export class BuildUI {
       const offer = (wasDraft ? this.run.draft : this.run.shop).find(o => o.uid === uid);
       const declined = wasDraft ? this.run.draft.filter(o => o.uid !== uid) : [];
       const moneyBefore = this.run.money;
+      const dormantBefore = this.run.dormantKeys();
       const res = wasDraft ? this.run.takeDraft(uid, mount) : this.run.buy(uid, mount);
       const rec = this.host.recorder;
+      if (res.ok && rec && offer) rec.boardDiff(this.run, dormantBefore);
       if (res.ok && rec && offer) {
-        const placed = offer.kind === 'machine' ? this.run.installed[this.run.installed.length - 1]?.mountId : undefined;
+        const placed = offer.kind === 'machine' ? this.run.installed[this.run.installed.length - 1]?.placement : undefined;
         if (wasDraft) {
           rec.draftTaken(this.run, offer, declined, placed);
           rec.shopOffers(this.run, 'open');

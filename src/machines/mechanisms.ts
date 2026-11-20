@@ -110,6 +110,9 @@ export type BankDef = Base & { type: 'bank'; name: string; targetIds: string[]; 
 /** Extra pop bumper with its own point value. */
 export type BonusBumperDef = Base & { type: 'bumper'; x: number; y: number; r: number; points: number; kick: number };
 
+/** Experimental cross-family rule: a full ramp ride charges this many following bumper hits (shared pool, refills, never stacks). */
+export const RALLY_CHARGES = 5;
+
 export type MechanismDef = RampDef | ScoopDef | SplitterDef | GateDef | BonusBumperDef | SpinnerDef | BankDef | MultGateDef;
 
 /**

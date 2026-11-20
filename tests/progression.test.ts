@@ -45,20 +45,28 @@ function advance(r: Run) {
 
 // ───────── A. Power by inning ─────────
 
-test('power: starts at 6 and gains +1 on clearing C3, C6 … C24 (14 entering C25), never after C27', () => {
+test('power: starts at 6, +1 on clearing C3, C6, C9, C12 (10 in inning 5); C15 wins with no grant, draft or C16', () => {
   const r = new Run(1);
+  assert.equal(ECONOMY.lastChallenge, 15);
   assert.equal(r.maxPower, 6);
   const seen: number[] = [];
-  for (let c = 1; c <= 27; c++) {
+  for (let c = 1; c <= 15; c++) {
     assert.equal(r.challenge, c);
     assert.equal(r.maxPower, maxPowerFor(c), `max Power while playing C${c}`);
     seen.push(r.maxPower);
     const before: number = r.maxPower;
     r.clear(2);
-    const grant = c % 3 === 0 && c < 27;
+    const grant = c % 3 === 0 && c < 15;
     assert.equal(r.maxPower, before + (grant ? 1 : 0), `clear C${c}`);
     assert.equal(!!r.powerGrant, grant);
     if (grant) assert.deepEqual(r.powerGrant, { inning: c / 3 + 1, gained: 1, maxPower: before + 1 });
+    if (c === 15) {
+      assert.equal(r.phase, 'won', 'clearing C15 wins the run');
+      assert.equal(r.draft.length, 0, 'no draft after the final clear');
+      assert.equal(r.next(), false, 'no C16');
+      assert.equal(r.challenge, 15);
+      break;
+    }
     // a second clear() callback (or a reroll) never grants again
     r.clear(2);
     r.money = 50;
@@ -68,9 +76,9 @@ test('power: starts at 6 and gains +1 on clearing C3, C6 … C24 (14 entering C2
     r.next();
     assert.equal(r.powerGrant, null, 'grant message only on that transition');
   }
-  assert.deepEqual([...new Set(seen)], [6, 7, 8, 9, 10, 11, 12, 13, 14]);
-  assert.equal(maxPowerFor(25), 14);
-  assert.equal(maxPowerFor(27), 14);
+  assert.deepEqual([...new Set(seen)], [6, 7, 8, 9, 10]);
+  assert.equal(maxPowerFor(13), 10);
+  assert.equal(maxPowerFor(15), 10);
 });
 
 test('power: no grant on failure', () => {
@@ -84,7 +92,7 @@ test('power: no grant on failure', () => {
 });
 
 test('power: the grant lands before the inning-ending draft is rolled, so the new slot is usable at once', () => {
-  let machineDrafts = 0;
+  let usableMachine = 0;
   for (let seed = 1; seed <= 30; seed++) {
     const r = new Run(seed);
     // fill all 6 Power: Overpass ⚡3 + bonus bumper ⚡1 + both multiplier gates ⚡1+1
@@ -96,12 +104,15 @@ test('power: the grant lands before the inning-ending draft is rolled, so the ne
     r.challenge = 3;
     r.clear(1);
     assert.equal(r.maxPower, 7);
-    const machines = r.draft.filter(o => o.kind === 'machine');
-    for (const m of machines) assert.ok(r.check(m).ok, `${m.name} offered and installable with the new Power`);
-    if (machines.length) machineDrafts++;
-    assert.ok(r.draft.some(o => r.check(o).ok));
+    for (const m of r.draft.filter(o => o.kind === 'machine')) {
+      const c = r.check(m);
+      // installable now with the new Power, or fixable through Manage Machine (never impossible)
+      assert.ok(c.ok || c.fixable, `${m.name}: ${(c as any).reason}`);
+      if (c.ok && m.power === 1) usableMachine++;
+    }
+    assert.ok(r.draft.some(o => o.kind === 'modifier'), 'a claimable modifier is always there');
   }
-  assert.ok(machineDrafts >= 10, `machines offered right after the grant in ${machineDrafts}/30 drafts`);
+  assert.ok(usableMachine >= 3, `a 1-Power machine became installable thanks to the grant in ${usableMachine}/30 drafts`);
 });
 
 // ───────── B. Target curve ─────────

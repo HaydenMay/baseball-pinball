@@ -14,8 +14,13 @@ export function anchorsFor(l: Layout, key: string): Spot[] {
   }
   if (kind === 'sling') for (const s of l.slings) out.push({ x: (s.face[0].x + s.face[1].x) / 2, y: (s.face[0].y + s.face[1].y) / 2, r: 1.4 });
   if (kind === 'lane') for (const n of l.lanes) out.push({ x: n.sensor.x, y: n.sensor.y, r: 0.8 });
+  // Group keys: every multiplier gate / every ramp; the ride→bumpers cross effect shows ramps and bumpers.
+  if (kind === 'multgate') for (const g of l.multGates) out.push({ x: (g.a.x + g.b.x) / 2, y: g.a.y, r: 1.1 });
+  const allRamps = kind === 'ramps' || kind === 'ramp' || key === 'cross:ride-bumpers';
+  if (key === 'cross:ride-bumpers') for (const b of l.bumpers) out.push({ x: b.x, y: b.y, r: b.r + 0.35 });
+  for (const g of l.multGates) if (g.id === key) out.push({ x: (g.a.x + g.b.x) / 2, y: g.a.y, r: 1.1 });
   for (const r of l.ramps) {
-    if (r.def.id === key) out.push({ x: r.mouth.x, y: r.mouth.y, r: 1.1 }, { x: r.exit.x, y: r.exit.y, r: 0.9 });
+    if (r.def.id === key || allRamps) out.push({ x: r.mouth.x, y: r.mouth.y, r: 1.1 }, { x: r.exit.x, y: r.exit.y, r: 0.9 });
     if (`${r.def.id}-gate` === key) {
       const { p } = rampAt(r, r.gateS);
       out.push({ x: p.x, y: p.y, r: 0.9 });
