@@ -104,6 +104,13 @@ export class Sfx {
         else if (e.kind === 'spinner' && this.ok('spinner', 0.1)) for (let i = 0; i < Math.min(8, e.spins ?? 1); i++) this.tone(1500, 0.025, 'square', 0.06, i * 0.035);
         else if (e.kind === 'lane' && this.ok('lane', 0.1)) this.tone(988, 0.08, 'sine', 0.18);
         break;
+      case 'rampCheckpoint': {
+        // ascending scale up the ride: each checkpoint one step higher, the finish a full chord
+        const f = 523 * Math.pow(2, (e.index * 2) / 12);
+        if (e.index === e.count - 1) [f, f * 1.25, f * 1.5, f * 2].forEach((x, i) => this.tone(x, 0.2, 'triangle', 0.3, i * 0.05));
+        else this.tone(f, 0.09, 'triangle', 0.26, 0, f * 1.02);
+        break;
+      }
       case 'rampGate':
         // the signature reward: bright rising chime
         if (this.ok('rampGate', 0.15)) [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.32, i * 0.055));

@@ -381,3 +381,16 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 #buildPanel.focus { max-height: 34%; }
 .offers.one { grid-template-columns: 1fr; }
 .phead .back { font: italic 800 13px var(--font); padding: 6px 10px; border-radius: 6px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
+
+/* Inning reward line in the draft/shop panel (small, non-blocking). */
+.pgrant {
+  margin: 4px 0 2px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font: italic 800 12px/1.2 var(--font, inherit);
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--m-btn-text);
+  background: linear-gradient(var(--m-btn-a), var(--m-btn-b));
+  box-shadow: 0 0 0 1px var(--m-btn-edge), 0 0 12px color-mix(in srgb, var(--m-btn-b) 50%, transparent);
+}

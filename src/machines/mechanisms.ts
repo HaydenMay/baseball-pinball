@@ -35,6 +35,16 @@ export type RampDef = Base & {
   /** Scoring gate on the raised route: fraction of the path length, and its award (once per pass). */
   gate?: { at: number; points: number };
   /**
+   * Checkpoint scoring (opt-in per ramp, used by the build-test installs). REPLACES `points` and
+   * `gate.points`: a full ride pays `count × points` base, one award per checkpoint per ball per ride.
+   * Positions default to evenly spaced from just past the climb crest to the exit (so a rollback, which can
+   * only happen on the climb, earns nothing); `at` (path fractions, ascending, last = 1) overrides that.
+   * Modifier targets: checkpoint `gateIndex` keeps the old gate key (`<id>-gate`, kind rampGate), the last
+   * checkpoint keeps the completion key (`<id>`, kind ramp, with completion-only generators); the rest
+   * score as `<id>-cp` (kind rampCheckpoint).
+   */
+  checkpoints?: { count: number; points: number; at?: number[]; gateIndex?: number };
+  /**
    * How the ball leaves: 'release' rolls straight off the end; 'drop' leaves the raised level at
    * full height and falls for `fall` seconds onto the field below before it can collide again.
    */
@@ -145,6 +155,10 @@ export type RampPath = {
   exitDir: Pt;
   /** Distance along the path of the scoring gate (or -1). */
   gateS: number;
+  /** Checkpoint distances along the path, ascending (empty without checkpoints). */
+  cpS: number[];
+  /** Index of the checkpoint that carries the old gate's modifier target. */
+  cpGate: number;
 };
 
 /** Catmull-Rom smoothing, sampled roughly every 0.12 units. */
@@ -187,7 +201,22 @@ export function buildRampPath(def: RampDef): RampPath {
     exit: pts[pts.length - 1],
     exitDir: unit(pts[Math.max(0, pts.length - 4)], pts[pts.length - 1]),
     gateS: def.gate ? def.gate.at * cum[cum.length - 1] : -1,
+    ...checkpointLayout(def, cum[cum.length - 1]),
   };
+}
+
+/** Where a ramp's checkpoints sit (see RampDef.checkpoints). */
+export function checkpointLayout(def: RampDef, length: number) {
+  const c = def.checkpoints;
+  if (!c || c.count < 1) return { cpS: [] as number[], cpGate: -1 };
+  const crest = Math.min(def.climb, length * 0.9);
+  const cpS = c.at
+    ? c.at.map(f => f * length)
+    : Array.from({ length: c.count }, (_, i) => crest + ((length - crest) * (i + 1)) / c.count);
+  cpS[cpS.length - 1] = length; // the last checkpoint is always the finish
+  const gateTarget = def.gate ? def.gate.at * length : length / 2;
+  const cpGate = c.gateIndex ?? cpS.slice(0, -1).reduce((best, s, i) => (Math.abs(s - gateTarget) < Math.abs(cpS[best] - gateTarget) ? i : best), 0);
+  return { cpS, cpGate };
 }
 
 /** Position and unit tangent at distance s along the ride. */

@@ -188,7 +188,25 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
     ctx.lineTo(ex.x - en.x * RAIL, ex.y - en.y * RAIL);
     ctx.stroke();
   }
-  if (r.gateS > 0) drawRampGateArch(ctx, r);
+  if (r.cpS.length) for (let i = 0; i < r.cpS.length; i++) drawCheckpointBar(ctx, r, i);
+  else if (r.gateS > 0) drawRampGateArch(ctx, r);
+}
+
+/** A checkpoint: a thin lamp bar across the channel (static part; lamps are drawn live). The finish is wider. */
+function drawCheckpointBar(ctx: CanvasRenderingContext2D, r: RampPath, i: number) {
+  const { p, t } = rampAt(r, r.cpS[i]);
+  const n = { x: -t.y, y: t.x }, last = i === r.cpS.length - 1, w = RAIL + (last ? 0.2 : 0.08);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#05080f';
+  ctx.lineWidth = last ? 0.26 : 0.18;
+  ctx.beginPath();
+  ctx.moveTo(p.x + n.x * w, p.y + n.y * w);
+  ctx.lineTo(p.x - n.x * w, p.y - n.y * w);
+  ctx.stroke();
+  ctx.strokeStyle = mat.trim;
+  ctx.lineWidth = 0.045;
+  ctx.stroke();
+  if (last) for (const side of [-1, 1]) drawChromePost(ctx, p.x + n.x * w * side, p.y + n.y * w * side, 0.15);
 }
 
 /** The mid-ramp scoring gate: an arch over the channel with a lamp bar. */
@@ -591,7 +609,28 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
       ctx.globalCompositeOperation = 'source-over';
     }
     ctx.globalAlpha = 1;
-    if (r.gateS > 0) {
+    if (r.cpS.length) {
+      // Checkpoint lamps: dim idle chase; amber once this ride's rider has paid it; white-hot flash on payout.
+      const paid = riders.reduce((m, b) => Math.max(m, b.ramp!.dir === 1 ? b.ramp!.cp : 0), 0);
+      const chase = Math.floor(view.time * 8) % r.cpS.length;
+      for (let i = 0; i < r.cpS.length; i++) {
+        const { p, t } = rampAt(r, r.cpS[i]);
+        const n = { x: -t.y, y: t.x }, w = RAIL + 0.02;
+        const lit = view.lit.get(`${r.def.id}-cp${i}`) ?? 0;
+        const color = lit > 0 ? th.impactCore : i < paid || done > 0 ? th.jackpotAccent : i === chase ? th.machineGlow : th.lampOffAccent;
+        ctx.fillStyle = color;
+        for (const k of [-1, 1]) {
+          ctx.beginPath();
+          ctx.arc(p.x + n.x * w * k, p.y + n.y * w * k, 0.085, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (lit > 0 || i < paid) {
+          ctx.globalCompositeOperation = 'lighter';
+          drawGlow(ctx, lit > 0 ? th.energySecondary : th.jackpotAccent, p.x, p.y, 0.6 + lit * 2.4, 0.25 + lit * 1.8);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      }
+    } else if (r.gateS > 0) {
       const { p, t } = rampAt(r, r.gateS);
       const n = { x: -t.y, y: t.x }, w = RAIL + 0.22;
       const lit = view.lit.get(r.def.id + '-gate') ?? 0;
@@ -609,6 +648,45 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
       drawGlow(ctx, lit > 0 ? th.energySecondary : th.jackpotAccent, p.x, p.y, 1.1 + lit * 2.2, 0.18 + lit * 1.6);
       ctx.globalCompositeOperation = 'source-over';
     }
+  }
+  drawRideTallies(ctx, view);
+}
+
+/** Points paid so far on each ball's current ramp ride (presentation only). */
+const rideTally = new Map<number, { ramp: string; value: number; at: number; last: boolean }>();
+
+/** Running ride tally beside each checkpoint ramp: "+3,000" pulsing per checkpoint, then "RIDE +8,000". */
+function drawRideTallies(ctx: CanvasRenderingContext2D, view: GameView) {
+  for (const [ball, t] of rideTally) {
+    const age = view.time - t.at, life = t.last ? 1.1 : 0.9;
+    if (age > life) {
+      rideTally.delete(ball);
+      continue;
+    }
+    const r = view.layout.ramps.find(r => r.def.id === t.ramp);
+    if (!r || !r.cpS.length) continue;
+    // anchor: beside the middle of the checkpoint run, on the side facing the table middle
+    const mid = rampAt(r, (r.cpS[0] + r.length) / 2);
+    let n = { x: -mid.t.y, y: mid.t.x };
+    if ((10 - mid.p.x) * n.x + (16 - mid.p.y) * n.y < 0) n = { x: -n.x, y: -n.y };
+    const x = mid.p.x + n.x * 1.9, y = mid.p.y + n.y * 1.9;
+    const pulse = 1 + 0.3 * Math.max(0, 1 - age / 0.12);
+    const alpha = Math.min(1, (life - age) / 0.25);
+    const th = view.theme;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.scale(pulse, pulse);
+    ctx.font = `italic 800 ${t.last ? 0.62 : 0.5}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const text = `${t.last ? 'RIDE ' : ''}+${t.value.toLocaleString()}`;
+    ctx.lineWidth = 0.14;
+    ctx.strokeStyle = '#05080f';
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = t.last ? th.impactCore : th.jackpotAccent;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
   }
 }
 
@@ -637,6 +715,9 @@ export function onMechanismEvent(view: GameView, e: SimEvent) {
     if (e.phase === 'enter') {
       view.lit.set(e.id + '-mouth', 0.4);
       v.flash(r.mouth.x, r.mouth.y, 1.2, th.energyPrimary, 0.2);
+    } else if (e.phase === 'complete' && r.cpS.length) {
+      // Checkpoint ramps: the finish checkpoint already did the flourish; just light the whole ramp.
+      view.lit.set(e.id, 0.6);
     } else if (e.phase === 'complete') {
       view.lit.set(e.id, 0.8);
       v.flash(e.x, e.y, 1.6, th.energyPrimary, 0.3);
@@ -649,6 +730,22 @@ export function onMechanismEvent(view: GameView, e: SimEvent) {
     } else {
       v.flash(e.x, e.y, 0.8, th.machineGlow, 0.15);
     }
+  } else if (e.type === 'rampCheckpoint') {
+    const r = L.ramps.find(r => r.def.id === e.id)!;
+    const { t } = rampAt(r, r.cpS[e.index]);
+    const last = e.index === e.count - 1;
+    view.lit.set(`${e.id}-cp${e.index}`, 0.28);
+    // One running tally per ramp (presentation only): pulses on every checkpoint instead of 8 stacked labels.
+    const prev = rideTally.get(e.ball);
+    const tally = (e.index === 0 || !prev ? 0 : prev.value) + e.points;
+    rideTally.set(e.ball, { ramp: e.id, value: tally, at: view.time, last });
+    v.flash(e.x, e.y, last ? 2.2 : 1.1, th.energySecondary, last ? 0.32 : 0.18);
+    v.sparks(e.x, e.y, last ? 14 : 5, last ? 9 : 6, th.jackpotAccent);
+    // number beside the ramp on the side facing the table middle, never on the ball's path
+    let side = { x: -t.y, y: t.x };
+    if ((10 - e.x) * side.x + (16 - e.y) * side.y < 0) side = { x: -side.x, y: -side.y };
+    void side;
+    if (last) v.ring(e.x, e.y, 0.4, 2.4, th.jackpotAccent, 0.45, true, 0.13);
   } else if (e.type === 'rampGate') {
     const r = L.ramps.find(r => r.def.id === e.id)!;
     const { t } = rampAt(r, r.gateS);

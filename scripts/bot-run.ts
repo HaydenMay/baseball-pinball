@@ -4,6 +4,7 @@
  *
  *   node scripts/bot-run.ts [runs=40] [timingErrorMs=70] [seed=1] [maxChallenge=6] [strategy=any]
  *
+ * Env switches: BOT_GROWTH=1.6, BOT_POWER=flat5, BOT_RAMPS=legacy (old values, for comparisons).
  * Strategies (Upgrade System 2.0 playtests): any | gate | nogate | bumper | objective
  *  - any: draft prefers machines; shop buys whatever is affordable
  *  - gate: draft prefers multiplier gates and Express Lane; shop prefers Express Lane
@@ -17,6 +18,15 @@ import { makeControls } from '../src/core/input.ts';
 import { batAngleAt } from '../src/core/swing.ts';
 import { Simulation } from '../src/physics/sim.ts';
 import { Run } from '../src/run/run.ts';
+import { ECONOMY } from '../src/run/economy.ts';
+import { MACHINES } from '../src/run/catalog.ts';
+
+// Balance-comparison switches (env): BOT_GROWTH=1.6, BOT_POWER=flat5 (old flat 5 Power, no inning grants),
+// BOT_RAMPS=legacy (old gate + finish payouts instead of 8 × 1,000 checkpoints).
+if (process.env.BOT_GROWTH) ECONOMY.targetGrowth = +process.env.BOT_GROWTH;
+if (process.env.BOT_POWER === 'flat5') Object.assign(ECONOMY, { startPower: 5, powerPerInning: 0 });
+if (process.env.BOT_RAMPS === 'legacy') for (const m of MACHINES) for (const d of Object.values(m.at)) if (d.type === 'ramp') delete d.checkpoints;
+const rampStats = { enter: 0, complete: 0, checkpoints: 0, points: 0, allPoints: 0 };
 
 const STRAT = (process.argv[6] ?? 'any') as 'any' | 'gate' | 'nogate' | 'bumper' | 'objective';
 const RUNS = +(process.argv[2] ?? 40), JITTER = +(process.argv[3] ?? 70) / 1000, SEED = +(process.argv[4] ?? 1), MAXC = +(process.argv[5] ?? 6);
@@ -39,6 +49,10 @@ function playChallenge(run: Run, simSeed: number) {
     preset: run.preset(),
     seed: simSeed,
     onEvent: e => {
+      if (e.type === 'ramp' && e.phase === 'enter') rampStats.enter++;
+      if (e.type === 'ramp' && e.phase === 'complete') { rampStats.complete++; rampStats.points += e.points; }
+      if (e.type === 'rampGate') rampStats.points += e.points;
+      if (e.type === 'rampCheckpoint') { rampStats.checkpoints++; rampStats.points += e.points; }
       if (e.type === 'machine' && (e.kind === 'bumper' || e.kind === 'lane')) partHits[e.id] = (partHits[e.id] ?? 0) + 1;
       if (e.type === 'mult') {
         if (e.source === 'gate') partHits[e.id] = (partHits[e.id] ?? 0) + 1;
@@ -82,6 +96,7 @@ function playChallenge(run: Run, simSeed: number) {
     sim.step(DT, c);
     if (sim.rules.phase === 'live') liveSeconds += DT;
   }
+  rampStats.allPoints += sim.rules.score;
   return { cleared: sim.rules.phase === 'cleared', seconds: sim.time - t0, strikes: sim.rules.strikes, score: sim.rules.score };
 }
 
@@ -99,7 +114,7 @@ function pref(o: { key: string; kind: string }) {
 type Row = { attempts: number; clears: number; seconds: number[]; strikesUsed: number[] };
 const rows = new Map<number, Row>();
 const builds: string[] = [];
-let powerAtEnd = 0, moneyLeft = 0;
+let powerAtEnd = 0, moneyLeft = 0, maxPowerAtEnd = 0, machinesAtEnd = 0, reached = 0, usableDraftMisses = 0, emptyShops = 0;
 for (let n = 0; n < RUNS; n++) {
   const run = new Run(SEED * 1000 + n);
   // PREINSTALL="mult-gate@gate-l,mult-gate@gate-r" starts every run with those machines (rate measurements).
@@ -120,12 +135,14 @@ for (let n = 0; n < RUNS; n++) {
     row.strikesUsed.push(r.strikes);
     rows.set(run.challenge, row);
     run.clear(3 - r.strikes);
+    if (!run.draft.some(o => run.check(o).ok)) usableDraftMisses++;
     // draft: strategy preference, else prefer a machine
     const usable = run.draft.filter(o => run.check(o).ok);
     const d = [...usable].sort((a, b) => pref(b) - pref(a))[0] ?? run.draft[0];
     const ck = run.check(d);
     run.takeDraft(d.uid, ck.ok && ck.mounts.length ? ck.mounts[Math.floor(rnd() * ck.mounts.length)] : undefined);
     // shop: buy what's affordable, machines first; one reroll if nothing affordable
+    if (!run.shop.length) emptyShops++;
     for (let pass = 0; pass < 2; pass++) {
       const order = [...run.shop].sort((a, b) => pref(b) - pref(a));
       for (const o of order) {
@@ -139,6 +156,9 @@ for (let n = 0; n < RUNS; n++) {
     run.next();
   }
   powerAtEnd += run.powerUsed;
+  maxPowerAtEnd += run.maxPower;
+  machinesAtEnd += run.installed.length;
+  reached += run.challenge;
   moneyLeft += run.money;
   if (n < 3) builds.push(`run ${n}: reached C${run.challenge}; ${run.installed.map(i => i.name).join(', ') || 'no machines'}; mods ${Object.values(run.mods).flat().length}`);
 }
@@ -151,6 +171,9 @@ for (const [c, r] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
   void target;
   console.log(`| ${c} | ${t.toLocaleString()} | ${r.attempts} | ${Math.round((r.clears / r.attempts) * 100)}% | ${avg(r.seconds).toFixed(0)} s | ${avg(r.strikesUsed).toFixed(1)} |`);
 }
+console.log(`config: growth ×${ECONOMY.targetGrowth}, Power ${process.env.BOT_POWER === 'flat5' ? 'flat 5' : `${ECONOMY.startPower} +${ECONOMY.powerPerInning}/inning`}, ramps ${process.env.BOT_RAMPS === 'legacy' ? 'legacy gate+finish' : '8 × 1,000 checkpoints'}`);
+console.log(`avg challenge reached ${(reached / RUNS).toFixed(1)}; avg machines ${(machinesAtEnd / RUNS).toFixed(1)}, Power ${(powerAtEnd / RUNS).toFixed(1)}/${(maxPowerAtEnd / RUNS).toFixed(1)}; drafts with no usable pick ${usableDraftMisses}; empty shops ${emptyShops}`);
+console.log(`ramps: entries ${rampStats.enter}, full rides ${rampStats.complete}, checkpoints ${rampStats.checkpoints}, ramp points ${rampStats.points.toLocaleString()} = ${((100 * rampStats.points) / Math.max(1, rampStats.allPoints)).toFixed(1)}% of all points`);
 console.log(`avg power used at end ${(powerAtEnd / RUNS).toFixed(1)}, avg money left ${(moneyLeft / RUNS).toFixed(1)}`);
 for (const b of builds) console.log(b);
 const perMin = Object.entries(partHits).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / (liveSeconds / 60)).toFixed(1)}`);

@@ -119,3 +119,7 @@ The bot tracks the ball and swings with Gaussian timing error. It takes a machin
 ## Upgrade System 2.0 (Nov 19)
 
 The loop is now **challenge → free draft (machines + premium upgrades) → shop (modifiers only) → next challenge**, with a global strike multiplier, multiplier gates and generator modifiers. See [UPGRADE_SYSTEM_2_PLAYTEST.md](UPGRADE_SYSTEM_2_PLAYTEST.md).
+
+## Progression and ramps (Nov 19, later)
+
+Power now starts at 6 and grows +1 per inning; target growth is ×1.4 (experimental); build-test ramps pay 8 × 1,000 checkpoints. Current numbers: [PROGRESSION_AND_RAMP_PLAYTEST.md](PROGRESSION_AND_RAMP_PLAYTEST.md).

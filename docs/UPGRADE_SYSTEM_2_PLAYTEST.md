@@ -149,3 +149,5 @@ The average strike lasts about 23 s, so a gate procs about 0.3 times per strike 
 - card text matches the numbers
 
 The full suite is 93/93, including the golden replay.
+
+> **Superseded numbers:** Power (now 6 +1/inning), target growth (now ×1.4) and build-test ramp payouts (now 8 × 1,000 checkpoints) are documented in [PROGRESSION_AND_RAMP_PLAYTEST.md](PROGRESSION_AND_RAMP_PLAYTEST.md).

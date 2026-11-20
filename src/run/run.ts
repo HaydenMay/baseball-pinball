@@ -6,7 +6,7 @@
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 import { MACHINES, MODS, MOUNTS, type MachineOffer, type Mount } from './catalog.ts';
-import { ECONOMY, targetFor } from './economy.ts';
+import { ECONOMY, inningOf, targetFor } from './economy.ts';
 
 export type Installed = { offerKey: string; mountId: string; id: string; def: MechanismDef; name: string };
 
@@ -34,6 +34,11 @@ export class Run {
   rerolls = 0;
   /** Log of what was taken, for the playtest report. */
   history: string[] = [];
+  /**
+   * Set when the clear that just happened finished an inning and granted max Power (shown in the
+   * draft/shop as "INNING n UNLOCKED"). Cleared when the next challenge starts.
+   */
+  powerGrant: { inning: number; gained: number; maxPower: number } | null = null;
   private seed: number;
   private uid = 1;
 
@@ -147,6 +152,13 @@ export class Run {
     const earned = ECONOMY.clearBase + ECONOMY.clearPerStrikeLeft * strikesLeft;
     this.money += earned;
     this.phase = 'draft';
+    // Finished an inning: +1 permanent max Power BEFORE rolling this clear's draft, so the extra capacity
+    // is usable right away. The phase guard above makes this once per clear; no grant after the last challenge.
+    if (this.challenge % ECONOMY.challengesPerInning === 0 && this.challenge < ECONOMY.lastChallenge) {
+      this.maxPower += ECONOMY.powerPerInning;
+      this.powerGrant = { inning: inningOf(this.challenge) + 1, gained: ECONOMY.powerPerInning, maxPower: this.maxPower };
+      this.history.push(`Inning ${this.powerGrant.inning} unlocked: max Power ${this.maxPower}`);
+    }
     this.draft = this.roll(ECONOMY.draftSize, 'draft');
     this.history.push(`C${this.challenge} cleared (+$${earned})`);
     return earned;
@@ -223,6 +235,7 @@ export class Run {
     if (this.phase !== 'shop') return false;
     this.challenge++;
     this.phase = 'challenge';
+    this.powerGrant = null;
     this.shop = [];
     return true;
   }

@@ -20,6 +20,8 @@ import type { Preset } from '../machines/presets.ts';
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
   | { type: 'rampGate'; id: string; x: number; y: number; points: number; ball: number }
+  /** One of a ramp's checkpoints paid out (index 0-based of `count`). */
+  | { type: 'rampCheckpoint'; id: string; index: number; count: number; x: number; y: number; points: number; ball: number }
   | { type: 'bank'; id: string; points: number; ball: number }
   | { type: 'bat'; contact: Contact; x: number; y: number; ball: number }
   | { type: 'swing' }
@@ -41,7 +43,8 @@ export type Ball = {
   prev: Pt;
   hitSwingId: number;
   stillTime: number;
-  ramp?: { r: RampPath; s: number; v: number; dir: 1 | -1 };
+  /** `cp` = next checkpoint index to pay on this ride (each pays once per ball per ride). */
+  ramp?: { r: RampPath; s: number; v: number; dir: 1 | -1; cp: number };
   held?: { scoop: ScoopDef; t: number };
   /** Falling off a drop-exit ramp onto the field (no collisions until it lands). */
   drop?: { r: RampPath; t: number; v: Pt };
@@ -461,7 +464,7 @@ export class Simulation {
   private enterRamp(ball: Ball, r: RampPath, speed: number) {
     ball.mode = 'ramp';
     ball.body.setActive(false);
-    ball.ramp = { r, s: 0, v: speed, dir: 1 };
+    ball.ramp = { r, s: 0, v: speed, dir: 1, cp: 0 };
     ball.pos = { ...r.mouth };
     this.emit({ type: 'ramp', id: r.def.id, phase: 'enter', x: r.mouth.x, y: r.mouth.y, points: 0, ball: ball.id });
   }
@@ -484,8 +487,14 @@ export class Simulation {
     }
     const prevS = st.s;
     st.s += st.dir * st.v * dt;
-    // Mid-ramp scoring gate: once per forward pass (a rollback never reaches it, the climb is before it).
-    if (st.dir === 1 && d.gate && prevS < st.r.gateS && st.s >= st.r.gateS) {
+    const cps = st.r.cpS;
+    // Checkpoints: pay every one the ball has now passed (a fast tick can pass several), in order, once.
+    // Only moving forward: the ride's pointer never goes back, so jitter or a rollback can't re-pay.
+    if (cps.length && st.dir === 1) {
+      while (st.cp < cps.length && Math.min(st.s, st.r.length) >= cps[st.cp]) this.payCheckpoint(ball, st.cp++);
+    }
+    // Legacy mid-ramp scoring gate (ramps without checkpoints): once per forward pass.
+    if (!cps.length && st.dir === 1 && d.gate && prevS < st.r.gateS && st.s >= st.r.gateS) {
       const g = rampAt(st.r, st.r.gateS).p;
       const pts = this.rules.award(this.pts(d.id + '-gate', 'rampGate', d.gate.points));
       this.emit({ type: 'rampGate', id: d.id, x: g.x, y: g.y, points: pts, ball: ball.id });
@@ -497,10 +506,15 @@ export class Simulation {
     if (st.dir === 1 && st.s >= st.r.length) {
       const sp = Math.max(d.exitMin, Math.min(d.exitMax, st.v));
       const v = { x: st.r.exitDir.x * sp, y: st.r.exitDir.y * sp };
-      const pts = this.rules.award(this.pts(d.id, 'ramp', d.points));
-      this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
-      // Only a completed ride counts toward ramp generators (entering or rolling back never does).
-      this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
+      if (cps.length) {
+        // The finish checkpoint already paid (and ran completion generators); this is presentation only.
+        this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: 0, ball: ball.id });
+      } else {
+        const pts = this.rules.award(this.pts(d.id, 'ramp', d.points));
+        this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
+        // Only a completed ride counts toward ramp generators (entering or rolling back never does).
+        this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
+      }
       if (d.exit?.mode === 'drop') {
         // Leave the raised level and fall onto the field; collisions resume on landing.
         ball.mode = 'drop';
@@ -576,6 +590,20 @@ export class Simulation {
     ball.stillTime = 0;
     // A ramp ride or a scoop hold teleports the ball: re-seed gate sides so that never counts as a pass.
     this.seedGateSides(ball, at);
+  }
+
+  /**
+   * Pay checkpoint `i` of the ball's current ride. The gate checkpoint keeps the old gate's modifier key,
+   * the last keeps the completion key and is the only one that feeds completion generators (once per ride).
+   * The global multiplier is applied once per checkpoint by rules.award.
+   */
+  private payCheckpoint(ball: Ball, i: number) {
+    const st = ball.ramp!, d = st.r.def, c = d.checkpoints!, last = i === st.r.cpS.length - 1;
+    const [key, kind] = last ? [d.id, 'ramp'] : i === st.r.cpGate ? [d.id + '-gate', 'rampGate'] : [d.id + '-cp', 'rampCheckpoint'];
+    const at = rampAt(st.r, st.r.cpS[i]).p;
+    const pts = this.rules.award(this.pts(key, kind, c.points));
+    this.emit({ type: 'rampCheckpoint', id: d.id, index: i, count: st.r.cpS.length, x: at.x, y: at.y, points: pts, ball: ball.id });
+    if (last) this.boost('ramp', d.id, at.x, at.y, this.generate(d.id, 'ramp'), ball);
   }
 
   /** Record which side of each multiplier gate a ball is on (nothing if it's inside the dead band). */

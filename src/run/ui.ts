@@ -79,12 +79,13 @@ export class BuildUI {
     this.host.showOverlay(
       `CHALLENGE ${this.run.challenge} CLEARED`,
       `${fmt(sim.rules.score)} / ${fmt(this.run.target)}`,
-      `+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
+      `${this.run.powerGrant ? `INNING ${this.run.powerGrant.inning} UNLOCKED — MAX POWER +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} TOTAL). ` : ''}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
       'CHOOSE REWARD',
       () => {
         this.host.hideOverlay();
         this.openPanel();
       },
+      `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
     );
   }
 
@@ -171,8 +172,12 @@ export class BuildUI {
     const r = this.run;
     const draft = r.phase === 'draft';
     const head = draft
-      ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · tap a card to preview it on the board</span></div>`
+      ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · ⚡${r.powerUsed}/${r.maxPower} used · tap a card to preview it</span></div>`
       : `<div class="phead"><b>SHOP</b><span>$${r.money} · ⚡${r.powerUsed}/${r.maxPower} used · buy as many as you can afford</span></div>`;
+    // Small, non-blocking reward line when this clear finished an inning.
+    const grant = r.powerGrant
+      ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>`
+      : '';
     const foot = draft
       ? ''
       : `<div class="pfoot"><button data-act="reroll" ${r.money < r.rerollPrice ? 'disabled' : ''}>REROLL $${r.rerollPrice}</button><button class="next" data-act="next">NEXT: TARGET ${fmt(
@@ -190,7 +195,7 @@ export class BuildUI {
         <div class="offers one">${this.card(selected)}</div>`;
     } else {
       this.panel.classList.remove('focus');
-      this.panel.innerHTML = `${head}<div class="offers ${draft ? 'draft' : 'shop'}">${this.offers().map(o => this.card(o)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
+      this.panel.innerHTML = `${head}${grant}<div class="offers ${draft ? 'draft' : 'shop'}">${this.offers().map(o => this.card(o)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
       <div class="pmachine">Machine: ${this.machineLine()}</div>${foot}`;
     }
     this.preview();

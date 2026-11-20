@@ -5,6 +5,12 @@
  */
 import type { MechanismDef, Pt } from '../machines/mechanisms.ts';
 
+
+/**
+ * Build-test ramp checkpoints (initial test value: 8 × 1,000 = 8,000 base per full ride). Data per ramp,
+ * so later ramps can opt in or vary count/value without renderer changes.
+ */
+export const RAMP_CHECKPOINTS = { count: 8, points: 1000 };
 export type Mount = {
   id: string;
   name: string;
@@ -115,7 +121,7 @@ export const MACHINES: MachineOffer[] = [
     key: 'turbo-ramp',
     kind: 'machine',
     name: 'Turbo Ramp',
-    desc: 'Ramp with a +600 gate (+1,000 at the end); exits into the upper bumpers',
+    desc: 'Full ride: 8 checkpoints × 1,000 = 8,000 base; exits into the upper bumpers',
     power: 2,
     price: 9,
     at: {
@@ -124,6 +130,8 @@ export const MACHINES: MachineOffer[] = [
         path: [{ x: 5.5, y: 13.7 }, { x: 5.15, y: 12.0 }, { x: 4.35, y: 10.6 }, { x: 3.95, y: 9.0 }, { x: 4.0, y: 7.2 }, { x: 4.45, y: 6.25 }, { x: 5.25, y: 6.0 }],
         mouthWidth: 1.5, climb: 3, climbDecel: 12, minRide: 9, maxRide: 18, exitMin: 11, exitMax: 15, points: 1000,
         gate: { at: 0.55, points: 600 }, exit: { mode: 'release', fall: 0 },
+        // Replaces the old +600 gate / +1,000 finish (gate.at only marks which checkpoint Toll Booth targets).
+        checkpoints: { count: RAMP_CHECKPOINTS.count, points: RAMP_CHECKPOINTS.points },
       },
     },
   },
@@ -131,7 +139,7 @@ export const MACHINES: MachineOffer[] = [
     key: 'bridge-ramp',
     kind: 'machine',
     name: 'Overpass Bridge',
-    desc: 'Aimable bridge with a +750 gate; drops the ball mid-field back toward the bat',
+    desc: 'Aimable bridge. Full ride: 8 checkpoints × 1,000 = 8,000 base; drops mid-field toward the bat',
     power: 3,
     price: 10,
     at: {
@@ -142,6 +150,8 @@ export const MACHINES: MachineOffer[] = [
         path: [{ x: 13.2, y: 16.2 }, { x: 13.95, y: 14.2 }, { x: 14.35, y: 12.2 }, { x: 14.0, y: 10.4 }, { x: 12.7, y: 9.55 }, { x: 10, y: 9.35 }, { x: 7.9, y: 9.6 }, { x: 7.05, y: 10.6 }, { x: 7.05, y: 12.0 }, { x: 7.35, y: 13.1 }],
         mouthWidth: 1.6, climb: 4, climbDecel: 12, minRide: 5, maxRide: 18, exitMin: 4, exitMax: 9, points: 600,
         gate: { at: 0.52, points: 750 }, exit: { mode: 'drop', fall: 0.25 },
+        // Replaces the old +750 gate / +600 finish.
+        checkpoints: { count: RAMP_CHECKPOINTS.count, points: RAMP_CHECKPOINTS.points },
       },
     },
   },
@@ -241,8 +251,8 @@ export const MODS: ModTemplate[] = [
   { key: 'sharp-eye', name: 'Sharp Eye', effect: '+50 points', add: 50, tier: 'shop', price: 3, targets: () => [{ key: 'target:*', label: 'Every standup target' }] },
   { key: 'rubber', name: 'Live Rubber', effect: '+40 points', add: 40, tier: 'shop', price: 2, targets: () => [{ key: 'sling:*', label: 'Both blue slingshots' }] },
   { key: 'rollover', name: 'Rollover', effect: '+100 points', add: 100, tier: 'shop', price: 2, targets: () => [{ key: 'lane:*', label: 'Both side lanes' }] },
-  { key: 'nitro', name: 'Nitro', effect: '×1.5 completion points', mul: 1.5, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${mountName(i.mountId)} ramp finish` })) },
-  { key: 'toll-booth', name: 'Toll Booth', effect: '+500 gate points', add: 500, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: `${i.id}-gate`, label: `${mountName(i.mountId)} ramp gate` })) },
+  { key: 'nitro', name: 'Nitro', effect: '×1.5 on the final checkpoint (+500 per full ride)', mul: 1.5, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${mountName(i.mountId)} ramp, checkpoint 8` })) },
+  { key: 'toll-booth', name: 'Toll Booth', effect: '+500 on the halfway checkpoint', add: 500, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: `${i.id}-gate`, label: `${mountName(i.mountId)} ramp, halfway checkpoint` })) },
   { key: 'gold-glove', name: 'Gold Glove', effect: '×2 catch points', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'glove-scoop').map(i => ({ key: i.id, label: 'Glove scoop' })) },
   { key: 'spin-doctor', name: 'Spin Doctor', effect: '×2 points', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'spinner').map(i => ({ key: i.id, label: `${mountName(i.mountId)} spinner` })) },
   { key: 'full-count', name: 'Full Count', effect: '×2 bonus', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'bank').map(i => ({ key: i.id, label: `${mountName(i.mountId)} bonus` })) },
