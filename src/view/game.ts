@@ -8,6 +8,7 @@ import { MOUND, OUTER_WALL, lowerWallX, targetPoly, type Layout, type Pt, type B
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
 import { drawGlow, underlay, Vfx } from './vfx.ts';
+import { Camera, cameraBalls, visibleRect, type CamBall, type Rect } from './camera.ts';
 import { drawMachinesFloorDynamic, drawMachinesFloorStatic, drawMachinesRaised, onMechanismEvent } from './machines.ts';
 import { derived, type Theme } from './theme.ts';
 
@@ -78,6 +79,13 @@ export class GameView {
   ctx: CanvasRenderingContext2D;
   staticLayer: HTMLCanvasElement;
   ppu = 30;
+  /** V2 fixed-anchor zoom camera (null = classic fixed view, byte-for-byte the old path). */
+  camera: Camera | null = null;
+  /** Dev harness: when set, the camera frames these points instead of the live balls. */
+  cameraProbe: CamBall[] | null = null;
+  private grain: HTMLCanvasElement | null = null;
+  /** Whole-pixel margins of the cached layers beyond the 100% view (0 without the camera). */
+  private margin = { l: 0, t: 0, r: 0, b: 0 };
   theme: Theme;
   vfx: Vfx;
   debug = false;
@@ -98,19 +106,71 @@ export class GameView {
   }
 
   /** Size the backing store to the displayed size × devicePixelRatio (capped) and redraw statics. */
-  resize(cssWidth: number) {
+  private cssW = 0;
+  resize(cssWidth: number, force = false) {
+    this.cssW = cssWidth;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     const ppu = Math.max(14, Math.min(70, (cssWidth * dpr) / VIEW.w));
-    if (Math.abs(ppu - this.ppu) < 0.01 && this.staticLayer.width) return;
+    if (!force && Math.abs(ppu - this.ppu) < 0.01 && this.staticLayer.width) return;
     this.ppu = ppu;
     const w = Math.round(VIEW.w * ppu), h = Math.round(VIEW.h * ppu);
-    this.canvas.width = this.staticLayer.width = this.rampLayer.width = w;
-    this.canvas.height = this.staticLayer.height = this.rampLayer.height = h;
+    // The display canvas never changes size for the camera (no reflow on phones): only the transform does.
+    this.canvas.width = w;
+    this.canvas.height = h;
+    // Cached layers cover the widest camera view, padded to whole pixels so 100% blits pixel-exact.
+    this.margin = { l: 0, t: 0, r: 0, b: 0 };
+    if (this.camera) {
+      const ext = visibleRect(VIEW, this.camera.cfg.minZoom, this.camera.cfg.anchor);
+      this.margin = {
+        l: Math.ceil((VIEW.x0 - ext.x0) * ppu),
+        t: Math.ceil((VIEW.y0 - ext.y0) * ppu),
+        r: Math.ceil((ext.x0 + ext.w - VIEW.x0 - VIEW.w) * ppu),
+        b: Math.ceil((ext.y0 + ext.h - VIEW.y0 - VIEW.h) * ppu),
+      };
+    }
+    const m = this.margin;
+    this.staticLayer.width = this.rampLayer.width = w + m.l + m.r;
+    this.staticLayer.height = this.rampLayer.height = h + m.t + m.b;
     this.drawStatic();
   }
 
+  /** Turn on the V2 camera (build test with ?v2=1). Rebuilds the layer caches once. */
+  enableCamera(cam: Camera) {
+    this.camera = cam;
+    if (this.cssW) this.resize(this.cssW, true);
+  }
+
+  /** World → display-canvas pixels: the classic fixed view, or the camera's anchored zoom. */
   worldTransform(ctx: CanvasRenderingContext2D) {
+    if (this.camera && this.camera.zoom !== 1) {
+      const t = this.camera.transform(this.ppu);
+      ctx.setTransform(t.a, 0, 0, t.d, t.e, t.f);
+      return;
+    }
     ctx.setTransform(this.ppu, 0, 0, this.ppu, -VIEW.x0 * this.ppu, -VIEW.y0 * this.ppu);
+  }
+
+  /** World → cached-layer pixels (the layers include the camera margins). */
+  layerTransform(ctx: CanvasRenderingContext2D) {
+    ctx.setTransform(this.ppu, 0, 0, this.ppu, -VIEW.x0 * this.ppu + this.margin.l, -VIEW.y0 * this.ppu + this.margin.t);
+  }
+
+  /** World rectangle the cached layers cover. */
+  layerRect() {
+    const m = this.margin, p = this.ppu;
+    return { x0: VIEW.x0 - m.l / p, y0: VIEW.y0 - m.t / p, w: VIEW.w + (m.l + m.r) / p, h: VIEW.h + (m.t + m.b) / p };
+  }
+
+  /** Composite a cached layer: pixel-exact at 100%, scaled about the anchor otherwise. */
+  blitLayer(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement) {
+    if (!this.camera || this.camera.zoom === 1) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layer, -this.margin.l, -this.margin.t);
+      return;
+    }
+    this.worldTransform(ctx);
+    const r = this.layerRect();
+    ctx.drawImage(layer, r.x0, r.y0, r.w, r.h);
   }
 
   /** Convert a client-space x delta (CSS px) to world units. */
@@ -124,7 +184,7 @@ export class GameView {
     const W = this.staticLayer.width, H = this.staticLayer.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    this.worldTransform(ctx);
+    this.layerTransform(ctx);
     this.drawStadium(ctx);
     const poly = playfieldPolygon();
 
@@ -248,13 +308,16 @@ export class GameView {
   }
 
   private drawStadium(ctx: CanvasRenderingContext2D) {
+    // Everything is laid out on the 100% VIEW (identical pixels to the classic view); the camera's
+    // extra margin only gets the same backdrop continued plus its own crowd, drawn after.
     const { x0, y0, w, h } = VIEW;
+    const L = this.layerRect();
     const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
     g.addColorStop(0, this.theme.m.backdrop[0]);
     g.addColorStop(0.5, this.theme.m.backdrop[1]);
     g.addColorStop(1, this.theme.m.backdrop[2]);
     ctx.fillStyle = g;
-    ctx.fillRect(x0, y0, w, h);
+    ctx.fillRect(L.x0, L.y0, L.w, L.h);
     // stands suggestion below the angled walls: soft out-of-focus crowd bokeh (static, cheap)
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -273,12 +336,41 @@ export class GameView {
       }
     }
     ctx.globalAlpha = 1;
+    if (L.w > w + 1e-6 || L.h > h + 1e-6) this.drawOuterStands(ctx, L);
     // floodlight bloom at the top corners
     ctx.globalCompositeOperation = 'lighter';
     drawGlow(ctx, this.theme.m.floodlight, 0.5, -0.8, 7.5, 0.35);
     drawGlow(ctx, this.theme.m.floodlight, 19.5, -0.8, 7.5, 0.35);
     drawGlow(ctx, this.theme.cabinetGlow, 10, 33, 9, 0.18);
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** Camera margin (outside the 100% view): upper-deck stands so a zoom-out looks finished, not void. */
+  private drawOuterStands(ctx: CanvasRenderingContext2D, L: Rect) {
+    let seed = 1913;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const crowd = this.theme.m.crowd;
+    const inView = (x: number, y: number) => x > VIEW.x0 && x < VIEW.x0 + VIEW.w && y > VIEW.y0 && y < VIEW.y0 + VIEW.h;
+    // strictly outside the 100% view (even-odd clip), so the classic framing stays pixel-identical
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(L.x0, L.y0, L.w, L.h);
+    ctx.rect(VIEW.x0, VIEW.y0, VIEW.w, VIEW.h);
+    ctx.clip('evenodd');
+    const n = Math.round((L.w * L.h - VIEW.w * VIEW.h) * 0.55);
+    for (let i = 0; i < n; i++) {
+      const x = L.x0 + rnd() * L.w, y = L.y0 + rnd() * L.h;
+      if (inView(x, y)) continue;
+      // denser and brighter higher up: rows of stands
+      const up = 1 - Math.min(1, Math.max(0, (y - L.y0) / (VIEW.y0 + 6 - L.y0)));
+      ctx.globalAlpha = 0.08 + rnd() * 0.12 + up * 0.08;
+      ctx.fillStyle = crowd[Math.floor(rnd() * crowd.length)];
+      ctx.beginPath();
+      ctx.arc(x, y, 0.16 + rnd() * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   private drawTurf(ctx: CanvasRenderingContext2D) {
@@ -307,17 +399,25 @@ export class GameView {
     // turf grain (pixel space)
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const n = document.createElement('canvas');
-    n.width = n.height = 96;
-    const ng = n.getContext('2d')!;
-    const img = ng.createImageData(96, 96);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = Math.random() < 0.5 ? 0 : 255;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = Math.random() * 16;
+    // Generated once per view and reused on every static redraw (theme switch, layout change, camera
+    // resize), so redraws never consume extra Math.random and never change the grain.
+    if (!this.grain) {
+      const n = document.createElement('canvas');
+      n.width = n.height = 96;
+      const ng = n.getContext('2d')!;
+      const img = ng.createImageData(96, 96);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random() < 0.5 ? 0 : 255;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = Math.random() * 16;
+      }
+      ng.putImageData(img, 0, 0);
+      this.grain = n;
     }
-    ng.putImageData(img, 0, 0);
-    ctx.fillStyle = ctx.createPattern(n, 'repeat')!;
+    const pat = ctx.createPattern(this.grain, 'repeat')!;
+    // keep the grain's tiling phase on the 100% view's pixel grid (identical to the classic view)
+    pat.setTransform(new DOMMatrix().translate(this.margin.l, this.margin.t));
+    ctx.fillStyle = pat;
     ctx.fillRect(0, 0, this.staticLayer.width, this.staticLayer.height);
     ctx.restore();
   }
@@ -791,8 +891,11 @@ export class GameView {
       else this.lit.set(k, v - dt);
     }
     this.vfx.update(dt);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.staticLayer, 0, 0);
+    if (this.camera) {
+      const live = sim.rules.phase === 'live';
+      this.camera.update(this.cameraProbe ?? (live ? cameraBalls(sim) : []), dt, dt <= 0);
+    }
+    this.blitLayer(ctx, this.staticLayer);
     this.worldTransform(ctx);
 
     this.drawBulbs(ctx);
@@ -805,7 +908,39 @@ export class GameView {
     this.drawBalls(ctx, sim, dt, 'raised');
     this.vfx.draw(ctx);
     if (this.highlights.length) this.drawHighlights(ctx);
+    if (this.camera) this.drawCameraAids(ctx);
     if (this.debug) this.drawDebug(ctx, sim);
+  }
+
+  /** Offscreen indicators (safety net past the zoom floor) and dev probe markers. */
+  private drawCameraAids(ctx: CanvasRenderingContext2D) {
+    const cam = this.camera!;
+    const r = visibleRect(VIEW, cam.zoom, cam.cfg.anchor);
+    const inset = 0.7 / cam.zoom;
+    for (const b of cam.offscreen) {
+      const x = Math.min(r.x0 + r.w - inset, Math.max(r.x0 + inset, b.x)), y = Math.min(r.y0 + r.h - inset, Math.max(r.y0 + inset, b.y));
+      const a = Math.atan2(b.y - y, b.x - x);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.fillStyle = this.theme.energyPrimary;
+      ctx.beginPath();
+      ctx.moveTo(0.45 / cam.zoom, 0);
+      ctx.lineTo(-0.3 / cam.zoom, -0.32 / cam.zoom);
+      ctx.lineTo(-0.3 / cam.zoom, 0.32 / cam.zoom);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (this.cameraProbe) {
+      ctx.strokeStyle = '#ff3df0';
+      ctx.lineWidth = 0.12;
+      for (const p of this.cameraProbe) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 0.32, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   }
 
   /**

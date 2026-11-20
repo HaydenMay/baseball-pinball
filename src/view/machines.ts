@@ -57,7 +57,7 @@ export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: Gam
   const rl = view.rampLayer.getContext('2d')!;
   rl.setTransform(1, 0, 0, 1, 0, 0);
   rl.clearRect(0, 0, view.rampLayer.width, view.rampLayer.height);
-  view.worldTransform(rl);
+  view.layerTransform(rl);
   for (const r of L.ramps) drawRampRaised(rl, r, view.theme);
 }
 
@@ -582,8 +582,7 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
 export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView, sim: Simulation) {
   if (!view.layout.ramps.length) return;
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(view.rampLayer, 0, 0);
+  view.blitLayer(ctx, view.rampLayer);
   ctx.restore();
   const th = view.theme;
   for (const r of view.layout.ramps) {

@@ -9,7 +9,8 @@ import { Telemetry } from './telemetry/session.ts';
 import { RunRecorder, type RunRecord, type Store } from './telemetry/run-recorder.ts';
 import { renderReport, reportFilename } from './telemetry/report-html.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
-import { GameView } from './view/game.ts';
+import { Camera, cameraBalls } from './view/camera.ts';
+import { GameView, VIEW } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
 import { PRESETS, isBuildRoute, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
@@ -336,6 +337,52 @@ w.playtest = {
     a.click();
   },
 };
+
+// ─── V2 fixed-anchor zoom camera (build test, ?v2=1 while it's being proven) ───
+const v2 = buildMode && new URLSearchParams(location.search).get('v2') === '1';
+if (v2) {
+  view.enableCamera(new Camera(VIEW));
+  /**
+   * Dev harness: `v2cam.probe([{x:10,y:-6},{x:10,y:24}], 3)` frames those points for 3 s (no physics
+   * change) so the zoom can be checked without the annexes; `v2cam.stats()` for metrics.
+   */
+  w.v2cam = {
+    probe(points: { x: number; y: number }[], seconds = 3) {
+      view.cameraProbe = points;
+      setTimeout(() => (view.cameraProbe = null), seconds * 1000);
+    },
+    clear: () => (view.cameraProbe = null),
+    get zoom() {
+      return view.camera?.zoom;
+    },
+    stats: () => ({ ...view.camera!.stats, zoom: view.camera!.zoom, wanted: view.camera!.wanted }),
+  };
+  /**
+   * `?v2=1&camdemo=1`: until the annexes exist no real ball can leave the table, so a ghost ball
+   * (display only, no physics) repeatedly flies above the table and falls back to the bat while you play.
+   * Lets the zoom out/in be felt on a phone. The ghost is drawn as a ring.
+   */
+  if (new URLSearchParams(location.search).get('camdemo') === '1') {
+    const PERIOD = 6;
+    let t0 = performance.now();
+    const ghost = () => {
+      const t = ((performance.now() - t0) / 1000) % PERIOD;
+      // launched from the top wall at 14 u/s up, falls under game gravity back to the hands line
+      const vy0 = -14, y0 = 1.5, g = config.gravity;
+      const y = Math.min(config.batter.handsY, y0 + vy0 * t + 0.5 * g * t * t);
+      return { x: 10 + 3 * Math.sin(t * 1.3), y, vx: 0, vy: vy0 + g * t };
+    };
+    const loop = () => {
+      if (!paused && sim.rules.phase === 'live') view.cameraProbe = [...cameraBalls(sim), ghost()];
+      else {
+        view.cameraProbe = null;
+        t0 = performance.now();
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+}
 
 // ─── Developer run analytics (build test only; silent unless ?devAnalytics=1 shows the download) ───
 /** localStorage wrapper; any failure (private mode, quota) just means memory-only reports. */
