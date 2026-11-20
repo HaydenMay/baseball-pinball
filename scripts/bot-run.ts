@@ -127,6 +127,7 @@ function pref(o: { key: string; kind: string }) {
 type Row = { attempts: number; clears: number; seconds: number[]; strikesUsed: number[] };
 const rows = new Map<number, Row>();
 const builds: string[] = [];
+let victories = 0;
 let powerAtEnd = 0, moneyLeft = 0, maxPowerAtEnd = 0, machinesAtEnd = 0, reached = 0, usableDraftMisses = 0, emptyShops = 0;
 for (let n = 0; n < RUNS; n++) {
   const run = new Run(SEED * 1000 + n);
@@ -159,6 +160,12 @@ for (let n = 0; n < RUNS; n++) {
     rows.set(run.challenge, row);
     const earned = run.clear(3 - r.strikes);
     REC?.afterClear(run, earned);
+    if (run.won) {
+      // C15 cleared: the run is complete (no draft, shop or C16).
+      victories++;
+      REC?.endRun('completed');
+      break;
+    }
     botNow += 20_000;
     if (!run.draft.some(o => run.check(o).ok)) usableDraftMisses++;
     // draft: strategy preference, else prefer a machine
@@ -220,6 +227,7 @@ for (const [c, r] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
   console.log(`| ${c} | ${t.toLocaleString()} | ${r.attempts} | ${Math.round((r.clears / r.attempts) * 100)}% | ${avg(r.seconds).toFixed(0)} s | ${avg(r.strikesUsed).toFixed(1)} |`);
 }
 console.log(`config: growth ×${ECONOMY.targetGrowth}, Power ${process.env.BOT_POWER === 'flat5' ? 'flat 5' : `${ECONOMY.startPower} +${ECONOMY.powerPerInning}/inning`}, ramps ${process.env.BOT_RAMPS === 'legacy' ? 'legacy gate+finish' : '8 × 1,000 checkpoints'}`);
+console.log(`victories (C15 cleared): ${victories}/${RUNS}`);
 console.log(`avg challenge reached ${(reached / RUNS).toFixed(1)}; avg machines ${(machinesAtEnd / RUNS).toFixed(1)}, Power ${(powerAtEnd / RUNS).toFixed(1)}/${(maxPowerAtEnd / RUNS).toFixed(1)}; drafts with no usable pick ${usableDraftMisses}; empty shops ${emptyShops}`);
 console.log(`ramps: entries ${rampStats.enter}, full rides ${rampStats.complete}, checkpoints ${rampStats.checkpoints}, ramp points ${rampStats.points.toLocaleString()} = ${((100 * rampStats.points) / Math.max(1, rampStats.allPoints)).toFixed(1)}% of all points`);
 console.log(`avg power used at end ${(powerAtEnd / RUNS).toFixed(1)}, avg money left ${(moneyLeft / RUNS).toFixed(1)}`);

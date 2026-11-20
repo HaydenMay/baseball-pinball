@@ -123,3 +123,7 @@ The loop is now **challenge → free draft (machines + premium upgrades) → sho
 ## Progression and ramps (Nov 19, later)
 
 Power now starts at 6 and grows +1 per inning; target growth is ×1.4 (experimental); build-test ramps pay 8 × 1,000 checkpoints. Current numbers: [PROGRESSION_AND_RAMP_PLAYTEST.md](PROGRESSION_AND_RAMP_PLAYTEST.md).
+
+## Upgrade System 3.0 (Nov 20)
+
+5 innings / 15 challenges, selling + Manage Machine, board-anchored (dormant) modifiers, group/cross effects, bundles, Long Loop, hybrid-weighted offers: [UPGRADE_SYSTEM_3_PLAYTEST.md](UPGRADE_SYSTEM_3_PLAYTEST.md).

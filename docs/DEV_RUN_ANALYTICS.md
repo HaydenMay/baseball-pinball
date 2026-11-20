@@ -46,7 +46,9 @@ advice, grades or rankings.
 - **Not recorded, by design:** ball positions, raw touch input, device or user identifiers.
 - **Scope:** `/`, `/1`, `/2` and `/3` don't record runs. Their older `playtest.report()` is unchanged.
 
-## What it records (schema `baseball-pinball/dev-run@1`)
+## What it records (schema `baseball-pinball/dev-run@2`; v1 reports still load)
+
+v2 adds: items with parts (bundles), sales, dormant/reactivated modifiers, offer origin/weight/feasibility, the C15 `completed` outcome.
 
 The full TypeScript types are in `src/telemetry/run-recorder.ts`.
 
