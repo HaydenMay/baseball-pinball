@@ -3,6 +3,7 @@
  * Console: `playtest.report()` / `playtest.download()`.
  */
 import type { SimEvent } from '../physics/sim.ts';
+import type { RunRecorder, SimView } from './run-recorder.ts';
 
 export type BallRecord = {
   pitch: number;
@@ -31,8 +32,11 @@ export class Telemetry {
   swings = 0;
   missedSwings = 0;
   private swingHit = true;
+  /** Developer run recorder (build test only); fed from the same event stream. */
+  run: RunRecorder | null = null;
 
-  onEvent(e: SimEvent, simTime: number, ballScore: number, pitch: number) {
+  onEvent(e: SimEvent, simTime: number, ballScore: number, pitch: number, sim?: SimView) {
+    if (this.run && sim) this.run.onEvent(e, sim);
     if (e.type === 'serve') {
       this.current = { pitch, seconds: 0, batHits: 0, aims: { left: 0, center: 0, right: 0 }, machineHits: {}, slingSaves: 0, drainSide: null, score: 0, extraBallDrains: 0, maxBalls: 1, rampEnters: 0, rampCompletes: 0, rampRollbacks: 0, scoopCatches: 0, multiballs: 0, gatePasses: 0 };
       this.startTime = simTime;
@@ -74,7 +78,13 @@ export class Telemetry {
     }
   }
 
+  /** Real milliseconds of play; counted as active only with a live, unpaused ball. */
+  active(ms: number, live: boolean) {
+    this.run?.tick(ms, live);
+  }
+
   frame(ms: number) {
+    this.run?.frame(ms);
     this.frameMs.push(ms);
     if (this.frameMs.length > 1200) this.frameMs.shift();
   }

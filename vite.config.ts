@@ -1,6 +1,21 @@
 import { defineConfig, type Plugin } from 'vite';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
+
+/** Build identifier for developer run reports (see src/telemetry/build-info.ts). */
+function buildInfo() {
+  let commit = process.env.GITHUB_SHA ?? '';
+  if (!commit) {
+    try {
+      commit = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    } catch {
+      commit = 'unknown';
+    }
+  }
+  const version = JSON.parse(readFileSync('package.json', 'utf8')).version as string;
+  return { version, commit, builtAt: new Date().toISOString() };
+}
 
 /**
  * Map routes for static hosting (GitHub Pages has no SPA fallback):
@@ -28,4 +43,4 @@ function mapRoutes(): Plugin {
   };
 }
 
-export default defineConfig({ base: './', plugins: [mapRoutes()] });
+export default defineConfig({ base: './', plugins: [mapRoutes()], define: { __BUILD_INFO__: JSON.stringify(buildInfo()) } });

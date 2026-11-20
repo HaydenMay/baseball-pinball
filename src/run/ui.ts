@@ -10,6 +10,7 @@ import { anchorsFor } from '../view/anchors.ts';
 import type { GameView } from '../view/game.ts';
 import type { Simulation } from '../physics/sim.ts';
 import type { Preset } from '../machines/presets.ts';
+import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
 
 export type BuildHost = {
   view: GameView;
@@ -20,6 +21,11 @@ export type BuildHost = {
   hideOverlay: () => void;
   setTag: (text: string) => void;
   startPitch: () => void;
+  /** Developer run recorder (always records on the build test; silent). */
+  recorder?: RunRecorder | null;
+  /** Offer a report download on the current overlay (shown only with ?devAnalytics=1). */
+  devReport?: (label: string, get: () => RunRecord | null) => void;
+  theme?: string;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -31,10 +37,14 @@ export class BuildUI {
   /** Selected offer + mount in the open panel. */
   private sel: { uid: number; mount?: string } | null = null;
   private lastEarned = 0;
+  /** The Run the recorder is currently recording (a new Run object starts a new recorded run). */
+  private recordedRun: Run | null = null;
+  private runSeed = 0;
 
   constructor(host: BuildHost, stage: HTMLElement) {
     this.host = host;
-    this.run = new Run((Math.random() * 2 ** 32) >>> 0);
+    this.runSeed = (Math.random() * 2 ** 32) >>> 0;
+    this.run = new Run(this.runSeed);
     this.panel = document.createElement('div');
     this.panel.id = 'buildPanel';
     this.panel.hidden = true;
@@ -69,12 +79,29 @@ export class BuildUI {
       () => this.host.startPitch(),
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
     );
+    // Developer analytics: a new Run object = a new recorded run (the previous one stays archived).
+    const rec = this.host.recorder;
+    if (rec) {
+      if (this.recordedRun !== this.run) {
+        rec.startRun({ route: location.pathname, theme: this.host.theme ?? '', runSeed: this.runSeed });
+        this.recordedRun = this.run;
+      }
+      rec.startChallenge(this.run, this.host.getSim().rules.maxStrikes);
+      const prev = this.run.challenge === 1 ? rec.lastRun() : null;
+      if (prev) this.host.devReport?.(`Download previous run report (${prev.outcome})`, () => rec.lastRun());
+    }
   }
 
   /** Sim says the target was reached. */
   onClear() {
     const sim = this.host.getSim();
+    const rec = this.host.recorder;
+    // Finalize the challenge with the machine that actually played it, BEFORE any reward is applied.
+    rec?.endChallenge(this.run, sim, 'cleared');
     this.lastEarned = this.run.clear(sim.rules.maxStrikes - sim.rules.strikes);
+    rec?.afterClear(this.run, this.lastEarned);
+    const victory = this.run.challenge >= ECONOMY.lastChallenge;
+    if (victory) rec?.endRun('completed');
     this.tag();
     this.host.showOverlay(
       `CHALLENGE ${this.run.challenge} CLEARED`,
@@ -87,23 +114,30 @@ export class BuildUI {
       },
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
     );
+    if (victory && rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
   }
 
   /** Third strike short of the target. */
   onFail() {
     const sim = this.host.getSim();
+    const rec = this.host.recorder;
+    rec?.endChallenge(this.run, sim, 'failed');
     this.run.fail();
+    rec?.endRun('failed');
     this.host.showOverlay(
       'THREE STRIKES',
       'CHALLENGE FAILED',
       `${fmt(sim.rules.score)} of ${fmt(this.run.target)} on challenge ${this.run.challenge}. Machine: ${this.machineLine()}.`,
       'RESTART TEST RUN',
       () => {
-        this.run = new Run((Math.random() * 2 ** 32) >>> 0);
+        this.runSeed = (Math.random() * 2 ** 32) >>> 0;
+        this.run = new Run(this.runSeed);
         (window as any).buildRun = this.run;
         this.start();
       },
     );
+    // The terminal record is archived before the restart button, so it stays downloadable afterwards too.
+    if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
   }
 
   private openPanel() {
@@ -210,7 +244,19 @@ export class BuildUI {
       this.sel = { uid, mount: el.dataset.mount };
     } else if (el.dataset.act === 'take') {
       const mount = this.sel?.uid === uid ? this.sel.mount : undefined;
-      const res = this.run.phase === 'draft' ? this.run.takeDraft(uid, mount) : this.run.buy(uid, mount);
+      const wasDraft = this.run.phase === 'draft';
+      const offer = (wasDraft ? this.run.draft : this.run.shop).find(o => o.uid === uid);
+      const declined = wasDraft ? this.run.draft.filter(o => o.uid !== uid) : [];
+      const moneyBefore = this.run.money;
+      const res = wasDraft ? this.run.takeDraft(uid, mount) : this.run.buy(uid, mount);
+      const rec = this.host.recorder;
+      if (res.ok && rec && offer) {
+        const placed = offer.kind === 'machine' ? this.run.installed[this.run.installed.length - 1]?.mountId : undefined;
+        if (wasDraft) {
+          rec.draftTaken(this.run, offer, declined, placed);
+          rec.shopOffers(this.run, 'open');
+        } else rec.purchase(this.run, offer, moneyBefore, placed);
+      }
       if (res.ok) {
         this.sel = null;
         // show the new machine on the board right away
@@ -219,10 +265,14 @@ export class BuildUI {
     } else if (el.dataset.act === 'back') {
       this.sel = null;
     } else if (el.dataset.act === 'reroll') {
-      this.run.reroll();
+      const price = this.run.rerollPrice, moneyBefore = this.run.money;
+      if (this.run.reroll() && this.host.recorder) {
+        this.host.recorder.reroll(this.run, price, moneyBefore);
+        this.host.recorder.shopOffers(this.run, 'reroll');
+      }
       this.sel = null;
     } else if (el.dataset.act === 'next') {
-      this.run.next();
+      if (this.run.next()) this.host.recorder?.nextChallenge(this.run);
       this.closePanel();
       this.start();
       return;

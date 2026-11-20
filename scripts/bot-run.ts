@@ -20,6 +20,15 @@ import { Simulation } from '../src/physics/sim.ts';
 import { Run } from '../src/run/run.ts';
 import { ECONOMY } from '../src/run/economy.ts';
 import { MACHINES } from '../src/run/catalog.ts';
+import { writeFileSync } from 'node:fs';
+import { RunRecorder } from '../src/telemetry/run-recorder.ts';
+import { renderReport } from '../src/telemetry/report-html.ts';
+
+// BOT_REPORT=path.html: record the FIRST bot run with the developer run recorder and write its HTML report
+// (synthetic test data, labeled as such). Clock = simulated time.
+let botNow = Date.UTC(2026, 10, 20, 17, 0);
+const REC_PATH = process.env.BOT_REPORT;
+let REC: RunRecorder | null = null;
 
 // Balance-comparison switches (env): BOT_GROWTH=1.6, BOT_POWER=flat5 (old flat 5 Power, no inning grants),
 // BOT_RAMPS=legacy (old gate + finish payouts instead of 8 × 1,000 checkpoints).
@@ -49,6 +58,7 @@ function playChallenge(run: Run, simSeed: number) {
     preset: run.preset(),
     seed: simSeed,
     onEvent: e => {
+      REC?.onEvent(e, sim);
       if (e.type === 'ramp' && e.phase === 'enter') rampStats.enter++;
       if (e.type === 'ramp' && e.phase === 'complete') { rampStats.complete++; rampStats.points += e.points; }
       if (e.type === 'rampGate') rampStats.points += e.points;
@@ -70,6 +80,7 @@ function playChallenge(run: Run, simSeed: number) {
   sim.rules.target = run.target;
   const c = makeControls();
   let plan: { at: number } | null = null, downSince = -1;
+  REC?.startChallenge(run, sim.rules.maxStrikes);
   const t0 = sim.time;
   while (sim.rules.phase !== 'cleared' && sim.rules.phase !== 'over' && sim.time - t0 < 900) {
     if (sim.rules.phase === 'ready') sim.ready();
@@ -94,10 +105,12 @@ function playChallenge(run: Run, simSeed: number) {
       }
     } else { downSince = -1; plan = null; }
     sim.step(DT, c);
+    botNow += DT * 1000;
+    REC?.tick(DT * 1000, sim.rules.phase === 'live');
     if (sim.rules.phase === 'live') liveSeconds += DT;
   }
   rampStats.allPoints += sim.rules.score;
-  return { cleared: sim.rules.phase === 'cleared', seconds: sim.time - t0, strikes: sim.rules.strikes, score: sim.rules.score };
+  return { cleared: sim.rules.phase === 'cleared', seconds: sim.time - t0, strikes: sim.rules.strikes, score: sim.rules.score, sim };
 }
 
 const GATE_KEYS = ['mult-gate', 'express-lane'];
@@ -117,6 +130,9 @@ const builds: string[] = [];
 let powerAtEnd = 0, moneyLeft = 0, maxPowerAtEnd = 0, machinesAtEnd = 0, reached = 0, usableDraftMisses = 0, emptyShops = 0;
 for (let n = 0; n < RUNS; n++) {
   const run = new Run(SEED * 1000 + n);
+  REC = REC_PATH && n === 0 ? new RunRecorder({ store: null, build: { version: 'bot', commit: 'synthetic', builtAt: '' }, now: () => botNow }) : null;
+  REC?.startRun({ route: '/build-test/ (headless bot)', theme: 'n/a', runSeed: SEED * 1000 + n });
+  REC?.rec!.notes.push('SYNTHETIC TEST DATA: played by the headless bot (scripts/bot-run.ts), not a human playtest.');
   // PREINSTALL="mult-gate@gate-l,mult-gate@gate-r" starts every run with those machines (rate measurements).
   for (const spec of (process.env.PREINSTALL ?? '').split(',').filter(Boolean)) {
     const [key, mount] = spec.split('@');
@@ -129,18 +145,31 @@ for (let n = 0; n < RUNS; n++) {
     const r = playChallenge(run, n * 100 + run.challenge);
     const row = rows.get(run.challenge) ?? { attempts: 0, clears: 0, seconds: [], strikesUsed: [] };
     row.attempts++;
-    if (!r.cleared) { rows.set(run.challenge, row); run.fail(); break; }
+    if (!r.cleared) {
+      rows.set(run.challenge, row);
+      REC?.endChallenge(run, r.sim, 'failed');
+      run.fail();
+      REC?.endRun('failed');
+      break;
+    }
+    REC?.endChallenge(run, r.sim, 'cleared');
     row.clears++;
     row.seconds.push(r.seconds);
     row.strikesUsed.push(r.strikes);
     rows.set(run.challenge, row);
-    run.clear(3 - r.strikes);
+    const earned = run.clear(3 - r.strikes);
+    REC?.afterClear(run, earned);
+    botNow += 20_000;
     if (!run.draft.some(o => run.check(o).ok)) usableDraftMisses++;
     // draft: strategy preference, else prefer a machine
     const usable = run.draft.filter(o => run.check(o).ok);
     const d = [...usable].sort((a, b) => pref(b) - pref(a))[0] ?? run.draft[0];
     const ck = run.check(d);
-    run.takeDraft(d.uid, ck.ok && ck.mounts.length ? ck.mounts[Math.floor(rnd() * ck.mounts.length)] : undefined);
+    const declined = run.draft.filter(o => o !== d);
+    if (run.takeDraft(d.uid, ck.ok && ck.mounts.length ? ck.mounts[Math.floor(rnd() * ck.mounts.length)] : undefined).ok && REC) {
+      REC.draftTaken(run, d, declined, d.kind === 'machine' ? run.installed[run.installed.length - 1].mountId : undefined);
+      REC.shopOffers(run, 'open');
+    }
     // shop: buy what's affordable, machines first; one reroll if nothing affordable
     if (!run.shop.length) emptyShops++;
     for (let pass = 0; pass < 2; pass++) {
@@ -149,11 +178,30 @@ for (let n = 0; n < RUNS; n++) {
         if (o.price > run.money) continue;
         const c2 = run.check(o);
         if (!c2.ok) continue;
-        run.buy(o.uid, o.kind === 'machine' ? c2.mounts[0] : undefined);
+        const mb = run.money;
+        if (run.buy(o.uid, o.kind === 'machine' ? c2.mounts[0] : undefined).ok) REC?.purchase(run, o, mb);
       }
-      if (pass === 0 && !run.shop.some(o => o.price <= run.money) && run.money >= run.rerollPrice + 3) run.reroll();
+      if (pass === 0 && !run.shop.some(o => o.price <= run.money) && run.money >= run.rerollPrice + 3) {
+        const price = run.rerollPrice, mb = run.money;
+        if (run.reroll() && REC) {
+          REC.reroll(run, price, mb);
+          REC.shopOffers(run, 'reroll');
+        }
+      }
     }
     run.next();
+    REC?.nextChallenge(run);
+    botNow += 15_000;
+  }
+  if (REC && REC_PATH) {
+    if (REC.rec!.outcome === 'in-progress') {
+      // Stopped by the bot's challenge limit, not a loss: say so instead of inventing an outcome.
+      REC.rec!.outcome = 'interrupted';
+      REC.rec!.endedAt = botNow;
+      REC.rec!.notes.push(`Stopped by the bot's challenge limit (C${MAXC}).`);
+    }
+    writeFileSync(REC_PATH, renderReport(REC.snapshot()!));
+    console.log(`wrote synthetic report ${REC_PATH} (run reached C${run.challenge})`);
   }
   powerAtEnd += run.powerUsed;
   maxPowerAtEnd += run.maxPower;

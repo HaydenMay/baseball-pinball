@@ -394,3 +394,18 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   background: linear-gradient(var(--m-btn-a), var(--m-btn-b));
   box-shadow: 0 0 0 1px var(--m-btn-edge), 0 0 12px color-mix(in srgb, var(--m-btn-b) 50%, transparent);
 }
+
+/* Developer-only report download on end overlays (?devAnalytics=1). Deliberately plain. */
+.dev-report {
+  display: block;
+  margin: 10px auto 0;
+  padding: 7px 12px;
+  border: 1px dashed var(--m-label);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--m-label);
+  font: 600 12px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.dev-hint { font-size: 10px; opacity: 0.7; margin-top: 4px; }

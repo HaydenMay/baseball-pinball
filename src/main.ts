@@ -6,6 +6,9 @@ import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
 import { Telemetry } from './telemetry/session.ts';
+import { RunRecorder, type RunRecord, type Store } from './telemetry/run-recorder.ts';
+import { renderReport, reportFilename } from './telemetry/report-html.ts';
+import { BUILD_INFO } from './telemetry/build-info.ts';
 import { GameView } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
@@ -39,7 +42,7 @@ const sfx = new Sfx();
 function onSimEvent(e: SimEvent) {
   view.onSimEvent(e);
   sfx.onEvent(e);
-  telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber);
+  telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber, sim);
   // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
   if (e.type === 'drain' && e.strike) onDrain();
   if (e.type === 'clear') build?.onClear();
@@ -123,6 +126,8 @@ function showOverlay(kicker: string, title: string, text: string, button: string
   $('#overlayTitle').textContent = title;
   $('#overlayText').textContent = text;
   if (info !== undefined) $('#machineInfo').textContent = info;
+  // dev report button (created later; looked up so this is safe before it exists)
+  for (const el of document.querySelectorAll<HTMLElement>('#devReport, .dev-hint')) el.hidden = true;
   readyBtn.textContent = button;
   overlayAction = action;
   overlay.hidden = false;
@@ -251,6 +256,7 @@ function tick(ms: number) {
   const delta = last ? Math.min((ms - last) / 1000, 0.05) : 0;
   last = ms;
   telemetry.frame(delta * 1000);
+  telemetry.active(delta * 1000, !paused && sim.rules.phase === 'live');
   if (!paused) {
     controls.moveAxis = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
     acc += delta;
@@ -331,6 +337,63 @@ w.playtest = {
   },
 };
 
+// ─── Developer run analytics (build test only; silent unless ?devAnalytics=1 shows the download) ───
+/** localStorage wrapper; any failure (private mode, quota) just means memory-only reports. */
+const localStore: Store | null = (() => {
+  try {
+    const ls = window.localStorage;
+    const k = '__bp_probe';
+    ls.setItem(k, '1');
+    ls.removeItem(k);
+    return { get: k2 => ls.getItem(k2), set: (k2, v) => ls.setItem(k2, v), remove: k2 => ls.removeItem(k2) };
+  } catch {
+    return null;
+  }
+})();
+const devAnalytics = new URLSearchParams(location.search).get('devAnalytics') === '1';
+const recorder: RunRecorder | null = buildMode ? new RunRecorder({ store: localStore, build: BUILD_INFO }) : null;
+telemetry.run = recorder;
+const devBtn = document.createElement('button');
+devBtn.type = 'button';
+devBtn.id = 'devReport';
+devBtn.className = 'dev-report';
+devBtn.hidden = true;
+const devHint = document.createElement('p');
+devHint.className = 'hint dev-hint';
+devHint.hidden = true;
+devHint.textContent = 'iPhone: if a preview opens, use Share → Save to Files.';
+readyBtn.after(devBtn, devHint);
+let devGet: () => RunRecord | null = () => null;
+devBtn.addEventListener('click', () => downloadReport(devGet()));
+
+/** Download one run as a self-contained HTML file. Must be called from a tap/click (iOS needs a gesture). */
+function downloadReport(r: RunRecord | null) {
+  if (!r) return false;
+  const url = URL.createObjectURL(new Blob([renderReport(r)], { type: 'text/html' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = reportFilename(r);
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  if ('download' in a) a.click();
+  else window.open(url, '_blank');
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
+}
+// Leaving or reloading: save what we have (an unfinished pitch is later marked "interrupted", never finished).
+addEventListener('pagehide', () => recorder?.save());
+w.playtest.run = () => recorder?.snapshot() ?? null;
+w.playtest.lastRun = () => recorder?.lastRun() ?? null;
+/** `playtest.downloadHtml()` = current run; `playtest.downloadHtml('last')` = archived previous/interrupted run. */
+w.playtest.runs = () => recorder?.archivedRuns().map(r => ({ runId: r.runId, outcome: r.outcome, challenges: r.challenges.length, startedAt: new Date(r.startedAt).toLocaleString() })) ?? [];
+/**
+ * `playtest.downloadHtml()` = current run; `'last'` = most recent archived (failed/interrupted) run;
+ * a number = that index in `playtest.runs()`. Run it from a click/console (iOS needs a user gesture).
+ */
+w.playtest.downloadHtml = (which: 'current' | 'last' | number = 'current') =>
+  downloadReport(which === 'current' ? (recorder?.snapshot() ?? null) : (recorder?.archivedRuns()[which === 'last' ? 0 : which] ?? null));
+
 // ─── Build-test roguelite loop (/build-test/) ───
 const build: BuildUI | null = buildMode
   ? new BuildUI(
@@ -350,6 +413,14 @@ const build: BuildUI | null = buildMode
         },
         setTag: t => ($('.strip .tag').textContent = t),
         startPitch: () => onReady(),
+        recorder,
+        theme: theme.id,
+        devReport: (label, get) => {
+          if (!devAnalytics) return;
+          devGet = get;
+          devBtn.textContent = label;
+          devBtn.hidden = devHint.hidden = false;
+        },
       },
       stage,
     )

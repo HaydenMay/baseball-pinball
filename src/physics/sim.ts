@@ -30,6 +30,13 @@ export type SimEvent =
   | { type: 'scoop'; id: string; phase: 'catch' | 'eject'; x: number; y: number; points: number; ball: number }
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
   | { type: 'clear'; score: number; target: number }
+  /**
+   * Observation only (analytics): one per banked award, emitted by the single scoring boundary.
+   * `base` = the part's own base points, `modified` = after the part's own +/× modifiers,
+   * `multTenths` = global multiplier used, `awarded` = points actually added to the score (0-awards
+   * after a clear are not emitted). `part` narrows the source further (ramp checkpoint "cp3").
+   */
+  | { type: 'score'; kind: string; id: string; base: number; modified: number; multTenths: number; awarded: number; part?: string; ball: number }
   /** Global strike multiplier rose: `gain` and `total` in tenths (total 13 = ×1.3). */
   | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank'; id: string; x: number; y: number; gain: number; total: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
@@ -121,6 +128,18 @@ export class Simulation {
   pts(id: string, kind: string, base: number) {
     const mods = [...(this.mods[id] ?? []), ...(this.mods[kind + ':*'] ?? [])];
     return mods.length ? applyModifiers(base, mods) : base;
+  }
+
+  /**
+   * Bank points through the one central boundary (rules.award applies the global multiplier once) and
+   * report what was actually banked for analytics. Never awards twice; returns rules.award's result.
+   */
+  private award(kind: string, id: string, base: number, modified: number, ball: Ball, part?: string) {
+    const before = this.rules.score;
+    const p = this.rules.award(modified);
+    const banked = this.rules.score - before;
+    if (banked > 0) this.emit({ type: 'score', kind, id, base, modified, multTenths: this.rules.multTenths, awarded: banked, part, ball: ball.id });
+    return p;
   }
 
   /**
@@ -278,8 +297,9 @@ export class Simulation {
       points = this.hitSplitter(d.ref as SplitterDef);
       if (points < 0) return;
     }
+    const base = points;
     points = this.pts(d.id, d.kind, points);
-    if (points) points = this.rules.award(points);
+    if (points) points = this.award(d.kind, d.id, base, points, ball);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
     if (d.kind === 'bumper') this.boost('bumper', d.id, pos.x, pos.y, this.generate(d.id, 'bumper'), ball);
     if (d.kind === 'target' || d.kind === 'jackpot') this.markBanks(d.id, ball);
@@ -292,7 +312,7 @@ export class Simulation {
       set.add(targetId);
       if (set.size === b.targetIds.length) {
         set.clear();
-        const p = this.rules.award(this.pts(b.id, 'bank', b.bonus));
+        const p = this.award('bank', b.id, b.bonus, this.pts(b.id, 'bank', b.bonus), ball);
         this.emit({ type: 'bank', id: b.id, points: p, ball: ball.id });
         const at = this.layout.boxTargets.find(t => t.id === b.targetIds[1]) ?? ball.pos;
         this.boost('bank', b.id, at.x, at.y, this.generate(b.id, 'bank'), ball);
@@ -389,7 +409,7 @@ export class Simulation {
       body.setLinearVelocity(P.Vec2(contact.velocity.x, contact.velocity.y));
       this.rules.batHit();
       // Bat hits are ordinary scoring: they follow the global multiplier like everything else.
-      this.rules.award(config.batHitPoints);
+      this.award('bat', 'bat', config.batHitPoints, config.batHitPoints, ball);
       this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id });
     }
 
@@ -412,7 +432,7 @@ export class Simulation {
       const half = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) / 2 - g.postR;
       if (crossedLine(ball.prev, p, c, g.dir, half)) {
         ball.ignore[g.id] = this.time + 0.5;
-        const pts = this.rules.award(this.pts(g.id, 'gate', g.points));
+        const pts = this.award('gate', g.id, g.points, this.pts(g.id, 'gate', g.points), ball);
         this.emit({ type: 'machine', kind: 'gate', id: g.id, x: c.x, y: c.y, points: pts, nx: g.dir.x, ny: g.dir.y, ball: ball.id });
       }
     }
@@ -427,7 +447,7 @@ export class Simulation {
         ball.ignore[sp.id] = this.time + 0.3;
         const v = body.getLinearVelocity();
         const spins = Math.max(1, Math.min(sp.maxSpins, Math.round(Math.hypot(v.x, v.y) * sp.spinsPerSpeed)));
-        const pts = this.rules.award(this.pts(sp.id, 'spinner', spins * sp.pointsPerSpin));
+        const pts = this.award('spinner', sp.id, spins * sp.pointsPerSpin, this.pts(sp.id, 'spinner', spins * sp.pointsPerSpin), ball);
         this.spinners.set(sp.id, (this.spinners.get(sp.id) ?? 0) + spins);
         this.emit({ type: 'machine', kind: 'spinner', id: sp.id, x: c.x, y: c.y, points: pts, nx: n.x, ny: n.y, ball: ball.id, spins });
       }
@@ -496,7 +516,7 @@ export class Simulation {
     // Legacy mid-ramp scoring gate (ramps without checkpoints): once per forward pass.
     if (!cps.length && st.dir === 1 && d.gate && prevS < st.r.gateS && st.s >= st.r.gateS) {
       const g = rampAt(st.r, st.r.gateS).p;
-      const pts = this.rules.award(this.pts(d.id + '-gate', 'rampGate', d.gate.points));
+      const pts = this.award('rampGate', d.id + '-gate', d.gate.points, this.pts(d.id + '-gate', 'rampGate', d.gate.points), ball);
       this.emit({ type: 'rampGate', id: d.id, x: g.x, y: g.y, points: pts, ball: ball.id });
     }
     const { p, t } = rampAt(st.r, st.s);
@@ -510,7 +530,7 @@ export class Simulation {
         // The finish checkpoint already paid (and ran completion generators); this is presentation only.
         this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: 0, ball: ball.id });
       } else {
-        const pts = this.rules.award(this.pts(d.id, 'ramp', d.points));
+        const pts = this.award('ramp', d.id, d.points, this.pts(d.id, 'ramp', d.points), ball);
         this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
         // Only a completed ride counts toward ramp generators (entering or rolling back never does).
         this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
@@ -556,7 +576,7 @@ export class Simulation {
     ball.held = { scoop: s, t: 0 };
     ball.pos = { x: s.x, y: s.y };
     ball.height = 0;
-    const pts = this.rules.award(this.pts(s.id, 'scoop', s.points));
+    const pts = this.award('scoop', s.id, s.points, this.pts(s.id, 'scoop', s.points), ball);
     this.emit({ type: 'scoop', id: s.id, phase: 'catch', x: s.x, y: s.y, points: pts, ball: ball.id });
   }
 
@@ -601,7 +621,7 @@ export class Simulation {
     const st = ball.ramp!, d = st.r.def, c = d.checkpoints!, last = i === st.r.cpS.length - 1;
     const [key, kind] = last ? [d.id, 'ramp'] : i === st.r.cpGate ? [d.id + '-gate', 'rampGate'] : [d.id + '-cp', 'rampCheckpoint'];
     const at = rampAt(st.r, st.r.cpS[i]).p;
-    const pts = this.rules.award(this.pts(key, kind, c.points));
+    const pts = this.award(kind, key, c.points, this.pts(key, kind, c.points), ball, `cp${i}`);
     this.emit({ type: 'rampCheckpoint', id: d.id, index: i, count: st.r.cpS.length, x: at.x, y: at.y, points: pts, ball: ball.id });
     if (last) this.boost('ramp', d.id, at.x, at.y, this.generate(d.id, 'ramp'), ball);
   }
