@@ -43,6 +43,7 @@ function onSimEvent(e: SimEvent) {
   // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
   if (e.type === 'drain' && e.strike) onDrain();
   if (e.type === 'clear') build?.onClear();
+  if (e.type === 'mult') procMult();
 }
 function makeSim(p: Preset, target: number | null) {
   const s = new Simulation({ preset: p, seed: (Math.random() * 2 ** 32) >>> 0, onEvent: onSimEvent });
@@ -60,16 +61,32 @@ $('#machineInfo').textContent = preset.route
   : `BASELINE TABLE · POWER ${power.installed}/${power.max}`;
 
 // ─── HUD ───
-const hud = { ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes'), target: $('#target'), scoreLabel: $('#scoreLabel'), bar: $('#targetBar') };
-const shown = { ball: -1, score: -1, strikes: -1, state: '', target: null as number | null | undefined };
+const hud = { mult: $('#mult'), multWrap: $('#multwrap'), ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes'), target: $('#target'), scoreLabel: $('#scoreLabel'), bar: $('#targetBar') };
+const shown = { mult: -1, ball: -1, score: -1, strikes: -1, state: '', target: null as number | null | undefined };
 function pulse(el: HTMLElement) {
   el.classList.remove('pulse');
   void el.offsetWidth;
   el.classList.add('pulse');
   setTimeout(() => el.classList.remove('pulse'), 140);
 }
+/** "x1.0" from integer tenths: never shows float noise. */
+const fmtMult = (tenths: number) => `x${Math.floor(tenths / 10)}.${tenths % 10}`;
+/** Restart the plaque animation on every proc; a burst of procs never queues a backlog. */
+function procMult() {
+  hud.multWrap.classList.remove('proc');
+  void hud.multWrap.offsetWidth;
+  hud.multWrap.classList.add('proc');
+}
+hud.multWrap.addEventListener('animationend', e => {
+  if ((e.target as HTMLElement).classList.contains('mult')) hud.multWrap.classList.remove('proc');
+});
 function updateHud() {
   const r = sim.rules;
+  // Always the actual current global multiplier (also after a strike reset and during multiball).
+  if (r.multTenths !== shown.mult) {
+    hud.mult.textContent = fmtMult(r.multTenths);
+    shown.mult = r.multTenths;
+  }
   if (r.target !== shown.target) {
     hud.target.hidden = r.target === null;
     hud.target.textContent = r.target === null ? '' : `/ ${r.target.toLocaleString()}`;
@@ -338,3 +355,4 @@ const build: BuildUI | null = buildMode
     )
   : null;
 build?.start();
+(window as any).build = build;

@@ -4,7 +4,7 @@
  */
 import * as P from 'planck';
 import { config } from '../config.ts';
-import { buildRampPath, type BankDef, type GateDef, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { buildRampPath, type BankDef, type GateDef, type MultGateDef, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type Pt = { x: number; y: number };
@@ -133,11 +133,12 @@ export type Layout = {
   gates: GateDef[];
   spinners: SpinnerDef[];
   banks: BankDef[];
+  multGates: MultGateDef[];
 };
 
 /** The factory table every map shares. */
 export function baseLayout(): Layout {
-  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [] };
+  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [], multGates: [] };
 }
 
 /** Base table minus the preset's displaced parts, plus its mechanisms. */
@@ -156,6 +157,7 @@ export function layoutFor(preset?: Preset): Layout {
     else if (m.type === 'gate') l.gates.push(m);
     else if (m.type === 'spinner') l.spinners.push(m);
     else if (m.type === 'bank') l.banks.push(m);
+    else if (m.type === 'multgate') l.multGates.push(m);
     else if (m.type === 'bumper') l.bumpers.push({ id: m.id, kind: 'bumper', x: m.x, y: m.y, r: m.r, style: 'bonus', points: m.points, kick: m.kick });
   }
   return l;

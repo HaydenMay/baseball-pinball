@@ -115,3 +115,7 @@ The bot tracks the ball and swings with Gaussian timing error. It takes a machin
 - **Factory hardware:** modifiers can target factory bumpers. Physically replacing them (e.g. Sidewinder's mouth needing the mid-right bumper gone) is deferred.
 - **Catalog shape:** 8 machines and 14 modifiers. No rarity or weighting beyond a flat 45% machine share.
 - **Multiplier screen:** still x1; needs a designed global multiplier, or should be repurposed.
+
+## Upgrade System 2.0 (Nov 19)
+
+The loop is now **challenge → free draft (machines + premium upgrades) → shop (modifiers only) → next challenge**, with a global strike multiplier, multiplier gates and generator modifiers. See [UPGRADE_SYSTEM_2_PLAYTEST.md](UPGRADE_SYSTEM_2_PLAYTEST.md).

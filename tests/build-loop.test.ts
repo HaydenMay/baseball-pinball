@@ -25,11 +25,18 @@ const machineOffer = (r: Run, key: string): Offer => {
   const m = MACHINES.find(m => m.key === key)!;
   return { uid: 9000 + Math.floor(r.random() * 1000), kind: 'machine', key, name: m.name, desc: m.desc, power: m.power, price: m.price, mounts: Object.keys(m.at) };
 };
-/** Put an offer into the shop and buy it (test helper). */
+/**
+ * Install a machine the only way the game allows now: as a free end-of-challenge pick (test helper).
+ * The run's phase and shop are restored afterwards so tests can keep installing.
+ */
 function buyMachine(r: Run, key: string, mount?: string) {
   const o = machineOffer(r, key);
-  r.shop.push(o);
-  return r.buy(o.uid, mount);
+  const phase = r.phase, shop = r.shop, rerolls = r.rerolls;
+  r.phase = 'draft';
+  r.draft = [o];
+  const res = r.takeDraft(o.uid, mount);
+  Object.assign(r, { phase, shop, rerolls, draft: [] });
+  return res;
 }
 function toShop(r: Run, money = 0) {
   r.clear(0);
@@ -312,7 +319,7 @@ test('every mount fits the factory table, and all non-conflicting machines fit t
     }
     for (const sp of s.layout.splitters) assert.ok(!staticOverlap(s, sp.hatch.x, sp.hatch.y, rad), 'hatch open');
   }
-  assert.equal(MOUNTS.length, 11);
+  assert.equal(MOUNTS.length, 13, '11 original mounts + left/right alley-top gate mounts');
 });
 
 test('fully built machines: no traps, soft-locks or tunneling under random play', () => {

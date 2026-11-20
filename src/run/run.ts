@@ -103,27 +103,37 @@ export class Run {
     return { uid: this.uid++, kind: 'machine', key: m.key, name: m.name, desc: m.desc, power: m.power, price: m.price, mounts: Object.keys(m.at) };
   }
 
-  private makeModOffer(): Offer | null {
+  /** A modifier offer from the given pool: the free draft's premium pool or the shop's. */
+  private makeModOffer(where: 'draft' | 'shop'): Offer | null {
     const inst = this.installed.map(i => ({ offerKey: i.offerKey, id: i.id, mountId: i.mountId }));
-    const pool = MODS.map(t => ({ t, targets: t.targets(inst) })).filter(x => x.targets.length);
+    const pool = MODS.filter(t => t.tier === where || t.tier === 'both')
+      .map(t => ({ t, targets: t.targets(inst) }))
+      .filter(x => x.targets.length);
     if (!pool.length) return null;
     const { t, targets } = pool[Math.floor(this.random() * pool.length)];
     const target = targets[Math.floor(this.random() * targets.length)];
     const mod: Modifier = { note: t.name };
     if (t.add) mod.add = t.add;
     if (t.mul) mod.mul = t.mul;
-    return { uid: this.uid++, kind: 'modifier', key: t.key, name: t.name, desc: t.effect, price: t.price, target, mod };
+    if (t.gen) mod.gen = { ...t.gen };
+    return { uid: this.uid++, kind: 'modifier', key: t.key, name: t.name, desc: t.effect, price: where === 'draft' ? 0 : t.price, target, mod };
   }
 
-  /** Roll n offers. Machines are only offered if they could be installed right now; no duplicates in one roll. */
-  private roll(n: number): Offer[] {
+  /**
+   * Roll n offers.
+   * - draft (free pick): new physical machines that fit right now + premium upgrades. Premium upgrades
+   *   always have a factory-bumper target, so at full Power there is still a usable pick.
+   * - shop: modifiers only, never a physical machine.
+   * No duplicates in one roll.
+   */
+  private roll(n: number, where: 'draft' | 'shop'): Offer[] {
     const out: Offer[] = [];
     let guard = 0;
     while (out.length < n && guard++ < 200) {
-      const machines = MACHINES.filter(m => !out.some(o => o.key === m.key) && this.check(this.makeMachineOffer(m)).ok);
+      const machines = where === 'draft' ? MACHINES.filter(m => !out.some(o => o.key === m.key) && this.check(this.makeMachineOffer(m)).ok) : [];
       let o: Offer | null = null;
-      if (machines.length && (this.random() < ECONOMY.machineShare || guard > 100)) o = this.makeMachineOffer(machines[Math.floor(this.random() * machines.length)]);
-      else o = this.makeModOffer();
+      if (machines.length && (this.random() < ECONOMY.draftMachineShare || guard > 100)) o = this.makeMachineOffer(machines[Math.floor(this.random() * machines.length)]);
+      else o = this.makeModOffer(where);
       if (!o) continue;
       if (o.kind === 'modifier' && out.some(x => x.kind === 'modifier' && x.key === o!.key && x.target.key === o!.target.key)) continue;
       out.push(o);
@@ -137,7 +147,7 @@ export class Run {
     const earned = ECONOMY.clearBase + ECONOMY.clearPerStrikeLeft * strikesLeft;
     this.money += earned;
     this.phase = 'draft';
-    this.draft = this.roll(ECONOMY.draftSize);
+    this.draft = this.roll(ECONOMY.draftSize, 'draft');
     this.history.push(`C${this.challenge} cleared (+$${earned})`);
     return earned;
   }
@@ -162,7 +172,7 @@ export class Run {
   private openShop() {
     this.phase = 'shop';
     this.rerolls = 0;
-    this.shop = this.roll(ECONOMY.shopSize);
+    this.shop = this.roll(ECONOMY.shopSize, 'shop');
   }
 
   /** Buy from the shop. No purchase cap: money, Power and room are the only limits. */
@@ -170,6 +180,7 @@ export class Run {
     if (this.phase !== 'shop') return { ok: false as const, reason: 'Shop closed' };
     const o = this.shop.find(d => d.uid === uid);
     if (!o) return { ok: false as const, reason: 'No such offer' };
+    if (o.kind !== 'modifier') return { ok: false as const, reason: 'The shop sells modifiers only' };
     if (o.price > this.money) return { ok: false as const, reason: `Costs $${o.price}; you have $${this.money}` };
     const r = this.apply(o, mountId);
     if (!r.ok) return r;
@@ -183,7 +194,7 @@ export class Run {
     if (this.phase !== 'shop' || this.money < this.rerollPrice) return false;
     this.money -= this.rerollPrice;
     this.rerolls++;
-    this.shop = this.roll(ECONOMY.shopSize);
+    this.shop = this.roll(ECONOMY.shopSize, 'shop');
     return true;
   }
 

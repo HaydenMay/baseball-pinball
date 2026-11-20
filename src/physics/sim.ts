@@ -14,7 +14,7 @@ import { GameRules } from '../core/rules.ts';
 import { batAngleAt, findContact, swingStateAt, type Contact } from '../core/swing.ts';
 import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
-import { applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type ModifierTable, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type SimEvent =
@@ -28,6 +28,8 @@ export type SimEvent =
   | { type: 'scoop'; id: string; phase: 'catch' | 'eject'; x: number; y: number; points: number; ball: number }
   | { type: 'multiball'; id: string; x: number; y: number; balls: number; ball: number }
   | { type: 'clear'; score: number; target: number }
+  /** Global strike multiplier rose: `gain` and `total` in tenths (total 13 = ×1.3). */
+  | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank'; id: string; x: number; y: number; gain: number; total: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
 
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
@@ -45,6 +47,8 @@ export type Ball = {
   drop?: { r: RampPath; t: number; v: Pt };
   /** Mechanism id → sim time until which it ignores this ball (prevents instant re-capture). */
   ignore: Record<string, number>;
+  /** Multiplier gate id → which side of the gate line the ball was last clearly on (±1). */
+  gateSide: Record<string, number>;
   /** Position used for drawing (body position on the field, ramp position otherwise). */
   pos: Pt;
   /** 0 on the floor, 1 at full ramp height (visual only). */
@@ -69,6 +73,14 @@ export class Simulation {
   /** Spinner animation state (read by the view): id → remaining spins. */
   spinners = new Map<string, number>();
   mods: ModifierTable;
+  /** Generator cadences per scoring key (precomputed from mods): key → [{ every, tenths }]. */
+  private gens = new Map<string, { every: number; tenths: number }[]>();
+  /**
+   * Generator progress: `${key}#${every}` → events counted toward the next payout.
+   * EXPERIMENTAL rule: carries across strikes within a challenge (like bank/splitter progress) and
+   * resets at the start of the next challenge (first pitch). The multiplier itself always resets per strike.
+   */
+  genCount = new Map<string, number>();
   private seed: number;
   private onEvent?: (e: SimEvent) => void;
   private pendingKicks: { kind: 'bumper' | 'sling'; ref: unknown; ball: Ball }[] = [];
@@ -82,6 +94,11 @@ export class Simulation {
     this.mods = opts.preset?.modifiers ?? {};
     this.seed = (opts.seed ?? 1) >>> 0 || 1;
     for (const b of this.layout.banks) this.banks.set(b.id, new Set());
+    for (const [key, list] of Object.entries(this.mods)) {
+      const byEvery = new Map<number, number>();
+      for (const m of list) if (m.gen && m.gen.every >= 1 && m.gen.tenths > 0) byEvery.set(m.gen.every, (byEvery.get(m.gen.every) ?? 0) + m.gen.tenths);
+      if (byEvery.size) this.gens.set(key, [...byEvery].sort((a, b) => a[0] - b[0]).map(([every, tenths]) => ({ every, tenths })));
+    }
     this.world = new P.World({ gravity: P.Vec2(0, config.gravity) });
     buildBoard(this.world, this.layout);
     for (const s of this.layout.splitters) this.splitters.set(s.id, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
@@ -100,6 +117,34 @@ export class Simulation {
   pts(id: string, kind: string, base: number) {
     const mods = [...(this.mods[id] ?? []), ...(this.mods[kind + ':*'] ?? [])];
     return mods.length ? applyModifiers(base, mods) : base;
+  }
+
+  /**
+   * Count one scoring event toward any generator modifiers on this part and its kind. Returns the
+   * tenths earned (0 if none paid out). Call AFTER awarding the event's points so the gain only
+   * affects later scoring.
+   */
+  private generate(id: string, kind: string) {
+    let gain = 0;
+    for (const key of [id, kind + ':*']) {
+      const list = this.gens.get(key);
+      if (!list) continue;
+      for (const g of list) {
+        const ck = `${key}#${g.every}`;
+        const n = (this.genCount.get(ck) ?? 0) + 1;
+        if (n >= g.every) {
+          this.genCount.set(ck, 0);
+          gain += g.tenths;
+        } else this.genCount.set(ck, n);
+      }
+    }
+    return gain;
+  }
+
+  /** Apply a multiplier gain and announce it (no points of its own). */
+  private boost(source: 'gate' | 'bumper' | 'ramp' | 'bank', id: string, x: number, y: number, tenths: number, ball: Ball) {
+    if (!tenths || !this.rules.gainMult(tenths)) return;
+    this.emit({ type: 'mult', source, id, x, y, gain: tenths, total: this.rules.multTenths, ball: ball.id });
   }
 
   emit(e: SimEvent) {
@@ -149,6 +194,7 @@ export class Simulation {
     if (this.rules.pitchNumber === 1) {
       for (const st of this.splitters.values()) Object.assign(st, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
       for (const b of this.banks.values()) b.clear();
+      this.genCount.clear();
     } else {
       // a launch that was mid-fire when the last ball drained stays one hit away
       for (const [id, st] of this.splitters) {
@@ -173,7 +219,8 @@ export class Simulation {
     const body = this.world.createDynamicBody({ position: P.Vec2(x, y), bullet: true, linearDamping: config.ball.linearDamping, fixedRotation: true });
     body.createFixture(P.Circle(config.ball.radius), { density: 1, restitution: config.ball.restitution, friction: 0 });
     body.setLinearVelocity(P.Vec2(vx, vy));
-    const b: Ball = { id: this.nextBallId++, body, mode: 'field', prev: { x, y }, hitSwingId: -1, stillTime: 0, ignore: {}, pos: { x, y }, height: 0 };
+    const b: Ball = { id: this.nextBallId++, body, mode: 'field', prev: { x, y }, hitSwingId: -1, stillTime: 0, ignore: {}, gateSide: {}, pos: { x, y }, height: 0 };
+    this.seedGateSides(b, { x, y });
     this.balls.push(b);
     this.bodyToBall.set(body, b);
     return b;
@@ -228,8 +275,9 @@ export class Simulation {
       if (points < 0) return;
     }
     points = this.pts(d.id, d.kind, points);
-    if (points) this.rules.addScore(points);
+    if (points) points = this.rules.award(points);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
+    if (d.kind === 'bumper') this.boost('bumper', d.id, pos.x, pos.y, this.generate(d.id, 'bumper'), ball);
     if (d.kind === 'target' || d.kind === 'jackpot') this.markBanks(d.id, ball);
   }
 
@@ -240,9 +288,10 @@ export class Simulation {
       set.add(targetId);
       if (set.size === b.targetIds.length) {
         set.clear();
-        const p = this.pts(b.id, 'bank', b.bonus);
-        this.rules.addScore(p);
+        const p = this.rules.award(this.pts(b.id, 'bank', b.bonus));
         this.emit({ type: 'bank', id: b.id, points: p, ball: ball.id });
+        const at = this.layout.boxTargets.find(t => t.id === b.targetIds[1]) ?? ball.pos;
+        this.boost('bank', b.id, at.x, at.y, this.generate(b.id, 'bank'), ball);
       }
     }
   }
@@ -335,7 +384,8 @@ export class Simulation {
       ball.hitSwingId = this.swingId;
       body.setLinearVelocity(P.Vec2(contact.velocity.x, contact.velocity.y));
       this.rules.batHit();
-      this.rules.addScore(config.batHitPoints);
+      // Bat hits are ordinary scoring: they follow the global multiplier like everything else.
+      this.rules.award(config.batHitPoints);
       this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id });
     }
 
@@ -358,8 +408,7 @@ export class Simulation {
       const half = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) / 2 - g.postR;
       if (crossedLine(ball.prev, p, c, g.dir, half)) {
         ball.ignore[g.id] = this.time + 0.5;
-        const pts = this.pts(g.id, 'gate', g.points);
-        this.rules.addScore(pts);
+        const pts = this.rules.award(this.pts(g.id, 'gate', g.points));
         this.emit({ type: 'machine', kind: 'gate', id: g.id, x: c.x, y: c.y, points: pts, nx: g.dir.x, ny: g.dir.y, ball: ball.id });
       }
     }
@@ -374,12 +423,13 @@ export class Simulation {
         ball.ignore[sp.id] = this.time + 0.3;
         const v = body.getLinearVelocity();
         const spins = Math.max(1, Math.min(sp.maxSpins, Math.round(Math.hypot(v.x, v.y) * sp.spinsPerSpeed)));
-        const pts = this.pts(sp.id, 'spinner', spins * sp.pointsPerSpin);
+        const pts = this.rules.award(this.pts(sp.id, 'spinner', spins * sp.pointsPerSpin));
         this.spinners.set(sp.id, (this.spinners.get(sp.id) ?? 0) + spins);
-        this.rules.addScore(pts);
         this.emit({ type: 'machine', kind: 'spinner', id: sp.id, x: c.x, y: c.y, points: pts, nx: n.x, ny: n.y, ball: ball.id, spins });
       }
     }
+    // Multiplier gates: a real traversal (either direction) through the opening.
+    for (const g of this.layout.multGates) this.checkMultGate(ball, g, p);
     // Scoops: reaching the bottom of the cup catches the ball.
     for (const s of this.layout.scoops) {
       if ((ball.ignore[s.id] ?? 0) > this.time) continue;
@@ -436,8 +486,7 @@ export class Simulation {
     // Mid-ramp scoring gate: once per forward pass (a rollback never reaches it, the climb is before it).
     if (st.dir === 1 && d.gate && prevS < st.r.gateS && st.s >= st.r.gateS) {
       const g = rampAt(st.r, st.r.gateS).p;
-      const pts = this.pts(d.id + '-gate', 'rampGate', d.gate.points);
-      this.rules.addScore(pts);
+      const pts = this.rules.award(this.pts(d.id + '-gate', 'rampGate', d.gate.points));
       this.emit({ type: 'rampGate', id: d.id, x: g.x, y: g.y, points: pts, ball: ball.id });
     }
     const { p, t } = rampAt(st.r, st.s);
@@ -447,9 +496,10 @@ export class Simulation {
     if (st.dir === 1 && st.s >= st.r.length) {
       const sp = Math.max(d.exitMin, Math.min(d.exitMax, st.v));
       const v = { x: st.r.exitDir.x * sp, y: st.r.exitDir.y * sp };
-      const pts = this.pts(d.id, 'ramp', d.points);
-      this.rules.addScore(pts);
+      const pts = this.rules.award(this.pts(d.id, 'ramp', d.points));
       this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
+      // Only a completed ride counts toward ramp generators (entering or rolling back never does).
+      this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
       if (d.exit?.mode === 'drop') {
         // Leave the raised level and fall onto the field; collisions resume on landing.
         ball.mode = 'drop';
@@ -491,8 +541,7 @@ export class Simulation {
     ball.held = { scoop: s, t: 0 };
     ball.pos = { x: s.x, y: s.y };
     ball.height = 0;
-    const pts = this.pts(s.id, 'scoop', s.points);
-    this.rules.addScore(pts);
+    const pts = this.rules.award(this.pts(s.id, 'scoop', s.points));
     this.emit({ type: 'scoop', id: s.id, phase: 'catch', x: s.x, y: s.y, points: pts, ball: ball.id });
   }
 
@@ -524,6 +573,32 @@ export class Simulation {
     ball.pos = { ...at };
     ball.height = 0;
     ball.stillTime = 0;
+    // A ramp ride or a scoop hold teleports the ball: re-seed gate sides so that never counts as a pass.
+    this.seedGateSides(ball, at);
+  }
+
+  /** Record which side of each multiplier gate a ball is on (nothing if it's inside the dead band). */
+  private seedGateSides(ball: Ball, p: Pt) {
+    ball.gateSide = {};
+    for (const g of this.layout.multGates) {
+      const f = gateFrame(g, p);
+      if (Math.abs(f.d) >= GATE_HYSTERESIS) ball.gateSide[g.id] = Math.sign(f.d);
+    }
+  }
+
+  /**
+   * One proc per real traversal. A ball must be clearly on one side (beyond the dead band), then
+   * clearly on the other, while inside the opening. Touching the line, resting on it, or numerical
+   * jitter inside the dead band never counts; any later real pass, either direction, counts again.
+   */
+  private checkMultGate(ball: Ball, g: MultGateDef, p: Pt) {
+    const f = gateFrame(g, p);
+    if (Math.abs(f.d) < GATE_HYSTERESIS) return;
+    const side = Math.sign(f.d), was = ball.gateSide[g.id];
+    ball.gateSide[g.id] = side;
+    if (was === undefined || was === side || Math.abs(f.lat) > f.half) return;
+    const c = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 };
+    this.boost('gate', g.id, c.x, c.y, g.tenths + this.generate(g.id, 'multgate'), ball);
   }
 
   private stepSplitters() {
@@ -554,4 +629,15 @@ export class Simulation {
     const side = x < 8.2 ? 'left' : x > 11.8 ? 'right' : 'center';
     this.emit({ type: 'drain', x, strike, side, ball: ball.id, ballsLeft: this.balls.length });
   }
+}
+
+/** Dead band (world units) either side of a multiplier gate line. */
+export const GATE_HYSTERESIS = 0.15;
+
+/** Signed distance across a gate line (d), position along it from its center (lat), and its half-length. */
+export function gateFrame(g: MultGateDef, p: Pt) {
+  const c = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 };
+  const L = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) || 1;
+  const t = { x: (g.b.x - g.a.x) / L, y: (g.b.y - g.a.y) / L };
+  return { d: (p.x - c.x) * -t.y + (p.y - c.y) * t.x, lat: (p.x - c.x) * t.x + (p.y - c.y) * t.y, half: L / 2 };
 }

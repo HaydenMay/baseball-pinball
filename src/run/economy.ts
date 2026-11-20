@@ -17,8 +17,11 @@ export const ECONOMY = {
   /** Reroll starts at this price and rises by `rerollStep` each reroll within one shop visit. */
   rerollBase: 1,
   rerollStep: 1,
-  /** Chance a draft/shop slot rolls a machine (vs a modifier) when both are possible. */
-  machineShare: 0.45,
+  /**
+   * Chance a free-draft slot rolls a physical machine (vs a premium upgrade) when one fits.
+   * The shop never rolls machines (Upgrade System 2.0 split).
+   */
+  draftMachineShare: 0.6,
 };
 
 export function targetFor(challenge: number) {

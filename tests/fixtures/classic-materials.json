@@ -92,6 +92,8 @@
     "#2a3f78",
     "#101a3a"
   ],
+  "multGlow": "#ff6a2a",
+  "multStitch": "#d8342c",
   "ui": {
     "page": [
       "#0a1730",

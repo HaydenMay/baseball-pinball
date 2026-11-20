@@ -128,6 +128,14 @@ export class Sfx {
       case 'multiball':
         if (this.ok('multi', 0.3)) [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.22, 'sawtooth', 0.14, i * 0.08));
         break;
+      case 'mult': {
+        // "level up" blip that climbs with the multiplier, so stacking it sounds like progress
+        if (!this.ok('mult', 0.08)) break;
+        const f = Math.min(1600, 520 * Math.pow(1.06, e.total - 10));
+        this.tone(f, 0.09, 'square', 0.1, 0, f * 1.5);
+        this.tone(f * 2, 0.14, 'triangle', 0.18, 0.06);
+        break;
+      }
       case 'drain':
         if (e.strike && this.ok('drain', 0.3)) this.tone(220, 0.5, 'triangle', 0.3, 0, 70);
         break;

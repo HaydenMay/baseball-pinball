@@ -50,6 +50,10 @@ export type Materials = {
   starPanel: string;
   starFill: string;
   splitterFace: [string, string];
+  /** Global-multiplier feedback: gate lamps, "+0.1×" pops and the scoreboard plaque glow. */
+  multGlow: string;
+  /** Baseball-stitch accents on the multiplier plaque. */
+  multStitch: string;
   /** Cabinet UI around the canvas (CSS). */
   ui: {
     page: [string, string];
@@ -171,6 +175,8 @@ export const BROADCAST_CLASSIC: Theme = {
     starPanel: '#16244a',
     starFill: '#ffcf4a',
     splitterFace: ['#2a3f78', '#101a3a'],
+    multGlow: '#ff6a2a',
+    multStitch: '#d8342c',
     ui: {
       page: ['#0a1730', '#050b16'],
       pageGlow: '#2a3d63aa',
@@ -252,6 +258,8 @@ export const TOXIC_THUNDER: Theme = {
     starPanel: '#1a0f33',
     starFill: '#a6f03c',
     splitterFace: ['#3a1a6a', '#140826'],
+    multGlow: '#b8ff3d',
+    multStitch: '#b44dff',
     ui: {
       page: ['#160b2a', '#06030d'],
       pageGlow: '#3a1f63aa',
@@ -359,5 +367,7 @@ export function applyThemeToCss(t: Theme, root: HTMLElement) {
   set('--m-panel-a', u.panel[0]);
   set('--m-panel-b', u.panel[1]);
   set('--m-trim', t.m.trim);
+  set('--m-mult-glow', t.m.multGlow);
+  set('--m-mult-stitch', t.m.multStitch);
   set('--ui-accent-faint', t.energyPrimary + '55');
 }

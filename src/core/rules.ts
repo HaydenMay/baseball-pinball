@@ -16,12 +16,40 @@ export class GameRules {
   pitchNumber = 0;
   /** Challenge score target (build-test route). null = free play, as on the original routes. */
   target: number | null = null;
+  /**
+   * Global strike multiplier in TENTHS (10 = ×1.0). Integer so it never shows float noise and stays
+   * deterministic. Grows only from multiplier gates and generator modifiers; back to ×1.0 on every strike.
+   */
+  multTenths = 10;
+
+  get mult() {
+    return this.multTenths / 10;
+  }
+
+  /**
+   * The one central scoring boundary: `eventBase` already includes the part's own additive and
+   * multiplicative modifiers; the global strike multiplier is applied here, exactly once.
+   * Returns the awarded points (banked only while live).
+   */
+  award(eventBase: number) {
+    const p = this.multTenths === 10 ? eventBase : Math.round((eventBase * this.multTenths) / 10);
+    this.addScore(p);
+    return p;
+  }
+
+  /** Raise the global multiplier (affects later scoring only). */
+  gainMult(tenths: number) {
+    if (this.phase !== 'live' || tenths <= 0) return false;
+    this.multTenths += tenths;
+    return true;
+  }
 
   /** Player pressed Ready. Returns true if exactly one new pitch should be served. */
   ready(): boolean {
     if (this.phase === 'over') this.reset();
     if (this.phase !== 'ready') return false;
     this.phase = 'live';
+    this.multTenths = 10;
     this.ballScore = 0;
     this.ballsLive = 1;
     this.pitchNumber++;
@@ -51,6 +79,7 @@ export class GameRules {
     this.ballsLive--;
     if (this.ballsLive > 0) return false;
     this.strikes++;
+    this.multTenths = 10;
     this.phase = this.strikes >= this.maxStrikes ? 'over' : 'ready';
     return true;
   }
@@ -63,5 +92,6 @@ export class GameRules {
     this.hits = 0;
     this.ballsLive = 0;
     this.pitchNumber = 0;
+    this.multTenths = 10;
   }
 }

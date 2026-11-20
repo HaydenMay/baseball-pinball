@@ -29,6 +29,10 @@ export const MOUNTS: Mount[] = [
   { id: 'bridge', name: 'Center bridge', anchor: { x: 10.5, y: 11.5 }, r: 3.2, conflicts: ['center-r'] },
   { id: 'center-r', name: 'Right-center', anchor: { x: 13.5, y: 14.0 }, r: 1.1, conflicts: ['bridge'] },
   { id: 'pocket-r', name: 'Right pocket', anchor: { x: 16.9, y: 14.2 }, r: 1.2 },
+  // Tops of the side alleys (outer wall x≈0.65 to lane rail x=2.75, rail starts at y=4.6). Sensor-only, so
+  // they coexist with the lane spinners just below (y=5.6) and the rollover lanes.
+  { id: 'gate-l', name: 'Left alley top', anchor: { x: 1.7, y: 4.75 }, r: 0.8 },
+  { id: 'gate-r', name: 'Right alley top', anchor: { x: 18.3, y: 4.75 }, r: 0.8 },
 ];
 
 const W = 20;
@@ -47,6 +51,19 @@ export type MachineOffer = {
 };
 
 export const MACHINES: MachineOffer[] = [
+  {
+    key: 'mult-gate',
+    kind: 'machine',
+    name: 'Multiplier Gate',
+    desc: 'Each pass through the alley top: +0.1× global multiplier (this strike)',
+    power: 1,
+    price: 6,
+    at: {
+      // A little wider than the alley on the rail side so a ball leaving the alley at an angle still counts.
+      'gate-l': { type: 'multgate', id: 'mgate', powerCost: 1, side: 'left', a: { x: 0.6, y: 4.75 }, b: { x: 2.85, y: 4.75 }, tenths: 1 },
+      'gate-r': { type: 'multgate', id: 'mgate', powerCost: 1, side: 'right', a: { x: W - 2.85, y: 4.75 }, b: { x: W - 0.6, y: 4.75 }, tenths: 1 },
+    },
+  },
   {
     key: 'bonus-bumper',
     kind: 'machine',
@@ -164,6 +181,13 @@ export type ModTemplate = {
   effect: string;
   add?: number;
   mul?: number;
+  /** Global-multiplier generator (see Modifier.gen). */
+  gen?: { every: number; tenths: number };
+  /**
+   * Where it can appear: 'shop' (bought), 'draft' (premium, only as a free end-of-challenge pick), or both.
+   * Draft-only premiums are stronger versions; the shop never sells the premium pool at full strength.
+   */
+  tier: 'shop' | 'draft' | 'both';
   price: number;
   /** Which scoring keys it can target given what's installed (key = part id or "kind:*"). */
   targets: (installed: { offerKey: string; id: string; mountId: string }[]) => { key: string; label: string }[];
@@ -180,25 +204,48 @@ const FACTORY_BUMPERS = [
 const installedOf = (inst: { offerKey: string; id: string; mountId: string }[], key: string) => inst.filter(i => i.offerKey === key);
 const mountName = (id: string) => MOUNTS.find(m => m.id === id)?.name ?? id;
 
+const bumperTargets = (inst: { offerKey: string; id: string; mountId: string }[]) => [
+  ...FACTORY_BUMPERS,
+  ...installedOf(inst, 'bonus-bumper').map(i => ({ key: i.id, label: `Bonus bumper (${mountName(i.mountId)})` })),
+];
+const gateTargets = (inst: { offerKey: string; id: string; mountId: string }[]) => installedOf(inst, 'mult-gate').map(i => ({ key: i.id, label: `${mountName(i.mountId)} gate` }));
+const rampTargets = (inst: { offerKey: string; id: string; mountId: string }[]) => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${i.offerKey === 'turbo-ramp' ? 'Turbo' : 'Overpass'} ramp (full ride)` }));
+const bankTargets = (inst: { offerKey: string; id: string; mountId: string }[]) => installedOf(inst, 'bank').map(i => ({ key: i.id, label: `${mountName(i.mountId)} (complete all 3)` }));
+
+/** Experimental generator cadence: hits on ONE chosen bumper per payout. */
+export const BUMPER_GEN_EVERY = 5;
+
 export const MODS: ModTemplate[] = [
+  // ── Global-multiplier generators (each tied to one part; a copy raises payout, never frequency) ──
+  { key: 'express-lane', name: 'Express Lane', effect: '+0.1× more per gate pass', gen: { every: 1, tenths: 1 }, tier: 'both', price: 5, targets: gateTargets },
+  { key: 'sweet-spot', name: 'Sweet Spot', effect: `Every ${BUMPER_GEN_EVERY} hits on this bumper: +0.1×`, gen: { every: BUMPER_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 5, targets: bumperTargets },
+  { key: 'hall-of-fame', name: 'Hall of Fame', effect: `Every ${BUMPER_GEN_EVERY} hits on this bumper: +0.2×`, gen: { every: BUMPER_GEN_EVERY, tenths: 2 }, tier: 'draft', price: 0, targets: bumperTargets },
+  { key: 'victory-lap', name: 'Victory Lap', effect: 'Each completed ride: +0.1×', gen: { every: 1, tenths: 1 }, tier: 'shop', price: 5, targets: rampTargets },
+  { key: 'victory-parade', name: 'Victory Parade', effect: 'Each completed ride: +0.2×', gen: { every: 1, tenths: 2 }, tier: 'draft', price: 0, targets: rampTargets },
+  { key: 'pennant', name: 'Pennant', effect: 'Each bank completed: +0.2×', gen: { every: 1, tenths: 2 }, tier: 'shop', price: 5, targets: bankTargets },
+  { key: 'pennant-race', name: 'Pennant Race', effect: 'Each bank completed: +0.4×', gen: { every: 1, tenths: 4 }, tier: 'draft', price: 0, targets: bankTargets },
+  // ── Premium point upgrades (draft only) ──
+  { key: 'mvp', name: 'MVP', effect: '×2 points', mul: 2, tier: 'draft', price: 0, targets: bumperTargets },
+  { key: 'clutch', name: 'Clutch', effect: '+1,000 bonus', add: 1000, tier: 'draft', price: 0, targets: bankTargets },
+  // ── Standard shop modifiers ──
   {
-    key: 'hot-corner', name: 'Hot Corner', effect: '+100 points', add: 100, price: 3,
+    key: 'hot-corner', name: 'Hot Corner', effect: '+100 points', add: 100, tier: 'shop', price: 3,
     targets: inst => [...FACTORY_BUMPERS, ...installedOf(inst, 'bonus-bumper').map(i => ({ key: i.id, label: `Bonus bumper (${mountName(i.mountId)})` }))],
   },
   {
-    key: 'power-alley', name: 'Power Alley', effect: '×1.5 points', mul: 1.5, price: 4,
+    key: 'power-alley', name: 'Power Alley', effect: '×1.5 points', mul: 1.5, tier: 'shop', price: 4,
     targets: inst => [...FACTORY_BUMPERS, ...installedOf(inst, 'bonus-bumper').map(i => ({ key: i.id, label: `Bonus bumper (${mountName(i.mountId)})` }))],
   },
-  { key: 'rally-cap', name: 'Rally Cap', effect: '×1.25 points', mul: 1.25, price: 6, targets: () => [{ key: 'bumper:*', label: 'Every bumper' }] },
-  { key: 'big-stage', name: 'Big Stage', effect: '×2 points', mul: 2, price: 4, targets: () => [{ key: 'jackpot', label: 'Jackpot' }] },
-  { key: 'sharp-eye', name: 'Sharp Eye', effect: '+50 points', add: 50, price: 3, targets: () => [{ key: 'target:*', label: 'Every standup target' }] },
-  { key: 'rubber', name: 'Live Rubber', effect: '+40 points', add: 40, price: 2, targets: () => [{ key: 'sling:*', label: 'Both blue slingshots' }] },
-  { key: 'rollover', name: 'Rollover', effect: '+100 points', add: 100, price: 2, targets: () => [{ key: 'lane:*', label: 'Both side lanes' }] },
-  { key: 'nitro', name: 'Nitro', effect: '×1.5 completion points', mul: 1.5, price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${mountName(i.mountId)} ramp finish` })) },
-  { key: 'toll-booth', name: 'Toll Booth', effect: '+500 gate points', add: 500, price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: `${i.id}-gate`, label: `${mountName(i.mountId)} ramp gate` })) },
-  { key: 'gold-glove', name: 'Gold Glove', effect: '×2 catch points', mul: 2, price: 4, targets: inst => installedOf(inst, 'glove-scoop').map(i => ({ key: i.id, label: 'Glove scoop' })) },
-  { key: 'spin-doctor', name: 'Spin Doctor', effect: '×2 points', mul: 2, price: 4, targets: inst => installedOf(inst, 'spinner').map(i => ({ key: i.id, label: `${mountName(i.mountId)} spinner` })) },
-  { key: 'full-count', name: 'Full Count', effect: '×2 bonus', mul: 2, price: 4, targets: inst => installedOf(inst, 'bank').map(i => ({ key: i.id, label: `${mountName(i.mountId)} bonus` })) },
-  { key: 'gate-keeper', name: 'Gatekeeper', effect: '+300 points', add: 300, price: 3, targets: inst => installedOf(inst, 'jackpot-gate').map(i => ({ key: i.id, label: 'Jackpot lane gate' })) },
-  { key: 'double-play', name: 'Double Play', effect: '+150 per hit', add: 150, price: 3, targets: inst => installedOf(inst, 'splitter').map(i => ({ key: i.id, label: 'Multiball splitter' })) },
+  { key: 'rally-cap', name: 'Rally Cap', effect: '×1.25 points', mul: 1.25, tier: 'shop', price: 6, targets: () => [{ key: 'bumper:*', label: 'Every bumper' }] },
+  { key: 'big-stage', name: 'Big Stage', effect: '×2 points', mul: 2, tier: 'shop', price: 4, targets: () => [{ key: 'jackpot', label: 'Jackpot' }] },
+  { key: 'sharp-eye', name: 'Sharp Eye', effect: '+50 points', add: 50, tier: 'shop', price: 3, targets: () => [{ key: 'target:*', label: 'Every standup target' }] },
+  { key: 'rubber', name: 'Live Rubber', effect: '+40 points', add: 40, tier: 'shop', price: 2, targets: () => [{ key: 'sling:*', label: 'Both blue slingshots' }] },
+  { key: 'rollover', name: 'Rollover', effect: '+100 points', add: 100, tier: 'shop', price: 2, targets: () => [{ key: 'lane:*', label: 'Both side lanes' }] },
+  { key: 'nitro', name: 'Nitro', effect: '×1.5 completion points', mul: 1.5, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: i.id, label: `${mountName(i.mountId)} ramp finish` })) },
+  { key: 'toll-booth', name: 'Toll Booth', effect: '+500 gate points', add: 500, tier: 'shop', price: 4, targets: inst => inst.filter(i => i.offerKey.endsWith('-ramp')).map(i => ({ key: `${i.id}-gate`, label: `${mountName(i.mountId)} ramp gate` })) },
+  { key: 'gold-glove', name: 'Gold Glove', effect: '×2 catch points', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'glove-scoop').map(i => ({ key: i.id, label: 'Glove scoop' })) },
+  { key: 'spin-doctor', name: 'Spin Doctor', effect: '×2 points', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'spinner').map(i => ({ key: i.id, label: `${mountName(i.mountId)} spinner` })) },
+  { key: 'full-count', name: 'Full Count', effect: '×2 bonus', mul: 2, tier: 'shop', price: 4, targets: inst => installedOf(inst, 'bank').map(i => ({ key: i.id, label: `${mountName(i.mountId)} bonus` })) },
+  { key: 'gate-keeper', name: 'Gatekeeper', effect: '+300 points', add: 300, tier: 'shop', price: 3, targets: inst => installedOf(inst, 'jackpot-gate').map(i => ({ key: i.id, label: 'Jackpot lane gate' })) },
+  { key: 'double-play', name: 'Double Play', effect: '+150 per hit', add: 150, tier: 'shop', price: 3, targets: inst => installedOf(inst, 'splitter').map(i => ({ key: i.id, label: 'Multiball splitter' })) },
 ];

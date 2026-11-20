@@ -46,6 +46,7 @@ material is a named role under `m`:
 - pop-bumper body and skirt, bonus-bumper body and rim, bullseye ring
 - jackpot banner, border, laurels, text shadow; star-panel face and star
 - splitter face
+- multiplier feedback: `multGlow` (gate lamps, "+0.1×" pops, scoreboard plaque glow and rays) and `multStitch` (plaque baseball stitches)
 - cabinet UI (`m.ui`, applied as `--m-*` CSS variables): page background, scoreboard bezel and
   screens, strip, labels, gold frame, buttons, overlay card, shop panel and offers
 

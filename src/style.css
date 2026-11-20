@@ -126,6 +126,101 @@ body {
 }
 .screen strong.pulse { transform: scale(1.08); text-shadow: 0 0 18px currentColor; }
 
+/* ── Global multiplier plaque (top right): arched metal frame, gold header with stitches, inner
+   window. A proc flips the value, lights the window, bumps the plaque and bursts rays behind it,
+   then settles (~0.9 s). Colors come from the theme: --m-mult-glow, --m-mult-stitch, --gold. ── */
+.multwrap { position: relative; min-width: 0; display: grid; }
+.screen.mult {
+  z-index: 1;
+  overflow: visible;
+  padding: 2px 4px 3px;
+  border: 2px solid transparent;
+  border-radius: 40% 40% 7px 7px / 12px 12px 7px 7px;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--m-screen-a), var(--m-screen-b) 80%) padding-box,
+    linear-gradient(180deg, var(--gold-hi), var(--gold) 35%, #3b2a12 60%, var(--gold) 85%, var(--gold-hi)) border-box;
+  box-shadow: inset 0 0 10px #000c, 0 0 0 1px #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: 50% 55%;
+}
+.screen.mult label {
+  font-size: clamp(8px, 2.3vw, 11px);
+  letter-spacing: 0.08em;
+  font-style: italic;
+  font-weight: 800;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #000);
+  margin: 0 9px;
+}
+.screen.mult .stitch { position: absolute; top: 1px; width: 7px; height: 17px; fill: none; stroke: var(--m-mult-stitch); stroke-width: 1.6; stroke-linecap: round; }
+.screen.mult .stitch.l { left: 3px; }
+.screen.mult .stitch.r { right: 3px; }
+.screen.mult .mwin {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  border-radius: 4px;
+  background: #05080fcc;
+  border: 1px solid color-mix(in srgb, var(--m-mult-glow) 45%, #000);
+  box-shadow: inset 0 0 8px #000;
+  background-image:
+    radial-gradient(circle at 4px 4px, var(--gold) 0 1px, transparent 1.5px),
+    radial-gradient(circle at calc(100% - 4px) 4px, var(--gold) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 4px calc(100% - 4px), var(--gold) 0 1px, transparent 1.5px),
+    radial-gradient(circle at calc(100% - 4px) calc(100% - 4px), var(--gold) 0 1px, transparent 1.5px);
+}
+.screen.mult strong {
+  font-size: clamp(18px, 5.6vw, 28px);
+  font-style: normal;
+  color: #fff4e0;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--m-mult-glow) 35%, transparent);
+  transition: none;
+}
+.multwrap .rays {
+  position: absolute;
+  inset: -12px -6px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: repeating-conic-gradient(from 0deg, var(--m-mult-glow) 0deg 5deg, transparent 5deg 16deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 55%, #000 70%, transparent 100%);
+  mask: radial-gradient(closest-side, transparent 55%, #000 70%, transparent 100%);
+}
+.multwrap.proc .screen.mult { animation: mult-bump 0.9s ease-out; }
+.multwrap.proc .mwin { animation: mult-win 0.9s ease-out; }
+.multwrap.proc strong { animation: mult-val 0.9s ease-out; }
+.multwrap.proc .rays { animation: mult-rays 0.9s ease-out; }
+@keyframes mult-bump {
+  0% { transform: scale(1); box-shadow: inset 0 0 10px #000c, 0 0 0 1px #000; }
+  22% { transform: scale(1.07); box-shadow: inset 0 0 10px #000c, 0 0 0 1px #000, 0 0 16px 2px var(--m-mult-glow); }
+  100% { transform: scale(1); box-shadow: inset 0 0 10px #000c, 0 0 0 1px #000; }
+}
+@keyframes mult-win {
+  0%, 100% { border-color: color-mix(in srgb, var(--m-mult-glow) 45%, #000); }
+  15%, 45% { border-color: var(--m-mult-glow); box-shadow: inset 0 0 10px var(--m-mult-glow), 0 0 8px var(--m-mult-glow); }
+}
+@keyframes mult-val {
+  0%, 100% { text-shadow: 0 0 8px color-mix(in srgb, var(--m-mult-glow) 35%, transparent); }
+  20% { text-shadow: 0 0 6px #fff, 0 0 16px var(--m-mult-glow), 0 0 26px var(--m-mult-glow); }
+}
+@keyframes mult-rays {
+  0% { opacity: 0; transform: scale(0.85); }
+  22% { opacity: 0.85; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .multwrap.proc .screen.mult, .multwrap.proc .rays { animation: none; }
+}
+
 .strip {
   display: flex;
   align-items: center;

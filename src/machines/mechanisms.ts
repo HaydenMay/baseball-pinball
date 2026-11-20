@@ -84,6 +84,13 @@ export type SplitterDef = Base & {
  */
 export type GateDef = Base & { type: 'gate'; a: Pt; b: Pt; dir: Pt; points: number; postR: number; posts?: boolean; label?: string };
 
+/**
+ * Multiplier gate: a sensor line across the top of a side alley (no collision body). Each real
+ * traversal, either direction, adds `tenths` (+0.1× per tenth) to the global strike multiplier.
+ * Awards no points of its own.
+ */
+export type MultGateDef = Base & { type: 'multgate'; a: Pt; b: Pt; tenths: number; side: 'left' | 'right' };
+
 /** Spinner: a flap across a lane. Passing through either way spins it; points per spin, spins scale with speed. */
 export type SpinnerDef = Base & { type: 'spinner'; a: Pt; b: Pt; pointsPerSpin: number; spinsPerSpeed: number; maxSpins: number };
 
@@ -93,14 +100,24 @@ export type BankDef = Base & { type: 'bank'; name: string; targetIds: string[]; 
 /** Extra pop bumper with its own point value. */
 export type BonusBumperDef = Base & { type: 'bumper'; x: number; y: number; r: number; points: number; kick: number };
 
-export type MechanismDef = RampDef | ScoopDef | SplitterDef | GateDef | BonusBumperDef | SpinnerDef | BankDef;
+export type MechanismDef = RampDef | ScoopDef | SplitterDef | GateDef | BonusBumperDef | SpinnerDef | BankDef | MultGateDef;
 
 /**
  * Score modifiers, pre-stacked in config to imitate a mature build (no modifier SYSTEM yet).
  * Keys are a mechanism/part id ("jackpot") or a whole kind ("bumper:*"). Lists have no cap:
  * points = (base + Σadd) × Πmul.
  */
-export type Modifier = { add?: number; mul?: number; note?: string };
+export type Modifier = {
+  add?: number;
+  mul?: number;
+  note?: string;
+  /**
+   * Global-multiplier generator: every `every` scoring events on this key, add `tenths` to the
+   * global strike multiplier. Copies with the same cadence share one counter and sum their payout,
+   * so a duplicate raises the payout, never the frequency. Has no effect on the part's points.
+   */
+  gen?: { every: number; tenths: number };
+};
 export type ModifierTable = Record<string, Modifier[]>;
 
 export function applyModifiers(base: number, mods: Modifier[]) {

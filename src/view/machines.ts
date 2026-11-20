@@ -11,6 +11,9 @@ import { scoopArc, splitterPoly } from '../physics/board.ts';
 import type { Simulation, SimEvent } from '../physics/sim.ts';
 import { drawGlow, underlay } from './vfx.ts';
 import { BROADCAST_CLASSIC, derived, rgba, type Materials, type Theme } from './theme.ts';
+import type { MultGateDef } from '../machines/mechanisms.ts';
+
+const W_TABLE = 20;
 
 /** Materials for the static pass (set at the start of drawMachinesFloorStatic). */
 let mat: Materials = BROADCAST_CLASSIC.m;
@@ -47,6 +50,7 @@ export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: Gam
   for (const g of L.gates) drawGateStatic(ctx, g, view.theme);
   for (const r of L.ramps) drawRampMouthFloor(ctx, r);
   for (const sp of L.spinners) drawSpinnerStatic(ctx, sp);
+  for (const g of L.multGates) drawMultGateStatic(ctx, g);
   for (const r of L.ramps) if (r.def.exit?.mode === 'drop') drawLandingMarker(ctx, r, view.theme);
 
   // Raised ramps go in their own layer, composited above floor balls each frame.
@@ -390,6 +394,39 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
   ctx.fillText(`${g.label ?? 'GATE'} ↑ +${g.points}`, c.x, c.y + (g.posts === false ? 0.55 : 1.05));
 }
 
+/** Multiplier gate: a lamp bar across the top of the alley with an "×" badge (sensor only, no collision). */
+function drawMultGateStatic(ctx: CanvasRenderingContext2D, g: MultGateDef) {
+  const y = g.a.y;
+  // alley span only (the sensor reaches a touch past the rail so angled exits still count)
+  const x0 = g.side === 'left' ? 0.68 : W_TABLE - 2.75, x1 = g.side === 'left' ? 2.75 : W_TABLE - 0.68;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#05080f';
+  ctx.lineWidth = 0.26;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  ctx.lineTo(x1, y);
+  ctx.stroke();
+  ctx.strokeStyle = rgba(mat.multGlow, 0.55);
+  ctx.lineWidth = 0.08;
+  ctx.setLineDash([0.16, 0.12]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // badge just above the bar, in the alley mouth (the lane spinner mount sits below at y=5.6)
+  const c = { x: (x0 + x1) / 2, y: y - 0.5 };
+  ctx.fillStyle = '#05080f';
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, 0.34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = mat.trim;
+  ctx.lineWidth = 0.05;
+  ctx.stroke();
+  ctx.fillStyle = mat.multGlow;
+  ctx.font = `italic 800 0.42px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('×', c.x, c.y + 0.02);
+}
+
 // ───────────────────────── dynamic ─────────────────────────
 
 export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: GameView, sim: Simulation) {
@@ -411,6 +448,20 @@ export function drawMachinesFloorDynamic(ctx: CanvasRenderingContext2D, view: Ga
     const lit = view.lit.get(s.id) ?? 0;
     if (lit > 0) drawGlow(ctx, th.energySecondary, s.x, s.y, 1.6, lit * 2);
     if (st?.launchAt !== null && st?.launchAt !== undefined) drawGlow(ctx, th.energySecondary, s.hatch.x, s.hatch.y, 1.4, 0.6 + 0.4 * Math.sin(t * 40));
+  }
+  for (const g of L.multGates) {
+    const lit = view.lit.get(g.id) ?? 0;
+    const x0 = g.side === 'left' ? 0.68 : W_TABLE - 2.75, x1 = g.side === 'left' ? 2.75 : W_TABLE - 0.68;
+    const cx = (x0 + x1) / 2;
+    drawGlow(ctx, th.m.multGlow, cx, g.a.y - 0.5, 0.7 + lit * 1.4, 0.2 + 0.08 * Math.sin(t * 4 + cx) + lit * 2.2);
+    if (lit > 0) {
+      ctx.strokeStyle = rgba(th.m.multGlow, Math.min(1, lit * 2.5));
+      ctx.lineWidth = 0.12;
+      ctx.beginPath();
+      ctx.moveTo(x0, g.a.y);
+      ctx.lineTo(x1, g.a.y);
+      ctx.stroke();
+    }
   }
   for (const g of L.gates) {
     const lit = view.lit.get(g.id) ?? 0;
@@ -563,6 +614,24 @@ export function drawMachinesRaised(ctx: CanvasRenderingContext2D, view: GameView
 
 export function onMechanismEvent(view: GameView, e: SimEvent) {
   const th = view.theme, v = view.vfx, L = view.layout;
+  if (e.type === 'mult') {
+    const amount = `+${(e.gain / 10).toFixed(1)}×`;
+    if (e.source === 'gate') {
+      const g = L.multGates.find(g => g.id === e.id)!;
+      const inward = g.side === 'left' ? 1 : -1;
+      view.lit.set(e.id, 0.4);
+      v.flash(e.x, e.y, 1.8, th.m.multGlow, 0.3);
+      v.flash(e.x, e.y, 0.7, th.impactCore, 0.1);
+      v.ring(e.x, e.y - 0.5, 0.3, 1.5, th.m.multGlow, 0.35, false, 0.1);
+      v.sparks(e.x, e.y, 10, 7, th.m.multGlow);
+      // number just inside the table from the alley, never over the alley itself
+      v.flicker(e.x + inward * 2.3, e.y + 0.9, amount, th.m.multGlow);
+    } else {
+      v.ring(e.x, e.y, 0.4, 1.6, th.m.multGlow, 0.35, true, 0.1);
+      v.flicker(e.x, e.y + 1.4, amount, th.m.multGlow);
+    }
+    return;
+  }
   if (e.type === 'ramp') {
     const r = L.ramps.find(r => r.def.id === e.id)!;
     if (e.phase === 'enter') {
