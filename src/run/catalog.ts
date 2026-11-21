@@ -25,8 +25,19 @@ export type Mount = {
   section?: SectionId;
 };
 
+/**
+ * V2.1 ball variety (EXPERIMENTAL): per-release spreads for build-test's scripted exits, ±radians and
+ * ±speed fraction, drawn from the sim's seeded RNG only at the release. Original-map ramps/scoops don't set
+ * these (fixed exits / the old ±0.1 rad ±8% scoop), so `/`, `/1`–`/3` replay identically.
+ * Evidence and before/after numbers: docs/V2_1_BALL_VARIETY_PLAYTEST.md (scripts/flow-diagnostics.ts).
+ */
+export const TURBO_EXIT_SPREAD = { angle: 0.1, speed: 0.04 };
+export const OVERPASS_EXIT_SPREAD = { angle: 0.45, speed: 0.15 };
+export const LOOP_EXIT_SPREAD = { angle: 0.4, speed: 0.15 };
+export const GLOVE_EJECT_SPREAD = { angle: 0.3, speed: 0.15 };
+
 /** V2 Upper Deck mount centers (in the deck, between its side wall and the free deck bumpers). */
-const DECK_SITES = { 'deck-l': { x: 4.0, y: -4.8 }, 'deck-r': { x: 16.0, y: -4.8 } };
+const DECK_SITES = { 'deck-l': { x: 3.4, y: -5.6 }, 'deck-r': { x: 16.6, y: -5.6 } };
 
 /** Fixed mount sites. Each fits the ORIGINAL table without moving any factory part. */
 export const MOUNTS: Mount[] = [
@@ -195,6 +206,8 @@ export const MACHINES: MachineOffer[] = [
         ],
         mouthWidth: 1.6, climb: 9, climbDecel: 11, minRide: 10, maxRide: 20, exitMin: 6, exitMax: 9, points: 1000,
         gate: { at: 0.5, points: 750 }, exit: { mode: 'drop', fall: 0.28 },
+        // V2.1 (EXPERIMENTAL): the drop varies per ride (±rad, ±speed fraction) so the landing isn't one fixed line
+        exitSpread: LOOP_EXIT_SPREAD,
         checkpoints: { count: RAMP_CHECKPOINTS.count, points: RAMP_CHECKPOINTS.points },
       },
     },
@@ -266,6 +279,8 @@ export const MACHINES: MachineOffer[] = [
         path: [{ x: 5.5, y: 13.7 }, { x: 5.15, y: 12.0 }, { x: 4.35, y: 10.6 }, { x: 3.95, y: 9.0 }, { x: 4.0, y: 7.2 }, { x: 4.45, y: 6.25 }, { x: 5.25, y: 6.0 }],
         mouthWidth: 1.5, climb: 3, climbDecel: 12, minRide: 9, maxRide: 18, exitMin: 11, exitMax: 15, points: 1000,
         gate: { at: 0.55, points: 600 }, exit: { mode: 'release', fall: 0 },
+        // V2.1: small, so Turbo still feeds the upper bumpers (its signature interaction) by a varied route
+        exitSpread: TURBO_EXIT_SPREAD,
         // Replaces the old +600 gate / +1,000 finish (gate.at only marks which checkpoint Toll Booth targets).
         checkpoints: { count: RAMP_CHECKPOINTS.count, points: RAMP_CHECKPOINTS.points },
       },
@@ -287,6 +302,8 @@ export const MACHINES: MachineOffer[] = [
         path: [{ x: 13.2, y: 16.2 }, { x: 13.95, y: 14.2 }, { x: 14.35, y: 12.2 }, { x: 14.0, y: 10.4 }, { x: 12.7, y: 9.55 }, { x: 10, y: 9.35 }, { x: 7.9, y: 9.6 }, { x: 7.05, y: 10.6 }, { x: 7.05, y: 12.0 }, { x: 7.35, y: 13.1 }],
         mouthWidth: 1.6, climb: 4, climbDecel: 12, minRide: 5, maxRide: 18, exitMin: 4, exitMax: 9, points: 600,
         gate: { at: 0.52, points: 750 }, exit: { mode: 'drop', fall: 0.25 },
+        // V2.1: the drop varies so it isn't always the same straight feed down the middle to the bat
+        exitSpread: OVERPASS_EXIT_SPREAD,
         // Replaces the old +750 gate / +600 finish.
         checkpoints: { count: RAMP_CHECKPOINTS.count, points: RAMP_CHECKPOINTS.points },
       },
@@ -305,6 +322,7 @@ export const MACHINES: MachineOffer[] = [
         type: 'scoop', id: 'scoop', powerCost: 2, x: 16.9, y: 14.2, cupR: 0.95,
         // opening faces up-left toward the field; relaunch heads for the right bumper cluster
         mouthAngle: -2.3, mouthHalf: 1.0, holdSeconds: 0.85, ejectAngle: -2.0, ejectSpeed: 21, points: 1000, recatchDelay: 2.5,
+        ejectSpread: GLOVE_EJECT_SPREAD,
       },
     },
   },

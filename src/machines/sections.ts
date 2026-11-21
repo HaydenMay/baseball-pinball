@@ -51,10 +51,12 @@ export const UPPER_DECK = {
   /** Factory parts removed while the deck is present (the Home Run Ramp mouth takes the mid-right bumper's spot). */
   displaces: ['bumper-mid'],
   /** Free fixed bumpers (count as bumpers for ALL-bumper modifiers). */
+  // V2.1: a row across the middle of the deck (was a low pair + a big center bumper right in the release
+  // lane, which caught ~100% of Home Run releases). Each sits under one part of the release fan.
   bumpers: [
-    { id: 'deck-bumper-l', x: 7.2, y: -2.8, r: 0.95 },
-    { id: 'deck-bumper-r', x: 12.8, y: -2.8, r: 0.95 },
-    { id: 'deck-bumper-c', x: 10, y: -5.4, r: 1.0 },
+    { id: 'deck-bumper-l', x: 6.6, y: -4.4, r: 0.95 },
+    { id: 'deck-bumper-c', x: 10, y: -4.3, r: 0.8 },
+    { id: 'deck-bumper-r', x: 13.4, y: -4.4, r: 0.95 },
   ],
   bumperPoints: 200,
   bumperKick: 15,
@@ -82,7 +84,9 @@ export const HOME_RUN_RAMP: RampDef = {
   path: [
     { x: 16.15, y: 16.85 }, { x: 16.6, y: 15.4 }, { x: 16.8, y: 13.2 }, { x: 16.75, y: 9.5 }, { x: 16.6, y: 5.5 },
     { x: 17.2, y: 2.4 }, { x: 18.1, y: 0.0 }, { x: 18.2, y: -2.5 }, { x: 18.2, y: -5.4 },
-    { x: 17.7, y: -7.3 }, { x: 16.4, y: -7.85 }, { x: 15.2, y: -7.9 },
+    // V2.1: the end dips, so the release heads ~25° down-left (into the middle of the deck) instead of
+    // skimming the roof
+    { x: 17.9, y: -7.6 }, { x: 16.9, y: -8.0 }, { x: 15.9, y: -7.9 }, { x: 15.0, y: -7.7 },
   ],
   // Wider than the bought ramps' 1.5–1.6 so it reads as the deck's front door; posts still clear the
   // Overpass and Long Loop mouth posts by more than a ball diameter.
@@ -94,6 +98,11 @@ export const HOME_RUN_RAMP: RampDef = {
   exitMin: 9,
   exitMax: 12,
   points: 1000,
+  // V2.1: each ride's release fans ±0.55 rad (±31°) around the ~13° down-left heading at 12 u/s ±15%
+  // (10.2–13.8). Steep → right deck bumper/site, middle → center bumper, flat → left bumper/site.
+  // Measured (scripts/flow-diagnostics.ts, 90 rides): first deck contact L/C/R ≈ 29/46/18 %, ~4% miss the
+  // deck bumpers and drop straight out through the left gap (was 0/100/0).
+  exitSpread: { angle: 0.55, speed: 0.15 },
 };
 
 /** Smallest rectangle holding the table plus the unlocked sections (camera bounds, escape check). */

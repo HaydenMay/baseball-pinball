@@ -17,6 +17,7 @@ import { Run } from '../src/run/run.ts';
 
 const TRIALS = +(process.argv[2] ?? 60);
 const JSON_OUT = process.argv.includes('json');
+const ONLY = process.argv.find(a => a.startsWith('only='))?.slice(5).split(',');
 const DT = 1 / config.physicsHz;
 const WINDOW = 10;
 
@@ -25,7 +26,8 @@ const LOADOUTS: Record<string, Loadout> = {
   starterDeck: { name: 'starter + deck', deck: true, parts: [] },
   bumperDeck: { name: 'bumper-heavy + deck', deck: true, parts: [['bonus-bumper', 'deck-l'], ['bumper-cluster', 'deck-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur']] },
   rampHeavy: { name: 'ramp-heavy + deck', deck: true, parts: [['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['long-loop', 'loop-r'], ['bonus-bumper', 'deck-l']] },
-  glove: { name: 'glove + deck', deck: true, parts: [['glove-scoop', 'pocket-r'], ['bonus-bumper', 'deck-l'], ['bumper-cluster', 'cluster-r']] },
+  glove: { name: 'glove + cluster + deck', deck: true, parts: [['glove-scoop', 'pocket-r'], ['bonus-bumper', 'deck-l'], ['bumper-cluster', 'cluster-r']] },
+  gloveOnly: { name: 'glove only, no deck', deck: false, parts: [['glove-scoop', 'pocket-r']] },
   splitter: { name: 'splitter + deck', deck: true, parts: [['splitter', 'center-r'], ['bonus-bumper', 'deck-l']] },
   rampClassic: { name: 'ramp-heavy, no deck', deck: false, parts: [['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['long-loop', 'loop-r']] },
 };
@@ -89,6 +91,7 @@ const SOURCES: Source[] = [
       return b.id;
     },
   },
+  { key: 'gloveOnly', label: 'Glove Scoop', loadout: 'gloveOnly', run: (s: Simulation) => SOURCES.find(x => x.key === 'glove')!.run(s, 0) },
   {
     key: 'splitter', label: 'Splitter launch', loadout: 'splitter',
     run: (s: Simulation) => {
@@ -105,14 +108,14 @@ const SOURCES: Source[] = [
   },
 ];
 
-type Trial = { contacts: { id: string; x: number; y: number }[]; drained: boolean; aloft: number; groups: Set<string>; deckFirst?: 'L' | 'C' | 'R'; returnGap?: 'L' | 'R'; completed: boolean };
+type Trial = { recatch: number; contacts: { id: string; x: number; y: number }[]; drained: boolean; batX?: number; aloft: number; groups: Set<string>; deckFirst?: 'L' | 'C' | 'R'; returnGap?: 'L' | 'R'; completed: boolean };
 
 function follow(src: Source, i: number): Trial | null {
   const lo = LOADOUTS[src.loadout];
   const { s, ev } = sim(lo, i + 1);
   const ballId = src.run(s, i);
   if (ballId === null) return null;
-  const t: Trial = { contacts: [], drained: false, aloft: 0, groups: new Set(), completed: false };
+  const t: Trial = { recatch: 0, contacts: [], drained: false, aloft: 0, groups: new Set(), completed: false };
   let released = src.key.startsWith('glove') || src.key.startsWith('splitter') ? true : false;
   let since = 0, prevY = Infinity;
   for (let k = 0; k < (WINDOW + 4) / DT; k++) {
@@ -122,7 +125,8 @@ function follow(src: Source, i: number): Trial | null {
       if ('ball' in e && e.ball !== ballId) continue;
       if (e.type === 'ramp' && e.phase === 'complete') { released = true; t.completed = true; }
       if (e.type === 'scoop' && e.phase === 'eject') released = true;
-      if (e.type === 'drain') t.drained = true;
+      if (e.type === 'scoop' && e.phase === 'catch' && released) t.recatch++;
+      if (e.type === 'drain' && released) t.drained = true;
       if (!released) continue;
       if (e.type === 'machine' && e.kind !== 'wall') {
         t.contacts.push({ id: e.id, x: e.x, y: e.y });
@@ -137,7 +141,11 @@ function follow(src: Source, i: number): Trial | null {
       if (b.pos.y < 0.6) t.aloft += DT;
       if (b.mode === 'field' && prevY < 0.6 && b.pos.y >= 0.6 && !t.returnGap) t.returnGap = b.pos.x < 10 ? 'L' : 'R';
       prevY = b.pos.y;
-      if (b.pos.y > 21 || since > WINDOW) break;
+      if (b.pos.y > 21) {
+        t.batX = b.pos.x;
+        break;
+      }
+      if (since > WINDOW) break;
     }
   }
   return t;
@@ -146,7 +154,7 @@ function follow(src: Source, i: number): Trial | null {
 const pct = (n: number, d: number) => (d ? Math.round((100 * n) / d) : 0);
 export function measure(trials = TRIALS) {
   const out: Record<string, unknown> = {};
-  for (const src of SOURCES) {
+  for (const src of SOURCES.filter(s => !ONLY || ONLY.includes(s.key))) {
     const ts = Array.from({ length: trials }, (_, i) => follow(src, i)).filter((t): t is Trial => !!t);
     const n = ts.length;
     if (!n) continue;
@@ -170,7 +178,9 @@ export function measure(trials = TRIALS) {
       groupsPct: groups,
       deckFirstLCR: ['L', 'C', 'R'].map(z => pct(ts.filter(t => t.deckFirst === z).length, n)).join('/'),
       returnGapLR: ['L', 'R'].map(z => pct(ts.filter(t => t.returnGap === z).length, n)).join('/'),
+      batZoneLCR: ['L', 'C', 'R'].map(z => pct(ts.filter(t => t.batX !== undefined && (t.batX < 7.5 ? 'L' : t.batX > 12.5 ? 'R' : 'C') === z).length, n)).join('/'),
       aloftAvg: +(ts.reduce((a, t) => a + t.aloft, 0) / n).toFixed(2),
+      recatchPct: pct(ts.filter(t => t.recatch > 0).length, n),
       installedPartsHit: [...installedIds].length,
     };
   }
@@ -183,9 +193,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   else
     for (const [k, v] of Object.entries(m) as [string, any][]) {
       console.log(`\n${k} — ${v.source} [${v.loadout}] n=${v.trials} completed ${v.completedPct}% drained ${v.drainedBeforeBatPct}%`);
-      console.log(`  contacts/avg ${v.contactsAvg} · distinct first-3 sequences ${v.distinctFirst3} · installed parts hit ${v.installedPartsHit}`);
+      console.log(`  contacts/avg ${v.contactsAvg} · distinct first-3 sequences ${v.distinctFirst3} · installed parts hit ${v.installedPartsHit} · recatch ${v.recatchPct}%`);
       console.log(`  first contact: ${JSON.stringify(v.firstContact)}`);
       console.log(`  groups %: ${JSON.stringify(v.groupsPct)}`);
-      console.log(`  deck first L/C/R ${v.deckFirstLCR} · return gap L/R ${v.returnGapLR} · aloft ${v.aloftAvg}s`);
+      console.log(`  deck first L/C/R ${v.deckFirstLCR} · return gap L/R ${v.returnGapLR} · aloft ${v.aloftAvg}s · reaches bat zone L/C/R ${v.batZoneLCR}`);
     }
 }
