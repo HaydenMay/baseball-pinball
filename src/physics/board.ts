@@ -17,7 +17,22 @@ export type Lane = { id: string; kind: 'lane'; rail: [Pt, Pt]; sensor: Pt; dir: 
 export type RoundTarget = { id: string; kind: 'target'; x: number; y: number; r: number };
 export type BoxTarget = { id: string; kind: 'target' | 'jackpot'; x: number; y: number; hw: number; hh: number; face: Pt; style: 'card' | 'star' | 'jackpot' };
 export type Post = { id: string; kind: 'post'; x: number; y: number; r: number };
-export type Sling = { id: string; kind: 'sling'; side: 'left' | 'right'; poly: Pt[]; face: [Pt, Pt]; kickDir: Pt };
+export type Sling = {
+  id: string;
+  kind: 'sling';
+  side: 'left' | 'right';
+  poly: Pt[];
+  face: [Pt, Pt];
+  kickDir: Pt;
+  /** Per-hit base points / kick speed (defaults: config.sling). */
+  points?: number;
+  kick?: number;
+  /**
+   * Debounce group: one kick per group per config.sling.cooldown. The two original lower slings share
+   * 'main' (unchanged behavior); each V2.2 deck sling has its own, so no sling suppresses another's hit.
+   */
+  group?: string;
+};
 
 const W = config.table.width;
 
@@ -43,6 +58,19 @@ export const OUTER_WALL: Pt[] = [...LEFT_WALL.slice().reverse(), ...LEFT_WALL.sl
 export function lowerWallX(y: number) {
   const a = LEFT_WALL[5], b = LEFT_WALL[6];
   return a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
+}
+
+/** V2.2 Upper Deck slings: on the deck's side walls, kicking inward and slightly up. */
+export function deckSlings(): Sling[] {
+  const d = UPPER_DECK, c = d.slings;
+  return (['left', 'right'] as const).map(side => {
+    const sx = side === 'left' ? 1 : -1, wx = side === 'left' ? d.wallX0 : d.wallX1;
+    const a = { x: wx, y: c.y0 }, b = { x: wx, y: c.y1 };
+    const a2 = { x: wx + sx * c.depth, y: c.y0 }, b2 = { x: wx + sx * c.depth * 0.75, y: c.y1 };
+    const kl = Math.hypot(1, c.tilt);
+    const poly = side === 'left' ? [a, b, b2, a2] : [a2, b2, b, a];
+    return { id: `deck-sling-${side === 'left' ? 'l' : 'r'}`, kind: 'sling', side, poly, face: [a2, b2], kickDir: { x: sx / kl, y: -c.tilt / kl }, points: c.points, kick: c.kick, group: `deck-sling-${side}` };
+  });
 }
 
 function makeSling(side: 'left' | 'right'): Sling {
@@ -160,6 +188,7 @@ export function layoutFor(preset?: Preset): Layout {
     l.sections.push('upperDeck');
     l.bumpers = l.bumpers.filter(b => !UPPER_DECK.displaces.includes(b.id));
     for (const b of UPPER_DECK.bumpers) l.bumpers.push({ ...b, kind: 'bumper', style: 'ball', points: UPPER_DECK.bumperPoints, kick: UPPER_DECK.bumperKick });
+    l.slings.push(...deckSlings());
     l.ramps.push(buildRampPath(HOME_RUN_RAMP));
   }
   l.bounds = boundsFor(l.sections);

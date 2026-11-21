@@ -51,13 +51,21 @@ export const UPPER_DECK = {
   /** Factory parts removed while the deck is present (the Home Run Ramp mouth takes the mid-right bumper's spot). */
   displaces: ['bumper-mid'],
   /** Free fixed bumpers (count as bumpers for ALL-bumper modifiers). */
-  // V2.1: a row across the middle of the deck (was a low pair + a big center bumper right in the release
-  // lane, which caught ~100% of Home Run releases). Each sits under one part of the release fan.
+  // V2.2: four bumpers in a staggered diamond (top / left / right / lower-middle) so a ball ricochets
+  // between them (gaps 1.3–1.5 = about two ball diameters). The V2.1 shallow row (6.6/10/13.4 at y≈-4.4)
+  // played as three independent targets. EXPERIMENTAL geometry; see docs/V2_2_UPPER_DECK_RALLY.md.
   bumpers: [
-    { id: 'deck-bumper-l', x: 6.6, y: -4.4, r: 0.95 },
-    { id: 'deck-bumper-c', x: 10, y: -4.3, r: 0.8 },
-    { id: 'deck-bumper-r', x: 13.4, y: -4.4, r: 0.95 },
+    { id: 'deck-bumper-t', x: 10, y: -5.9, r: 0.9 },
+    { id: 'deck-bumper-l', x: 7.4, y: -4.5, r: 0.9 },
+    { id: 'deck-bumper-r', x: 12.6, y: -4.5, r: 0.9 },
+    { id: 'deck-bumper-b', x: 10, y: -2.7, r: 0.9 },
   ],
+  /**
+   * V2.2: one slingshot on each side wall, low enough to leave the deck mounts above them and the sloped floor
+   * (and so both return gaps) open beneath. Each kicks inward and a little up, back across the diamond.
+   * `tilt` = upward component of the kick direction before normalizing (0 = straight inward).
+   */
+  slings: { y0: -3.7, y1: -1.1, depth: 0.95, tilt: 0.6, points: 100, kick: 17 },
   bumperPoints: 200,
   bumperKick: 15,
   /** Deck turf tint over the table turf so it reads as a separate level (theme turf + this). */
@@ -83,10 +91,11 @@ export const HOME_RUN_RAMP: RampDef = {
   powerCost: 0,
   path: [
     { x: 16.15, y: 16.85 }, { x: 16.6, y: 15.4 }, { x: 16.8, y: 13.2 }, { x: 16.75, y: 9.5 }, { x: 16.6, y: 5.5 },
-    { x: 17.2, y: 2.4 }, { x: 18.1, y: 0.0 }, { x: 18.2, y: -2.5 }, { x: 18.2, y: -5.4 },
-    // V2.1: the end dips, so the release heads ~25° down-left (into the middle of the deck) instead of
-    // skimming the roof
-    { x: 17.9, y: -7.6 }, { x: 16.9, y: -8.0 }, { x: 15.9, y: -7.9 }, { x: 15.0, y: -7.7 },
+    // V2.2: the raised climb runs just outside the deck's right wall, so it no longer hides the right deck sling
+    { x: 17.2, y: 2.4 }, { x: 18.4, y: 0.3 }, { x: 19.55, y: -1.6 }, { x: 19.65, y: -4.5 }, { x: 19.3, y: -6.9 },
+    { x: 18.2, y: -8.15 }, { x: 16.9, y: -8.2 },
+    // V2.1/V2.2: the release heads just below level (~3°) into the top of the deck; exitSpread fans it ±31°
+    { x: 15.9, y: -7.9 }, { x: 15.0, y: -7.85 },
   ],
   // Wider than the bought ramps' 1.5–1.6 so it reads as the deck's front door; posts still clear the
   // Overpass and Long Loop mouth posts by more than a ball diameter.

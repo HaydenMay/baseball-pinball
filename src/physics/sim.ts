@@ -97,7 +97,8 @@ export class Simulation {
   private seed: number;
   private onEvent?: (e: SimEvent) => void;
   private pendingKicks: { kind: 'bumper' | 'sling'; ref: unknown; ball: Ball }[] = [];
-  private lastSlingKick = -10;
+  /** Last kick time per sling debounce group (original lower pair share 'main'). */
+  private lastSlingKick = new Map<string, number>();
   private nextBallId = 1;
   private bodyToBall = new Map<P.Body, Ball>();
 
@@ -307,9 +308,10 @@ export class Simulation {
     else if (d.kind === 'jackpot') points = config.jackpot.points;
     else if (d.kind === 'lane') points = config.lane.points;
     else if (d.kind === 'sling') {
-      if (this.time - this.lastSlingKick < config.sling.cooldown) return;
-      this.lastSlingKick = this.time;
-      points = config.sling.points;
+      const sg = (d.ref as Sling).group ?? 'main';
+      if (this.time - (this.lastSlingKick.get(sg) ?? -10) < config.sling.cooldown) return;
+      this.lastSlingKick.set(sg, this.time);
+      points = (d.ref as Sling).points ?? config.sling.points;
       this.pendingKicks.push({ kind: 'sling', ref: d.ref, ball });
     } else if (d.kind === 'splitter') {
       points = this.hitSplitter(d.ref as SplitterDef);
@@ -410,7 +412,8 @@ export class Simulation {
       } else {
         const s = k.ref as Sling;
         const along = v.x * -s.kickDir.y + v.y * s.kickDir.x;
-        body.setLinearVelocity(P.Vec2(s.kickDir.x * config.sling.kick - s.kickDir.y * along * 0.15, s.kickDir.y * config.sling.kick + s.kickDir.x * along * 0.15));
+        const kick = s.kick ?? config.sling.kick;
+        body.setLinearVelocity(P.Vec2(s.kickDir.x * kick - s.kickDir.y * along * 0.15, s.kickDir.y * kick + s.kickDir.x * along * 0.15));
       }
     }
   }

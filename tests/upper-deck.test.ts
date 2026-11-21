@@ -126,17 +126,18 @@ test('physics: a ball anywhere in the deck returns to the table (no traps, no dr
       for (const vx of [-5, 1.3, 5]) {
         place(s, x + 0.037, y, vx, 0);
         let t = 0;
-        while (t < 15 && s.balls[0].pos.y < 1.2) {
+        while (t < 40 && s.balls[0].pos.y < 1.2) {
           s.step(DT, makeControls());
           t += DT;
         }
-        assert.ok(t < 15, `returned from (${x.toFixed(1)}, ${y})`);
+        // V2.2 diamond + slings allow long lucky chains (measured max ≈ 16 s); never a deadlock
+        assert.ok(t < 40, `returned from (${x.toFixed(1)}, ${y})`);
         worst = Math.max(worst, t);
       }
     }
   }
   assert.equal(ev.filter(e => e.type === 'drain').length, 0, 'never drains from the deck');
-  assert.ok(worst < 12, `worst return ${worst.toFixed(1)}s`);
+  assert.ok(worst < 30, `worst return ${worst.toFixed(1)}s`);
 });
 
 test('physics: a strong shot goes up through a gap into the deck and comes back down', () => {
@@ -177,20 +178,20 @@ test('Home Run Ramp: an aimed hit from the bat rides it into the deck, scores on
 test('modifiers: ALL-bumper cards reach the deck bumpers, THIS cards can target them, ALL-ramp reaches the Home Run Ramp', () => {
   const r = v2Run();
   const before = MODS.find(m => m.key === 'mvp')!.targets(r.board()).map(t => t.key);
-  assert.ok(!before.includes('deck-bumper-c'));
+  assert.ok(!before.includes('deck-bumper-t'));
   r.sections = ['upperDeck'];
   const after = MODS.find(m => m.key === 'mvp')!.targets(r.board()).map(t => t.key);
   for (const b of UPPER_DECK.bumpers) assert.ok(after.includes(b.id), b.id);
   assert.ok(MODS.find(m => m.key === 'grand-tour')!.targets(r.board()).length, 'Grand Tour offered with only the free ramp');
   assert.equal(MODS.find(m => m.key === 'express-track')!.targets(r.board()).length, 0, 'checkpoint card needs a checkpoint ramp');
   mod(r, 'bumper-crew', 'bumper:*');
-  mod(r, 'mvp', 'deck-bumper-c');
+  mod(r, 'mvp', 'deck-bumper-t');
   mod(r, 'grand-tour', 'ramp:*');
   const { s, ev } = deckSim(r);
   place(s, 10.3, -8, 0, 0);
   for (let i = 0; i < 1.2 / DT; i++) s.step(DT, makeControls());
   const aim2 = (30 * Math.PI) / 180;
-  const hit = ev.find(e => e.type === 'score' && e.id === 'deck-bumper-c') as Extract<SimEvent, { type: 'score' }>;
+  const hit = ev.find(e => e.type === 'score' && e.id === 'deck-bumper-t') as Extract<SimEvent, { type: 'score' }>;
   assert.ok(hit, 'center deck bumper hit');
   assert.equal(hit.modified, (UPPER_DECK.bumperPoints + 100) * 2);
   place(s, 12, 24, Math.sin(aim2) * config.swing.exitSpeed, -Math.cos(aim2) * config.swing.exitSpeed);

@@ -19,7 +19,7 @@ const TRIALS = +(process.argv[2] ?? 60);
 const JSON_OUT = process.argv.includes('json');
 const ONLY = process.argv.find(a => a.startsWith('only='))?.slice(5).split(',');
 const DT = 1 / config.physicsHz;
-const WINDOW = 10;
+const WINDOW = 20; // long enough to see a deck visit end
 
 type Loadout = { name: string; deck: boolean; parts: [string, string][] };
 const LOADOUTS: Record<string, Loadout> = {
@@ -151,6 +151,7 @@ function follow(src: Source, i: number): Trial | null {
   return t;
 }
 
+const q = (xs: number[], f: number) => { const a = [...xs].sort((x, y) => x - y); return +(a[Math.min(a.length - 1, Math.floor(f * (a.length - 1)))] ?? 0).toFixed(2); };
 const pct = (n: number, d: number) => (d ? Math.round((100 * n) / d) : 0);
 export function measure(trials = TRIALS) {
   const out: Record<string, unknown> = {};
@@ -181,6 +182,14 @@ export function measure(trials = TRIALS) {
       batZoneLCR: ['L', 'C', 'R'].map(z => pct(ts.filter(t => t.batX !== undefined && (t.batX < 7.5 ? 'L' : t.batX > 12.5 ? 'R' : 'C') === z).length, n)).join('/'),
       aloftAvg: +(ts.reduce((a, t) => a + t.aloft, 0) / n).toFixed(2),
       recatchPct: pct(ts.filter(t => t.recatch > 0).length, n),
+      deckHitsPerVisit: +(ts.reduce((a, t) => a + t.contacts.filter(c => c.y < 0.6).length, 0) / n).toFixed(2),
+      deckSlingPct: pct(ts.filter(t => t.contacts.some(c => c.id.startsWith('deck-sling'))).length, n),
+      deckSlingHits: ts.reduce((a, t) => a + t.contacts.filter(c => c.id.startsWith('deck-sling')).length, 0),
+      deckBumperHitsByPart: Object.fromEntries([...new Set(ts.flatMap(t => t.contacts.filter(c => c.y < 0.6).map(c => c.id)))].sort().map(id => [id, ts.reduce((a, t) => a + t.contacts.filter(c => c.id === id).length, 0)])),
+      returnedPct: pct(ts.filter(t => t.returnGap).length, n),
+      aloftP50: q(ts.map(t => t.aloft), 0.5),
+      aloftP90: q(ts.map(t => t.aloft), 0.9),
+      aloftMax: q(ts.map(t => t.aloft), 1),
       installedPartsHit: [...installedIds].length,
     };
   }
@@ -196,6 +205,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`  contacts/avg ${v.contactsAvg} · distinct first-3 sequences ${v.distinctFirst3} · installed parts hit ${v.installedPartsHit} · recatch ${v.recatchPct}%`);
       console.log(`  first contact: ${JSON.stringify(v.firstContact)}`);
       console.log(`  groups %: ${JSON.stringify(v.groupsPct)}`);
+      if (v.deckHitsPerVisit) console.log(`  deck hits/visit ${v.deckHitsPerVisit} · deck sling in ${v.deckSlingPct}% (${v.deckSlingHits} hits) · returned ${v.returnedPct}% · aloft p50 ${v.aloftP50}s p90 ${v.aloftP90}s max ${v.aloftMax}s\n  deck parts: ${JSON.stringify(v.deckBumperHitsByPart)}`);
       console.log(`  deck first L/C/R ${v.deckFirstLCR} · return gap L/R ${v.returnGapLR} · aloft ${v.aloftAvg}s · reaches bat zone L/C/R ${v.batZoneLCR}`);
     }
 }

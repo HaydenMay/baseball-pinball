@@ -95,8 +95,8 @@ test('RNG draw order: exactly two draws per completed spread ride, none for the 
   assert.equal(after, ref.random());
 });
 
-test('Home Run: rides fan into the deck left, center and right; no drains; one 1,000 award per ride', () => {
-  const first = { l: 0, c: 0, r: 0 } as Record<string, number>;
+test('Home Run: rides spread across the deck diamond and slings; no drains; one award per ride', () => {
+  const firsts = new Map<string, number>(), touched = new Set<string>();
   const N = 60;
   for (let i = 0; i < N; i++) {
     const { s, ev } = mk([], i + 1);
@@ -105,16 +105,19 @@ test('Home Run: rides fan into the deck left, center and right; no drains; one 1
     const sp = Math.hypot(v.x, v.y);
     assert.ok(sp >= HOME_RUN_RAMP.exitMin * (1 - HOME_RUN_RAMP.exitSpread!.speed) - 1e-6 && sp <= HOME_RUN_RAMP.exitMax * (1 + HOME_RUN_RAMP.exitSpread!.speed) + 1e-6);
     const n0 = ev.length;
-    for (let k = 0; k < 4 / DT && s.balls[0]?.pos.y < 1.2; k++) s.step(DT, makeControls());
-    const deckHit = ev.slice(n0).find(e => e.type === 'machine' && (e as any).id.startsWith('deck-bumper')) as any;
-    if (deckHit) first[deckHit.id.slice(-1)]++;
+    for (let k = 0; k < 30 / DT && s.balls[0]?.pos.y < 1.2; k++) s.step(DT, makeControls());
+    const deck = ev.slice(n0).filter(e => e.type === 'machine' && (e as any).id.startsWith('deck-')) as any[];
+    if (deck[0]) firsts.set(deck[0].id, (firsts.get(deck[0].id) ?? 0) + 1);
+    for (const d of deck) touched.add(d.id);
     assert.equal(ev.filter(e => e.type === 'drain').length, 0);
     assert.equal(ev.filter(e => e.type === 'score' && e.id === HOME_RUN_RAMP.id).length, 1);
     assert.equal((ev.find(e => e.type === 'score' && e.id === HOME_RUN_RAMP.id) as any).base, HOME_RUN_RAMP.points);
   }
-  for (const k of ['l', 'c', 'r']) assert.ok(first[k] >= N * 0.1, `deck-bumper-${k} first in ${first[k]}/${N}`);
-  assert.ok(first.c < N * 0.7, `center no longer takes everything (${first.c}/${N})`);
-  assert.equal(UPPER_DECK.bumpers.length, 3);
+  for (const b of UPPER_DECK.bumpers) assert.ok(touched.has(b.id), `${b.id} reached`);
+  assert.ok(touched.has('deck-sling-l') && touched.has('deck-sling-r'), 'both deck slings reached');
+  assert.ok(firsts.size >= 3, `first contacts vary (${[...firsts.keys()]})`);
+  assert.ok(Math.max(...firsts.values()) < N * 0.85, 'no single first contact takes everything');
+  assert.equal(UPPER_DECK.bumpers.length, 4);
 });
 
 test('Turbo keeps feeding the upper bumpers; checkpoint scoring unchanged under exit variety', () => {

@@ -37,7 +37,8 @@ export const LOOP_EXIT_SPREAD = { angle: 0.4, speed: 0.15 };
 export const GLOVE_EJECT_SPREAD = { angle: 0.3, speed: 0.15 };
 
 /** V2 Upper Deck mount centers (in the deck, between its side wall and the free deck bumpers). */
-const DECK_SITES = { 'deck-l': { x: 3.4, y: -5.6 }, 'deck-r': { x: 16.6, y: -5.6 } };
+// V2.2: (±3.6, -5.6) sit above the deck slings and outside the diamond (≥1 ball diameter clear of both)
+const DECK_SITES = { 'deck-l': { x: 3.6, y: -5.6 }, 'deck-r': { x: 16.4, y: -5.6 } };
 
 /** Fixed mount sites. Each fits the ORIGINAL table without moving any factory part. */
 export const MOUNTS: Mount[] = [
@@ -390,7 +391,7 @@ const childLabel = (p: BoardView['parts'][number]) => {
 };
 
 /** THIS bumper: factory bumpers still on the table + every installed bumper part (bundle children included). */
-const DECK_BUMPER_LABELS: Record<string, string> = { 'deck-bumper-l': 'Upper Deck left bumper', 'deck-bumper-r': 'Upper Deck right bumper', 'deck-bumper-c': 'Upper Deck center bumper' };
+const DECK_BUMPER_LABELS: Record<string, string> = { 'deck-bumper-t': 'Upper Deck top bumper', 'deck-bumper-l': 'Upper Deck left bumper', 'deck-bumper-r': 'Upper Deck right bumper', 'deck-bumper-b': 'Upper Deck lower bumper' };
 const bumperTargets = (b: BoardView) => [
   ...FACTORY_BUMPERS.filter(f => !b.displaced.includes(f.key)),
   ...(b.sections?.includes('upperDeck') ? UPPER_DECK.bumpers.map(d => ({ key: d.id, label: DECK_BUMPER_LABELS[d.id] ?? d.id })) : []),
@@ -443,7 +444,7 @@ export const MODS: ModTemplate[] = [
   { key: 'rally-cap', name: 'Rally Cap', effect: 'ALL bumpers: ×1.25 points', mul: 1.25, tier: 'shop', price: 6, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (factory, installed, bundles, future)' }] },
   { key: 'big-stage', name: 'Big Stage', effect: '×2 points', mul: 2, tier: 'shop', price: 4, family: 'jackpot', scope: 'this', targets: () => [{ key: 'jackpot', label: 'Jackpot' }] },
   { key: 'sharp-eye', name: 'Sharp Eye', effect: 'ALL standup targets: +50 points', add: 50, tier: 'shop', price: 3, family: 'target', scope: 'all', targets: () => [{ key: 'target:*', label: 'ALL standup targets' }] },
-  { key: 'rubber', name: 'Live Rubber', effect: 'Both slingshots: +40 points', add: 40, tier: 'shop', price: 2, family: 'sling', scope: 'all', targets: () => [{ key: 'sling:*', label: 'Both blue slingshots' }] },
+  { key: 'rubber', name: 'Live Rubber', effect: 'Both slingshots: +40 points', add: 40, tier: 'shop', price: 2, family: 'sling', scope: 'all', targets: b => [{ key: 'sling:*', label: b.sections?.includes('upperDeck') ? 'Every slingshot (incl. the 2 Upper Deck slings)' : 'Both blue slingshots' }] },
   { key: 'rollover', name: 'Rollover', effect: 'Both side lanes: +100 points', add: 100, tier: 'shop', price: 2, family: 'lane', scope: 'all', targets: () => [{ key: 'lane:*', label: 'Both side lanes' }] },
   { key: 'nitro', name: 'Nitro', effect: '×1.5 on THIS ramp\'s final checkpoint (+500 per full ride)', mul: 1.5, tier: 'shop', price: 4, family: 'ramp', scope: 'this', targets: b => partsOf(b, p => p.type === 'ramp').map(p => ({ key: p.id, label: `${rampName(p)} ramp, checkpoint 8` })) },
   { key: 'toll-booth', name: 'Toll Booth', effect: '+500 on THIS ramp\'s halfway checkpoint', add: 500, tier: 'shop', price: 4, family: 'ramp', scope: 'this', targets: b => partsOf(b, p => p.type === 'ramp').map(p => ({ key: `${p.id}-gate`, label: `${rampName(p)} ramp, halfway checkpoint` })) },
