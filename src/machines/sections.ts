@@ -48,6 +48,8 @@ export const UPPER_DECK = {
   sideFloorY: -0.6,
   /** Peak of the center divider between the gaps (falls toward the inner gap edges). */
   tentPeakY: -0.9,
+  /** Factory parts removed while the deck is present (the Home Run Ramp mouth takes the mid-right bumper's spot). */
+  displaces: ['bumper-mid'],
   /** Free fixed bumpers (count as bumpers for ALL-bumper modifiers). */
   bumpers: [
     { id: 'deck-bumper-l', x: 7.2, y: -2.8, r: 0.95 },
@@ -64,9 +66,13 @@ export const UPPER_DECK = {
 };
 
 /**
- * The free Home Run Ramp: mouth at the top of the right alley (balls heading up the alley ride it),
- * climbs the deck's right wall and releases along the top of the deck, across the center bumper.
+ * The free Home Run Ramp: an aimable skill shot. Its mouth faces the batter in the right mid-field (where the
+ * factory mid-right bumper stood; the Upper Deck displaces that bumper, as the Long Loop already does), between
+ * the Overpass and Long Loop mouths with ball-sized clearance to both. A hit aimed ~25–35° right arrives at
+ * ~20 u/s, far above the climb. The raised ride runs up the right mid-field inside the lane rail, crosses the
+ * top-right corner, climbs the deck's right wall and releases along the deck top across the center bumper.
  * Payout deliberately below a bought ramp (8 × 1,000): one completion award, no checkpoints.
+ * (Nov 20 playtest: the first version's mouth at the top of the right alley couldn't be aimed at from the bat.)
  */
 export const HOME_RUN_RAMP: RampDef = {
   type: 'ramp',
@@ -74,18 +80,20 @@ export const HOME_RUN_RAMP: RampDef = {
   name: 'HOME RUN',
   powerCost: 0,
   path: [
-    { x: 18.3, y: 3.9 }, { x: 18.3, y: 2.2 }, { x: 18.25, y: 0.2 }, { x: 18.2, y: -2.5 }, { x: 18.2, y: -5.4 },
+    { x: 16.15, y: 16.85 }, { x: 16.6, y: 15.4 }, { x: 16.8, y: 13.2 }, { x: 16.75, y: 9.5 }, { x: 16.6, y: 5.5 },
+    { x: 17.2, y: 2.4 }, { x: 18.1, y: 0.0 }, { x: 18.2, y: -2.5 }, { x: 18.2, y: -5.4 },
     { x: 17.7, y: -7.3 }, { x: 16.4, y: -7.85 }, { x: 15.2, y: -7.9 },
   ],
-  mouthWidth: 1.7,
-  // Bot traffic: balls cross the alley top upward at ~9.5 u/s (p50); climb 3 rolled half of them back.
-  climb: 2.2,
-  climbDecel: 10,
-  minRide: 9,
-  maxRide: 16,
+  // Wider than the bought ramps' 1.5–1.6 so it reads as the deck's front door; posts still clear the
+  // Overpass and Long Loop mouth posts by more than a ball diameter.
+  mouthWidth: 1.9,
+  climb: 3,
+  climbDecel: 12,
+  minRide: 10,
+  maxRide: 18,
   exitMin: 9,
   exitMax: 12,
-  points: 2000,
+  points: 1000,
 };
 
 /** Smallest rectangle holding the table plus the unlocked sections (camera bounds, escape check). */

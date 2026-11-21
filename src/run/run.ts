@@ -16,7 +16,7 @@
  */
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
-import { SECTION_UNLOCKS, V2, type SectionId } from '../machines/sections.ts';
+import { SECTION_UNLOCKS, UPPER_DECK, V2, type SectionId } from '../machines/sections.ts';
 import { MACHINES, MODS, MOUNTS, familyOfKey, placementsOf, type BoardView, type Family, type MachineOffer, type Mount, type Placement } from './catalog.ts';
 import { ECONOMY, inningOf, targetFor } from './economy.ts';
 import { OFFER_WEIGHTS, investment, pickWeighted, weigh } from './weights.ts';
@@ -159,7 +159,8 @@ export class Run {
 
   /** Factory parts currently displaced by installed items. */
   get displaced() {
-    return [...new Set(this.installed.flatMap(i => i.displaces))];
+    const sec = this.sections.includes('upperDeck') ? UPPER_DECK.displaces : [];
+    return [...new Set([...this.installed.flatMap(i => i.displaces), ...sec])];
   }
 
   /** Every physical part on the board right now (for targeting, weighting and dormancy). */

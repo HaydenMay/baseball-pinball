@@ -96,6 +96,16 @@ test('unlock: Upper Deck is granted by the clear of C3 (before its draft), free,
   assert.deepEqual(r.sections, ['upperDeck']);
 });
 
+test('the deck displaces the mid-right factory bumper (Home Run Ramp mouth); its modifiers sleep, never lost', () => {
+  const r = v2Run();
+  mod(r, 'mvp', 'bumper-mid');
+  assert.ok(MODS.find(m => m.key === 'mvp')!.targets(r.board()).some(t => t.key === 'bumper-mid'));
+  r.sections = ['upperDeck'];
+  assert.ok(!layoutFor(r.preset()).bumpers.some(b => b.id === 'bumper-mid'));
+  assert.ok(!MODS.find(m => m.key === 'mvp')!.targets(r.board()).some(t => t.key === 'bumper-mid'), 'not offered while displaced');
+  assert.deepEqual(r.dormantKeys(), ['bumper-mid']);
+});
+
 test('mounts: deck placements only once unlocked; bonus bumper and cluster fit there', () => {
   const r = v2Run();
   r.maxPower = 99;
@@ -145,10 +155,11 @@ test('physics: a strong shot goes up through a gap into the deck and comes back 
   assert.equal(ev.filter(e => e.type === 'drain').length, 0);
 });
 
-test('Home Run Ramp: a ball up the right alley rides it into the deck, scores once, hits the deck', () => {
+test('Home Run Ramp: an aimed hit from the bat rides it into the deck, scores once, hits the deck', () => {
   const { s, ev } = deckSim();
-  place(s, 18.3, 8, 0, -13);
-  for (let i = 0; i < 4 / DT; i++) s.step(DT, makeControls());
+  const aim = (30 * Math.PI) / 180; // contact at x 12, 30° right, at the locked exit speed
+  place(s, 12, 24, Math.sin(aim) * config.swing.exitSpeed, -Math.cos(aim) * config.swing.exitSpeed);
+  for (let i = 0; i < 5 / DT; i++) s.step(DT, makeControls());
   const ramp = ev.filter(e => e.type === 'ramp' && e.id === HOME_RUN_RAMP.id) as Extract<SimEvent, { type: 'ramp' }>[];
   assert.deepEqual(ramp.map(e => e.phase), ['enter', 'complete']);
   assert.equal(ramp[1].points, HOME_RUN_RAMP.points);
@@ -157,7 +168,8 @@ test('Home Run Ramp: a ball up the right alley rides it into the deck, scores on
   assert.equal(ev.filter(e => e.type === 'drain').length, 0);
   // a weak ball doesn't reach/clear it
   const w = deckSim();
-  place(w.s, 18.3, 8, 0, -9);
+  const rp = w.s.layout.ramps.find(r => r.def.id === HOME_RUN_RAMP.id)!;
+  place(w.s, rp.mouth.x - rp.entryDir.x * 0.5, rp.mouth.y - rp.entryDir.y * 0.5, rp.entryDir.x * 6, rp.entryDir.y * 6);
   for (let i = 0; i < 3 / DT; i++) w.s.step(DT, makeControls());
   assert.ok(!w.ev.some(e => e.type === 'ramp' && e.phase === 'complete'));
 });
@@ -177,12 +189,13 @@ test('modifiers: ALL-bumper cards reach the deck bumpers, THIS cards can target 
   const { s, ev } = deckSim(r);
   place(s, 10.3, -8, 0, 0);
   for (let i = 0; i < 1.2 / DT; i++) s.step(DT, makeControls());
+  const aim2 = (30 * Math.PI) / 180;
   const hit = ev.find(e => e.type === 'score' && e.id === 'deck-bumper-c') as Extract<SimEvent, { type: 'score' }>;
   assert.ok(hit, 'center deck bumper hit');
   assert.equal(hit.modified, (UPPER_DECK.bumperPoints + 100) * 2);
-  place(s, 18.3, 8, 0, -13);
+  place(s, 12, 24, Math.sin(aim2) * config.swing.exitSpeed, -Math.cos(aim2) * config.swing.exitSpeed);
   const m0 = s.rules.multTenths;
-  for (let i = 0; i < 4 / DT && !ev.some(e => e.type === 'ramp' && e.phase === 'complete'); i++) s.step(DT, makeControls());
+  for (let i = 0; i < 6 / DT && !ev.some(e => e.type === 'ramp' && e.phase === 'complete'); i++) s.step(DT, makeControls());
   assert.ok(ev.some(e => e.type === 'ramp' && e.phase === 'complete'), 'ride completed');
   assert.ok(s.rules.multTenths >= m0 + 2, 'Grand Tour paid on the Home Run Ramp');
   assert.deepEqual(r.dormantKeys(), [], 'deck fixture modifiers never dormant');

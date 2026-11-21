@@ -158,6 +158,7 @@ export function layoutFor(preset?: Preset): Layout {
   // V2 sections first: their free fixtures are part of the structure (never Power, never sold).
   if (preset.sections?.includes('upperDeck')) {
     l.sections.push('upperDeck');
+    l.bumpers = l.bumpers.filter(b => !UPPER_DECK.displaces.includes(b.id));
     for (const b of UPPER_DECK.bumpers) l.bumpers.push({ ...b, kind: 'bumper', style: 'ball', points: UPPER_DECK.bumperPoints, kick: UPPER_DECK.bumperKick });
     l.ramps.push(buildRampPath(HOME_RUN_RAMP));
   }

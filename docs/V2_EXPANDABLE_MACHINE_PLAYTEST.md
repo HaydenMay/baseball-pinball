@@ -12,7 +12,7 @@ Plan once approved: V2 becomes `/build-test/`, and the current version moves to 
 | The view is back to 100% before a returning ball reaches the bat zone | `batZoneY` 17 |
 | Batter drag is world-constant (the same swipe gives the same movement at any zoom) | — |
 | The Upper Deck unlocks after C3, the Side Chamber after C9; both are free | `SECTION_UNLOCKS` in `src/machines/sections.ts` |
-| A free **Home Run Ramp** comes with the Upper Deck, with a smaller payout than a bought ramp | 2,000 per ride (a bought ramp pays 8 × 1,000) |
+| A free **Home Run Ramp** comes with the Upper Deck, with a smaller payout than a bought ramp | 1,000 per ride (a bought ramp pays 8 × 1,000); was 2,000, see the bot numbers below |
 | Side chamber(s) go in the upper corners | M3 |
 
 ## M1 — Camera (`src/view/camera.ts`)
@@ -36,11 +36,13 @@ Plan once approved: V2 becomes `/build-test/`, and the current version moves to 
 - **Free fixtures:** three deck bumpers, `deck-bumper-l` (7.2, −2.8), `deck-bumper-r` (12.8, −2.8) and `deck-bumper-c` (10, −5.4), each worth 200.
 
 ### Ways in
-1. **Home Run Ramp (free):**
-   - The mouth is at the top of the right alley (18.3, 3.9), above the right multiplier-gate line, so the gate still counts the ball on its way up.
-   - The ramp climbs the deck's right wall and releases the ball along the deck top, heading left across the center bumper.
-   - Clearing the climb takes about 6.6 u/s at the mouth. Weaker balls roll back out.
-2. **Strong shots through a gap.** A ball rising through either gap enters the deck.
+1. **Home Run Ramp (free): the aimed shot.**
+   - The mouth faces the batter in the right mid-field at (16.15, 16.85), 1.9 wide. The deck displaces the factory mid-right bumper to make room, just as the Long Loop does.
+   - The mouth sits between the Overpass and Long Loop mouths, more than a ball diameter clear of both.
+   - A hit aimed about 25–35° right reaches it at about 20 u/s, far more than the climb needs. The aim window is about 7.5° per batter position. With the Long Loop and Overpass also installed, they take some of those shots and the window narrows to about 2.5°.
+   - The raised ride runs up the right mid-field inside the lane rail, crosses the top-right corner, climbs the deck's right wall and releases the ball along the deck top, across the center bumper.
+   - (v1 put the mouth at the top of the right alley. You couldn't aim at it from the bat, so it moved after playtest.)
+2. **Lucky kicks through a gap.** A bat shot loses nearly all of its speed by the top rail, so the gaps work mainly as the deck's exit funnel. Only an occasional bumper kick sends a ball up through one.
 
 ### Way out
 - The sloped floor funnels the ball through a gap.
@@ -64,15 +66,17 @@ Plan once approved: V2 becomes `/build-test/`, and the current version moves to 
 - The board is rebuilt immediately, and the clear screen and draft header say **"THE MACHINE GREW — UPPER DECK UNLOCKED"**.
 - Dev analytics logs a `sectionUnlock` event.
 
-### Measured with the seeded bot (factory build-test table, 300 balls, 40 ms timing error)
-- **Visits:** about 0.66 per ball. Time in the deck per visit: p50 3.9 s, p90 4.5 s, max 7.4 s. Nothing got stuck.
-- **Home Run Ramp:** 141 entries → 101 full rides and 40 rollbacks. Deck bumper hits: 109. Gap entries: 94.
-- **Score per ball, deck vs classic** (seeds 1/2/3): 7,180 / 7,534 / 8,186 vs 7,893 / 6,413 / 6,758, about +9% on average and inside bot noise. Measured only; nothing was rebalanced.
+### Measured with the seeded bot (factory build-test table, 300 balls, 40 ms timing error, seeds 1–3)
+- **With the aimable mouth:** about 4.3 Home Run Ramp rides per ball (1,300 per 300 balls), almost no rollbacks, and about 8.8 deck visits per ball. Time in the deck per visit: p50 4.3 s, max 8.8 s. Nothing got stuck.
+- **Bat hits per ball:** about 50, vs 31–37 on the classic table. The deck returns balls safely onto the top bumpers, so a ball lives longer.
+- **Loop risk:** the bot falls into a loop. A deck return comes back down a consistent path, and the same swing sends it up the ramp again. A human probably won't repeat it that reliably, but this is the number to watch.
+- **Score per ball:** classic is about 7,000. With the deck it was about 22,000 at 2,000 per ride, and about 15,800 at 1,000 per ride (the current value). The rest of the increase comes from longer ball life.
+- **Not changed** (per the handoff): score targets, other parts or upgrades. The ride payout is the deck's own new number.
 
 ## Phone test steps
 1. Open `https://haydenmay.github.io/baseball-pinball/build-test/?v2=1` and clear C1–C3. The C3 clear screen should say the machine grew.
 2. **Shortcut:** from a desktop console, run `v2dev.grow()` and then press READY. The deck appears right away.
-3. Get the ball up the right alley. It should take the Home Run Ramp, the camera should ease out, and the ball should bounce off the deck bumpers and drop back through a gap. The camera should be at 100% before the ball reaches the batter.
+3. Aim a hit about 30° right at the HOME RUN mouth (where the mid-right bumper used to be). It should take the Home Run Ramp, the camera should ease out, and the ball should bounce off the deck bumpers and drop back through a gap. The camera should be at 100% before the ball reaches the batter.
 4. Hit a hard shot up the far left or far right. It may go up through a gap.
 5. In the draft or shop, place a Bonus Bumper or Cluster on an Upper Deck site, then sell it in Manage Machine.
 6. `?camdemo=1` still adds the ghost ball for feeling the zoom.
