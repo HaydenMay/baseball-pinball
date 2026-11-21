@@ -32,6 +32,11 @@ export class GameRules {
    * multiplicative modifiers; the global challenge multiplier is applied here, exactly once.
    * Returns the awarded points (banked only while live).
    */
+  /** What award(eventBase) would bank right now, without banking it (same rounding). */
+  preview(eventBase: number) {
+    return this.multTenths === 10 ? eventBase : Math.round((eventBase * this.multTenths) / 10);
+  }
+
   award(eventBase: number) {
     const p = this.multTenths === 10 ? eventBase : Math.round((eventBase * this.multTenths) / 10);
     this.addScore(p);

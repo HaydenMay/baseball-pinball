@@ -167,11 +167,13 @@ export type Layout = {
   sections: SectionId[];
   /** Playable world bounds (table + sections): camera framing and the out-of-table safety drain. */
   bounds: Rect4;
+  /** V2.2: bumpers and slings physically on the Upper Deck (structural + bought on deck mounts): Rally parts. */
+  deckParts: string[];
 };
 
 /** The factory table every map shares. */
 export function baseLayout(): Layout {
-  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [], multGates: [], sections: [], bounds: boundsFor([]) };
+  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [], multGates: [], sections: [], bounds: boundsFor([]), deckParts: [] };
 }
 
 /** Base table minus the preset's displaced parts, plus its mechanisms. */
@@ -201,6 +203,13 @@ export function layoutFor(preset?: Preset): Layout {
     else if (m.type === 'bank') l.banks.push(m);
     else if (m.type === 'multgate') l.multGates.push(m);
     else if (m.type === 'bumper') l.bumpers.push({ id: m.id, kind: 'bumper', x: m.x, y: m.y, r: m.r, style: 'bonus', points: m.points, kick: m.kick });
+  }
+  if (l.sections.includes('upperDeck')) {
+    const up = (y: number) => y < UPPER_DECK.railY;
+    l.deckParts = [
+      ...l.bumpers.filter(b => up(b.y)).map(b => b.id),
+      ...l.slings.filter(s => s.poly.every(p => up(p.y))).map(s => s.id),
+    ];
   }
   return l;
 }

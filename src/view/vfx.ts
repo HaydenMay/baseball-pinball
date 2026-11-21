@@ -95,8 +95,8 @@ export class Vfx {
     this.flashes.push({ x, y, r, life: dur, max: dur, color });
   }
 
-  flicker(x: number, y: number, text: string, color = this.theme.jackpotAccent) {
-    this.flickers.push({ x, y, text, life: 0.55, max: 0.55, color });
+  flicker(x: number, y: number, text: string, color = this.theme.jackpotAccent, life = 0.55) {
+    this.flickers.push({ x, y, text, life, max: life, color });
   }
 
   /** Big bumper pop: white core, stitched ring, sparks. */

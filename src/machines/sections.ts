@@ -106,13 +106,26 @@ export const HOME_RUN_RAMP: RampDef = {
   maxRide: 18,
   exitMin: 9,
   exitMax: 12,
-  points: 1000,
+  // V2.2 (designer-approved): 3,000 on completion (was 1,000), plus Upper Deck Rally for the ball that rode it.
+  // No checkpoints, by design: Home Run pays for what happens upstairs; bought ramps pay during the ride.
+  points: 3000,
+  deckRally: true,
   // V2.1: each ride's release fans ±0.55 rad (±31°) around the ~13° down-left heading at 12 u/s ±15%
   // (10.2–13.8). Steep → right deck bumper/site, middle → center bumper, flat → left bumper/site.
   // Measured (scripts/flow-diagnostics.ts, 90 rides): first deck contact L/C/R ≈ 29/46/18 %, ~4% miss the
   // deck bumpers and drop straight out through the left gap (was 0/100/0).
   exitSpread: { angle: 0.55, speed: 0.15 },
 };
+
+/**
+ * V2.2 Upper Deck Rally (designer-approved values): a ball that completes the Home Run Ramp scores ×`factor` on
+ * every upper-deck bumper and deck sling contact (structural ones and bought bumpers on the deck mounts) until
+ * that ball crosses back down onto the main table, drains or is removed. Per ball; never global.
+ * The ×2 applies to the contact's own (modified) points; the global multiplier is applied once, after.
+ * `hysteresis`: the ball must be this far past the top rail line (y = railY) before it counts as having
+ * changed level, so a ball skimming the gap edge doesn't flicker in and out.
+ */
+export const DECK_RALLY = { factor: 2, hysteresis: 0.45 };
 
 /** Smallest rectangle holding the table plus the unlocked sections (camera bounds, escape check). */
 export function boundsFor(sections: readonly SectionId[]): Rect4 {

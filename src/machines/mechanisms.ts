@@ -56,6 +56,8 @@ export type RampDef = Base & {
    * original-map ramp). Never touches the ride, checkpoints or scoring — only where the ball goes next.
    */
   exitSpread?: { angle: number; speed: number };
+  /** V2.2: completing this ramp starts Upper Deck Rally for that ball (the free Home Run Ramp only). */
+  deckRally?: boolean;
 };
 
 /** Default scoop relaunch variety (±0.1 rad, ±8% speed): the pre-V2.1 behavior, kept for every original map. */

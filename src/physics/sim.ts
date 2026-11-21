@@ -16,6 +16,7 @@ import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
 import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
+import { DECK_RALLY, UPPER_DECK } from '../machines/sections.ts';
 
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
@@ -38,7 +39,24 @@ export type SimEvent =
    * `multTenths` = global multiplier used, `awarded` = points actually added to the score (0-awards
    * after a clear are not emitted). `part` narrows the source further (ramp checkpoint "cp3").
    */
-  | { type: 'score'; kind: string; id: string; base: number; modified: number; multTenths: number; awarded: number; part?: string; ball: number }
+  | {
+      type: 'score';
+      kind: string;
+      id: string;
+      base: number;
+      /** Local points after modifiers (and after the ×Rally factor when `deckRally` is set). */
+      modified: number;
+      multTenths: number;
+      awarded: number;
+      part?: string;
+      ball: number;
+      /** V2.2: Upper Deck Rally factor applied to this contact (absent = none). */
+      deckRally?: number;
+      /** V2.2: points banked only because of the Rally factor (awarded − what it would have been without). */
+      rallyGain?: number;
+    }
+  /** V2.2 Upper Deck Rally for one ball: starts on a completed Home Run, ends when that ball is back downstairs. */
+  | { type: 'deckRally'; phase: 'start' | 'end'; ball: number; x: number; y: number; reason?: 'returned' | 'drain' | 'removed'; hits?: number; gained?: number }
   /** Global strike multiplier rose: `gain` and `total` in tenths (total 13 = ×1.3). */
   | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank'; id: string; x: number; y: number; gain: number; total: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
@@ -65,11 +83,19 @@ export type Ball = {
   pos: Pt;
   /** 0 on the floor, 1 at full ramp height (visual only). */
   height: number;
+  /** V2.2: which level the ball is on (hysteresis around the top rail); only meaningful with the Upper Deck. */
+  inDeck: boolean;
+  /** V2.2: Upper Deck Rally active for this ball (only set by completing the Home Run Ramp). */
+  deckRally: boolean;
+  deckRallyHits: number;
+  deckRallyGain: number;
 };
 
 export class Simulation {
   world: P.World;
   layout: Layout;
+  /** V2.2: ids of upper-deck bumpers/slings (Rally parts). */
+  private deckParts: Set<string>;
   rules = new GameRules();
   balls: Ball[] = [];
   batterX: number = config.batter.startX;
@@ -105,6 +131,7 @@ export class Simulation {
   constructor(opts: SimOptions = {}) {
     this.onEvent = opts.onEvent;
     this.layout = opts.layout ?? layoutFor(opts.preset);
+    this.deckParts = new Set(this.layout.deckParts);
     this.mods = opts.preset?.modifiers ?? {};
     this.seed = (opts.seed ?? 1) >>> 0 || 1;
     for (const b of this.layout.banks) this.banks.set(b.id, new Set());
@@ -153,12 +180,44 @@ export class Simulation {
    * Bank points through the one central boundary (rules.award applies the global multiplier once) and
    * report what was actually banked for analytics. Never awards twice; returns rules.award's result.
    */
-  private award(kind: string, id: string, base: number, modified: number, ball: Ball, part?: string) {
+  private award(kind: string, id: string, base: number, modified: number, ball: Ball, part?: string, deckRally?: number) {
     const before = this.rules.score;
+    // what this contact would have banked without the Rally factor (same rounding as rules.award)
+    const plain = deckRally ? this.rules.preview(modified / deckRally) : 0;
     const p = this.rules.award(modified);
     const banked = this.rules.score - before;
-    if (banked > 0) this.emit({ type: 'score', kind, id, base, modified, multTenths: this.rules.multTenths, awarded: banked, part, ball: ball.id });
+    if (banked > 0) {
+      const e: Extract<SimEvent, { type: 'score' }> = { type: 'score', kind, id, base, modified, multTenths: this.rules.multTenths, awarded: banked, part, ball: ball.id };
+      if (deckRally) {
+        e.deckRally = deckRally;
+        e.rallyGain = Math.max(0, banked - Math.min(banked, plain));
+        ball.deckRallyHits++;
+        ball.deckRallyGain += e.rallyGain;
+      }
+      this.emit(e);
+    }
     return p;
+  }
+
+  /** V2.2: stop a ball's Upper Deck Rally (if active) and report it. */
+  private endDeckRally(ball: Ball, reason: 'returned' | 'drain' | 'removed') {
+    if (!ball.deckRally) return;
+    ball.deckRally = false;
+    this.emit({ type: 'deckRally', phase: 'end', ball: ball.id, x: ball.pos.x, y: ball.pos.y, reason, hits: ball.deckRallyHits, gained: ball.deckRallyGain });
+  }
+
+  /**
+   * V2.2: level tracking for the Upper Deck with hysteresis around the top rail. Only field/drop balls move
+   * between levels physically (a ramp ride is raised and doesn't count as crossing). Crossing down through a
+   * return gap ends that ball's Rally; going back up never re-arms it.
+   */
+  private trackLevel(ball: Ball) {
+    if (!this.layout.sections.length || (ball.mode !== 'field' && ball.mode !== 'drop')) return;
+    const y = ball.pos.y, rail = UPPER_DECK.railY, h = DECK_RALLY.hysteresis;
+    if (ball.inDeck && y > rail + h) {
+      ball.inDeck = false;
+      this.endDeckRally(ball, 'returned');
+    } else if (!ball.inDeck && y < rail - h) ball.inDeck = true;
   }
 
   /**
@@ -251,6 +310,7 @@ export class Simulation {
   }
 
   private clearBalls() {
+    for (const b of this.balls) this.endDeckRally(b, 'removed');
     for (const b of this.balls) this.world.destroyBody(b.body);
     this.balls = [];
     this.bodyToBall.clear();
@@ -261,7 +321,10 @@ export class Simulation {
     const body = this.world.createDynamicBody({ position: P.Vec2(x, y), bullet: true, linearDamping: config.ball.linearDamping, fixedRotation: true });
     body.createFixture(P.Circle(config.ball.radius), { density: 1, restitution: config.ball.restitution, friction: 0 });
     body.setLinearVelocity(P.Vec2(vx, vy));
-    const b: Ball = { id: this.nextBallId++, body, mode: 'field', prev: { x, y }, hitSwingId: -1, stillTime: 0, ignore: {}, gateSide: {}, pos: { x, y }, height: 0 };
+    const b: Ball = {
+      id: this.nextBallId++, body, mode: 'field', prev: { x, y }, hitSwingId: -1, stillTime: 0, ignore: {}, gateSide: {}, pos: { x, y }, height: 0,
+      inDeck: y < UPPER_DECK.railY, deckRally: false, deckRallyHits: 0, deckRallyGain: 0,
+    };
     this.seedGateSides(b, { x, y });
     this.balls.push(b);
     this.bodyToBall.set(body, b);
@@ -301,6 +364,8 @@ export class Simulation {
       ny = wm.normal.y * s;
     }
     let points = 0;
+    // V2.2 Upper Deck Rally: this ball's contacts with upper-deck bumpers/slings score ×factor
+    const rallyX = ball.deckRally && (d.kind === 'bumper' || d.kind === 'sling') && this.deckParts.has(d.id) ? DECK_RALLY.factor : undefined;
     if (d.kind === 'bumper') {
       points = (d.ref as Bumper).points ?? config.bumper.points;
       this.pendingKicks.push({ kind: 'bumper', ref: d.ref, ball });
@@ -321,7 +386,8 @@ export class Simulation {
     const rally = d.kind === 'bumper' && this.rallyCharges > 0 ? this.mods['cross:ride-bumpers'] : undefined;
     if (rally?.length) this.rallyCharges--;
     points = this.pts(d.id, d.kind, points, undefined, rally);
-    if (points) points = this.award(d.kind, d.id, base, points, ball);
+    if (rallyX) points *= rallyX;
+    if (points) points = this.award(d.kind, d.id, base, points, ball, undefined, rallyX);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
     if (d.kind === 'bumper') this.boost('bumper', d.id, pos.x, pos.y, this.generate(d.id, 'bumper'), ball);
     if (d.kind === 'target' || d.kind === 'jackpot') this.markBanks(d.id, ball);
@@ -384,6 +450,7 @@ export class Simulation {
       else if (ball.mode === 'held') this.stepHeld(ball, dt);
       else if (ball.mode === 'drop') this.stepDrop(ball, dt);
       else this.stepField(ball, dt);
+      if (this.balls.includes(ball)) this.trackLevel(ball);
     }
     this.stepSplitters();
     // Challenge cleared during this step: stop play cleanly (no drain, no strike).
@@ -563,6 +630,15 @@ export class Simulation {
       } else {
         const pts = this.award('ramp', d.id, d.points, this.pts(d.id, 'ramp', d.points), ball);
         this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: pts, ball: ball.id });
+        if (d.deckRally) {
+          // a fresh completion (re-)arms Rally for this ball only; the release point is on the deck
+          this.endDeckRally(ball, 'removed');
+          ball.deckRally = true;
+          ball.deckRallyHits = 0;
+          ball.deckRallyGain = 0;
+          ball.inDeck = st.r.exit.y < UPPER_DECK.railY;
+          this.emit({ type: 'deckRally', phase: 'start', ball: ball.id, x: st.r.exit.x, y: st.r.exit.y });
+        }
         // Only a completed ride counts toward ramp generators (entering or rolling back never does).
         this.boost('ramp', d.id, st.r.exit.x, st.r.exit.y, this.generate(d.id, 'ramp'), ball);
         this.rallyRefill();
@@ -706,6 +782,7 @@ export class Simulation {
     const i = this.balls.indexOf(ball);
     if (i < 0) return;
     const x = ball.body.getPosition().x;
+    this.endDeckRally(ball, 'drain');
     this.balls.splice(i, 1);
     this.bodyToBall.delete(ball.body);
     this.world.destroyBody(ball.body);

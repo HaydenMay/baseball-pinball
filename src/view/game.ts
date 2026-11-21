@@ -1395,8 +1395,25 @@ export class GameView {
         }
         ctx.restore();
       }
+      if (b.deckRally) this.drawRallyHalo(ctx, b.pos, b.height);
       this.drawOneBall(ctx, b.pos, v, tr.rot, b.height);
     }
+  }
+
+  /** V2.2: a ball with Upper Deck Rally wears a pulsing gold ring (theme jackpot accent). */
+  private drawRallyHalo(ctx: CanvasRenderingContext2D, p: Pt, height: number) {
+    const r = config.ball.radius * (1 + height * 0.25);
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 9);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    drawGlow(ctx, this.theme.jackpotAccent, p.x, p.y, r * 2.6, 0.22 + 0.18 * pulse);
+    ctx.strokeStyle = this.theme.jackpotAccent;
+    ctx.globalAlpha = 0.55 + 0.35 * pulse;
+    ctx.lineWidth = 0.07;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 0.16 + 0.05 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawOneBall(ctx: CanvasRenderingContext2D, p: Pt, v: Pt, rot: number, height: number, scale = 1) {

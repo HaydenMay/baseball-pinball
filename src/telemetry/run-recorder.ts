@@ -186,11 +186,21 @@ export type ChallengeRecord = {
   multGains: Record<string, { source: string; id: string; procs: number; tenths: number }>;
   scoops: { catches: number; ejects: number };
   multiballs: { activations: number; ballsLaunched: number };
+  /**
+   * V2.2 Home Run / Upper Deck Rally (dev-only, observation only):
+   * `hrCompletion` = points banked by Home Run completions; `deckAwarded` = everything banked by upper-deck
+   * bumpers/slings; `rallyGain` = the part of deckAwarded that exists only because of the ×2 (so
+   * deckAwarded − rallyGain = what those contacts would have scored anyway).
+   */
+  deckRally?: { starts: number; returned: number; drained: number; removed: number; rallyHits: number; rallyGain: number; hrCompletion: number; hrCompletions: number; deckAwarded: number; deckHits: number };
   /** Sum of attributed `score` events. `unattributed` = score − attributed (should be 0). */
   attributed: number;
   unattributed: number;
   bestEvents: Highlight[];
 };
+
+/** Upper-deck parts: structural deck bumpers/slings and anything bought on the deck mounts. */
+const DECK_PART = /^deck-(bumper|sling)-|@deck-[lr]$/;
 
 export type Highlight = { awarded: number; kind: string; id: string; part?: string; multTenths: number; challenge: number; pitch: number; t: number };
 
@@ -417,6 +427,7 @@ export class RunRecorder {
       ramps: {},
       multGains: {},
       scoops: { catches: 0, ejects: 0 },
+      deckRally: { starts: 0, returned: 0, drained: 0, removed: 0, rallyHits: 0, rallyGain: 0, hrCompletion: 0, hrCompletions: 0, deckAwarded: 0, deckHits: 0 },
       multiballs: { activations: 0, ballsLaunched: 0 },
       attributed: 0,
       unattributed: 0,
@@ -645,6 +656,16 @@ export class RunRecorder {
         if (p) p.multPeak = Math.max(p.multPeak, e.total);
         break;
       }
+      case 'deckRally': {
+        const dr = c.deckRally;
+        if (!dr) break;
+        if (e.phase === 'start') dr.starts++;
+        else if (e.reason === 'returned') dr.returned++;
+        else if (e.reason === 'drain') dr.drained++;
+        else dr.removed++;
+        this.log('deckRally', { phase: e.phase, ball: e.ball, ...(e.reason ? { reason: e.reason, hits: e.hits, gained: e.gained } : {}) });
+        break;
+      }
       case 'drain':
         if (!p) break;
         if (!e.strike) {
@@ -679,6 +700,21 @@ export class RunRecorder {
     m.base += e.base;
     m.modified += e.modified;
     m.best = Math.max(m.best, e.awarded);
+    const dr = c.deckRally;
+    if (dr) {
+      if (e.kind === 'ramp' && e.id === 'hr-ramp') {
+        dr.hrCompletion += e.awarded;
+        dr.hrCompletions++;
+      }
+      if (e.deckRally !== undefined || (DECK_PART.test(e.id) && (e.kind === 'bumper' || e.kind === 'sling'))) {
+        dr.deckAwarded += e.awarded;
+        dr.deckHits++;
+      }
+      if (e.rallyGain) {
+        dr.rallyGain += e.rallyGain;
+        dr.rallyHits++;
+      }
+    }
     const p = this.pitch;
     if (p) p.bestEvent = Math.max(p.bestEvent, e.awarded);
     const h: Highlight = { awarded: e.awarded, kind: e.kind, id: e.id, part: e.part, multTenths: e.multTenths, challenge: c.n, pitch: p?.n ?? sim.rules.pitchNumber, t: Math.round(this.now() - this.rec!.startedAt) };

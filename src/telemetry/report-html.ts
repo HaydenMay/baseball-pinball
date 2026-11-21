@@ -315,7 +315,7 @@ ${table(['Part', 'Kind', 'Mount', 'Hits', 'Awards', 'Points', 'Pts/award', 'Best
 <h4>Points by source kind</h4>${table(['Kind', 'Awards', 'Points', 'Share'], Object.entries(srcByKind).sort((a, b) => b[1].awarded - a[1].awarded).map(([k, v]) => [esc(k), v.awards, v.awarded, s.total ? ((100 * v.awarded) / s.total).toFixed(1) + '%' : '—']), { sortable: true, numeric: [false, true, true, true] })}
 <h4>Global multiplier sources (tenths gained, never counted as points)</h4>${table(['Source', 'Part', 'Procs', 'Gained'], Object.values(s.multGain).sort((a, b) => b.tenths - a.tenths).map(g => [esc(g.source), esc(g.id), g.procs, mult(g.tenths).replace('×', '+')]), { sortable: true, numeric: [false, false, true, false] })}
 <h2 style="margin-top:14px">Ramps</h2>${rampBlocks || '<p class="dim">No ramp activity recorded.</p>'}
-<h4>Other mechanisms</h4><p>Scoop catches ${cs.reduce((a, c) => a + c.scoops.catches, 0)} · relaunches ${cs.reduce((a, c) => a + c.scoops.ejects, 0)} · splitter multiballs ${s.multiballs} (${s.ballsLaunched} balls launched)</p>
+${deckRallyHtml(cs)}<h4>Other mechanisms</h4><p>Scoop catches ${cs.reduce((a, c) => a + c.scoops.catches, 0)} · relaunches ${cs.reduce((a, c) => a + c.scoops.ejects, 0)} · splitter multiballs ${s.multiballs} (${s.ballsLaunched} balls launched)</p>
 </div></details></section>
 
 <section><details><summary><h2 style="display:inline">4. Build timeline</h2></summary><div>
@@ -361,4 +361,13 @@ ${r.ledgerDropped ? `<p class="dim">${r.ledgerDropped} later ledger entries drop
 })();
 </script>
 </body></html>`;
+}
+
+/** V2.2 Home Run / Upper Deck Rally summary (only when the run had the Upper Deck). */
+function deckRallyHtml(cs: { deckRally?: NonNullable<import('./run-recorder.ts').ChallengeRecord['deckRally']> }[]) {
+  const d = cs.map(c => c.deckRally).filter((x): x is NonNullable<typeof x> => !!x);
+  const sum = (k: keyof (typeof d)[number]) => d.reduce((a, x) => a + (x[k] as number), 0);
+  if (!sum('starts') && !sum('hrCompletions') && !sum('deckHits')) return '';
+  const n = (v: number) => v.toLocaleString();
+  return `<h4>Home Run / Upper Deck Rally</h4><p>Home Run completions ${n(sum('hrCompletions'))} paying ${n(sum('hrCompletion'))} · Rally started ${n(sum('starts'))} (ended: back downstairs ${n(sum('returned'))}, drained ${n(sum('drained'))}, removed ${n(sum('removed'))})<br>Upper-deck bumpers/slings banked ${n(sum('deckAwarded'))} over ${n(sum('deckHits'))} hits, of which Rally ×2 added ${n(sum('rallyGain'))} on ${n(sum('rallyHits'))} hits (normal upper-deck scoring ${n(sum('deckAwarded') - sum('rallyGain'))})</p>`;
 }

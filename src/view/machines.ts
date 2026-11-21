@@ -1,3 +1,4 @@
+import { UPPER_DECK } from '../machines/sections.ts';
 /**
  * Art for the special mechanisms (ramps, scoop, splitter, gate). Everything is drawn from the same
  * layout data the physics uses, and every VFX color comes from theme tokens.
@@ -689,8 +690,21 @@ function drawRideTallies(ctx: CanvasRenderingContext2D, view: GameView) {
   }
 }
 
+/** V2.2 Upper Deck Rally presentation (seconds on screen). */
+const DECK_RALLY_UI = { headline: 1.4, tally: 1.1 };
+
 export function onMechanismEvent(view: GameView, e: SimEvent) {
   const th = view.theme, v = view.vfx, L = view.layout;
+  if (e.type === 'deckRally') {
+    // V2.2: modest feedback — one headline on arrival, a small tally when the ball goes back downstairs
+    if (e.phase === 'start') {
+      v.flash(e.x, e.y, 2.2, th.jackpotAccent, 0.35);
+      v.flicker(10, UPPER_DECK.roofY + 1.1, 'HOME RUN!  RALLY ×2', th.jackpotAccent, DECK_RALLY_UI.headline);
+    } else if (e.reason === 'returned' && e.gained) {
+      v.flicker(e.x, e.y + 0.9, `RALLY +${e.gained.toLocaleString()}`, th.energySecondary, DECK_RALLY_UI.tally);
+    }
+    return;
+  }
   if (e.type === 'mult') {
     const amount = `+${(e.gain / 10).toFixed(1)}×`;
     if (e.source === 'gate') {

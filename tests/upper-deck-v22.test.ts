@@ -146,3 +146,176 @@ test('deck mounts still fit beside the diamond and slings (cluster and bonus bum
     for (const b of deckParts) assert.ok(Math.hypot(b.x - rp.exit.x, b.y - rp.exit.y) - b.r > R + 0.05, `release clear of ${b.id}`);
   }
 });
+
+// ───────── M2: Home Run 3,000 + per-ball Upper Deck Rally ─────────
+
+/** Ride the Home Run Ramp to completion with ball `b` (default ball 0). */
+function homeRun(s: Simulation, ev: SimEvent[], b = s.balls[0], speed = 18) {
+  const rp = s.layout.ramps.find(r => r.def.id === HOME_RUN_RAMP.id)!;
+  put(s, rp.mouth.x - rp.entryDir.x * 0.5, rp.mouth.y - rp.entryDir.y * 0.5, rp.entryDir.x * speed, rp.entryDir.y * speed, b);
+  const n = ev.filter(e => e.type === 'deckRally' && e.phase === 'start').length;
+  assert.ok(run(s, 6, () => ev.filter(e => e.type === 'deckRally' && e.phase === 'start').length > n), 'ride completed');
+}
+const scores = (ev: SimEvent[], id?: string) => ev.filter(e => e.type === 'score' && (!id || e.id === id)) as Extract<SimEvent, { type: 'score' }>[];
+/** Drop a ball onto the top deck bumper and return its first score event on that bumper. */
+function hitTop(s: Simulation, ev: SimEvent[], b = s.balls[0]) {
+  const n0 = ev.length;
+  put(s, 10.05, -8, 0, 0, b);
+  run(s, 1.5, () => ev.slice(n0).some(e => e.type === 'score' && e.id === 'deck-bumper-t' && e.ball === b.id));
+  return ev.slice(n0).find(e => e.type === 'score' && e.id === 'deck-bumper-t' && e.ball === b.id) as Extract<SimEvent, { type: 'score' }>;
+}
+
+test('Home Run completion pays 3,000 base once (through the multiplier once) and starts Rally for that ball', () => {
+  assert.equal(HOME_RUN_RAMP.points, 3000);
+  assert.equal(HOME_RUN_RAMP.checkpoints, undefined, 'no checkpoints');
+  assert.equal(HOME_RUN_RAMP.powerCost, 0);
+  const { s, ev } = deck();
+  s.rules.multTenths = 30;
+  homeRun(s, ev);
+  const hr = scores(ev, HOME_RUN_RAMP.id);
+  assert.equal(hr.length, 1);
+  assert.equal(hr[0].base, 3000);
+  assert.equal(hr[0].awarded, 9000);
+  assert.equal(hr[0].deckRally, undefined, 'the completion itself is not a Rally contact');
+  assert.equal(ev.filter(e => e.type === 'deckRally' && e.phase === 'start').length, 1);
+  assert.ok(s.balls[0].deckRally);
+});
+
+test('a rolled-back entry pays nothing and starts no Rally', () => {
+  const { s, ev } = deck();
+  const rp = s.layout.ramps.find(r => r.def.id === HOME_RUN_RAMP.id)!;
+  put(s, rp.mouth.x - rp.entryDir.x * 0.5, rp.mouth.y - rp.entryDir.y * 0.5, rp.entryDir.x * 6, rp.entryDir.y * 6);
+  run(s, 4);
+  assert.ok(ev.some(e => e.type === 'ramp' && e.phase === 'enter'));
+  assert.ok(ev.some(e => e.type === 'ramp' && e.phase === 'rollback'));
+  assert.equal(scores(ev, HOME_RUN_RAMP.id).length, 0);
+  assert.ok(!ev.some(e => e.type === 'deckRally'));
+  assert.equal(s.balls[0].deckRally, false);
+});
+
+test('Rally arithmetic: 200 base × 2 × global ×3 = 1,200 (600 without Rally); rallyGain reports only the extra', () => {
+  // without Rally: a ball placed upstairs that never rode the ramp
+  const a = deck();
+  a.s.rules.multTenths = 30;
+  const plain = hitTop(a.s, a.ev);
+  assert.equal(plain.base, 200);
+  assert.equal(plain.modified, 200);
+  assert.equal(plain.awarded, 600);
+  assert.equal(plain.deckRally, undefined);
+  assert.equal(plain.rallyGain, undefined);
+  // with Rally
+  const b = deck();
+  homeRun(b.s, b.ev);
+  b.s.rules.multTenths = 30;
+  const boosted = hitTop(b.s, b.ev);
+  assert.equal(boosted.base, 200);
+  assert.equal(boosted.modified, 400);
+  assert.equal(boosted.awarded, 1200);
+  assert.equal(boosted.deckRally, 2);
+  assert.equal(boosted.rallyGain, 600);
+  assert.equal(b.s.rules.multTenths, 30, 'Rally never touches the global multiplier');
+});
+
+test('Rally covers deck slings and bought deck bumpers; stacks with THIS/ALL cards without double-counting', () => {
+  const { s, ev } = deck([['bonus-bumper', 'deck-l']], 1, [['bumper-crew', 'bumper:*'], ['mvp', 'deck-bumper-t'], ['rubber', 'sling:*']]);
+  homeRun(s, ev);
+  const top = hitTop(s, ev);
+  assert.equal(top.modified, (200 + 100) * 2 * 2, '(base + ALL) × THIS × Rally');
+  // bought bonus bumper on the deck mount
+  const n0 = ev.length;
+  const bb = s.layout.bumpers.find(b => b.id === 'bonus@deck-l')!;
+  put(s, bb.x + 0.03, bb.y - 1.6, 0, 0);
+  run(s, 1.2, () => ev.slice(n0).some(e => e.type === 'score' && e.id === 'bonus@deck-l'));
+  const bonus = ev.slice(n0).find(e => e.type === 'score' && e.id === 'bonus@deck-l') as any;
+  assert.ok(bonus, 'bought deck bumper hit');
+  assert.equal(bonus.deckRally, 2);
+  assert.equal(bonus.modified, (300 + 100) * 2);
+  // deck sling
+  const sl = s.layout.slings.find(x => x.id === 'deck-sling-l')!;
+  const mid = { x: (sl.face[0].x + sl.face[1].x) / 2, y: (sl.face[0].y + sl.face[1].y) / 2 };
+  const n1 = ev.length;
+  put(s, mid.x + 1.2, mid.y, -6, 0);
+  run(s, 1, () => ev.slice(n1).some(e => e.type === 'score' && e.id === sl.id));
+  const sling = ev.slice(n1).find(e => e.type === 'score' && e.id === sl.id) as any;
+  assert.equal(sling.deckRally, 2);
+  assert.equal(sling.modified, (UPPER_DECK.slings.points + 40) * 2, '(base + Live Rubber) × Rally');
+});
+
+test('Rally ends when the ball crosses back down through a gap (no flicker at release); going back up never re-arms it', () => {
+  const { s, ev } = deck();
+  homeRun(s, ev);
+  run(s, 0.4);
+  assert.ok(s.balls[0].deckRally, 'still active just after release');
+  assert.ok(!ev.some(e => e.type === 'deckRally' && e.phase === 'end'));
+  // send it down through the left gap
+  const g = UPPER_DECK.gaps[0];
+  put(s, (g.x0 + g.x1) / 2, -0.4, 0, 3);
+  run(s, 1, () => ev.some(e => e.type === 'deckRally' && e.phase === 'end'));
+  const end = ev.find(e => e.type === 'deckRally' && e.phase === 'end') as any;
+  assert.equal(end.reason, 'returned');
+  assert.ok(end.y > UPPER_DECK.railY, 'ended below the rail');
+  assert.equal(s.balls[0].deckRally, false);
+  // back upstairs without a ride: plain scoring
+  s.rules.multTenths = 10;
+  const again = hitTop(s, ev);
+  assert.equal(again.deckRally, undefined);
+  assert.equal(again.modified, 200);
+  // a second ride re-arms it
+  homeRun(s, ev);
+  assert.equal(ev.filter(e => e.type === 'deckRally' && e.phase === 'start').length, 2);
+  assert.equal(hitTop(s, ev).deckRally, 2);
+});
+
+test('no Rally on main-table parts; skimming the rail inside the hysteresis band does not end Rally', () => {
+  const { s, ev } = deck();
+  homeRun(s, ev);
+  // hover around the rail line within the band
+  for (const y of [UPPER_DECK.railY - 0.3, UPPER_DECK.railY + 0.3, UPPER_DECK.railY - 0.2]) {
+    put(s, 4.75, y, 0, 0);
+    s.step(DT, makeControls());
+  }
+  assert.ok(s.balls[0].deckRally, 'no flicker inside the band');
+  // drop onto a main-table bumper: crossing ends Rally first, so the hit is plain
+  const top = s.layout.bumpers.find(b => b.id === 'bumper-top-l')!;
+  const n0 = ev.length;
+  put(s, top.x + 0.05, top.y - 2, 0, 0);
+  run(s, 1, () => ev.slice(n0).some(e => e.type === 'score' && e.id === top.id));
+  const hit = ev.slice(n0).find(e => e.type === 'score' && e.id === top.id) as any;
+  assert.ok(hit);
+  assert.equal(hit.deckRally, undefined);
+  assert.equal(hit.modified, top.points ?? config.bumper.points);
+});
+
+test('multiball: Rally belongs to the ball that rode; siblings and new balls never inherit it', () => {
+  const { s, ev } = deck();
+  (s as any).addBall(7.43, -8, 0, 0); // sibling upstairs, above the left diamond bumper
+  const [a, b] = s.balls;
+  homeRun(s, ev, a);
+  assert.ok(a.deckRally && !b.deckRally);
+  run(s, 1.2);
+  const bHits = scores(ev).filter(e => e.ball === b.id && e.id.startsWith('deck-'));
+  assert.ok(bHits.length, 'sibling scored upstairs');
+  assert.ok(bHits.every(e => e.deckRally === undefined), 'sibling never ×2');
+  const aTop = hitTop(s, ev, a);
+  assert.equal(aTop.deckRally, 2);
+  // a new ball (e.g. a splitter launch) starts without Rally
+  (s as any).addBall(10, 20, 0, 0);
+  assert.equal(s.balls[s.balls.length - 1].deckRally, false);
+  // ids unique
+  assert.equal(new Set(s.balls.map(x => x.id)).size, s.balls.length);
+});
+
+test('Rally ends on drain; every score reconciles to the scoreboard', () => {
+  const { s, ev } = deck();
+  s.rules.multTenths = 20;
+  homeRun(s, ev);
+  hitTop(s, ev);
+  (s as any).drainBall(s.balls[0]);
+  const end = ev.find(e => e.type === 'deckRally' && e.phase === 'end') as any;
+  assert.equal(end.reason, 'drain');
+  assert.ok(end.hits >= 1 && end.gained > 0);
+  const total = scores(ev).reduce((n, e) => n + e.awarded, 0);
+  assert.equal(total, s.rules.score);
+  const gained = scores(ev).reduce((n, e) => n + (e.rallyGain ?? 0), 0);
+  assert.equal(gained, end.gained, 'per-ball gain matches the score events');
+});

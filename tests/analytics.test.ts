@@ -472,3 +472,46 @@ test('analytics stay off the legacy routes and the download UI only appears with
   assert.match(main, /get\('devAnalytics'\) === '1'/);
   assert.ok(!/fetch\(|sendBeacon|XMLHttpRequest|WebSocket/.test(main + readFileSync(new URL('../src/telemetry/run-recorder.ts', import.meta.url), 'utf8')), 'no network calls');
 });
+
+test('V2.2: Home Run completion, normal upper-deck scoring and Rally ×2 gain are reported separately and reconcile', () => {
+  const S = session();
+  S.run.sections = ['upperDeck'];
+  S.startChallenge(null);
+  const s = S.pitch(undefined, 0.05);
+  s.rules.multTenths = 20;
+  const put = (x: number, y: number, vx: number, vy: number) => {
+    const b = s.balls[0];
+    b.body.setPosition({ x, y });
+    b.body.setLinearVelocity({ x: vx, y: vy });
+    b.prev = b.pos = { x, y };
+  };
+  const step = (sec: number) => {
+    for (let i = 0; i < sec / DT && s.balls.length; i++) {
+      s.step(DT, makeControls());
+      S.rec.tick(DT * 1000, true);
+    }
+  };
+  // a plain deck hit (no Rally), then a Home Run ride and a boosted deck hit
+  put(10.05, -8, 0, 0);
+  step(0.8);
+  const rp = s.layout.ramps.find(r => r.def.id === 'hr-ramp')!;
+  put(rp.mouth.x - rp.entryDir.x * 0.5, rp.mouth.y - rp.entryDir.y * 0.5, rp.entryDir.x * 18, rp.entryDir.y * 18);
+  step(4);
+  put(10.05, -8, 0, 0);
+  step(0.8);
+  const ev = S.events.filter(e => e.type === 'score') as Extract<SimEvent, { type: 'score' }>[];
+  const c = S.rec.endChallenge(S.run, s, "cleared")!;
+  const dr = c.deckRally!;
+  assert.equal(dr.hrCompletions, 1);
+  assert.equal(dr.hrCompletion, 3000 * 2);
+  assert.equal(dr.starts, 1);
+  const deckEv = ev.filter(e => /^deck-(bumper|sling)-/.test(e.id));
+  assert.equal(dr.deckAwarded, deckEv.reduce((a, e) => a + e.awarded, 0));
+  assert.equal(dr.rallyGain, ev.reduce((a, e) => a + (e.rallyGain ?? 0), 0));
+  assert.ok(dr.rallyGain > 0 && dr.rallyGain < dr.deckAwarded, 'gain is only the extra part');
+  assert.ok(deckEv.some(e => !e.deckRally) && deckEv.some(e => e.deckRally === 2));
+  assert.equal(c.attributed, ev.reduce((a, e) => a + e.awarded, 0));
+  assert.equal(c.attributed, s.rules.score, 'every banked point attributed');
+  S.rec.endRun("completed");
+  assert.match(renderReport(S.rec.rec!), /Home Run \/ Upper Deck Rally/);
+});
