@@ -33,7 +33,7 @@ Plan once approved: V2 becomes `/build-test/`, and the current version moves to 
   - A center divider ("tent", peak at y −0.9) slopes down to the inner gap edges. The jackpot crest sits on it.
   - Every ball on the floor rolls into a gap.
 - **Physics:** one planck world. The table's left wall runs into the deck outline and back out the right wall as a single chain, and the divider is a closed loop. Classic layouts keep the single `OUTER_WALL` chain.
-- **Free fixtures:** three deck bumpers in a row (V2.1): `deck-bumper-l` (6.6, −4.4), `deck-bumper-c` (10, −4.3, r 0.8) and `deck-bumper-r` (13.4, −4.4), each worth 200. The Home Run release now fans across them; see `docs/V2_1_BALL_VARIETY_PLAYTEST.md`.
+- **Free fixtures (V2.2):** a four-bumper diamond plus two deck slings; see `docs/V2_2_UPPER_DECK_RALLY.md`. Before that (V2.1): `deck-bumper-l` (6.6, −4.4), `deck-bumper-c` (10, −4.3, r 0.8) and `deck-bumper-r` (13.4, −4.4), each worth 200. The Home Run release now fans across them; see `docs/V2_1_BALL_VARIETY_PLAYTEST.md`.
 
 ### Ways in
 1. **Home Run Ramp (free): the aimed shot.**
@@ -50,7 +50,7 @@ Plan once approved: V2 becomes `/build-test/`, and the current version moves to 
 - No strike is possible in the deck: it sits far from the drain, and the safety bounds grow with the section.
 
 ### Mounts
-- **Sites:** `deck-l` (3.4, −5.6) and `deck-r` (16.6, −5.6) (moved in V2.1). They're offered only once the deck is unlocked.
+- **Sites:** `deck-l` (3.6, −5.6) and `deck-r` (16.4, −5.6) (moved in V2.1 and V2.2). They're offered only once the deck is unlocked.
 - **Machines that fit there today:** the Bonus Bumper and the Triple Bumper Cluster.
 - **Power:** these installs cost normal Power. Unlocking spends no Power and no money.
 - **Selling:** a deck install sells like any other. The deck stays unlocked, and THIS modifiers on the install go dormant, then wake when a compatible machine goes back on the same site.
