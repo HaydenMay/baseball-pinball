@@ -29,10 +29,15 @@ export const CAMERA = {
   minZoom: 0.76,
   /** World units kept between a ball and the view edge. */
   pad: 1.1,
-  /** Seconds of velocity lookahead for fast balls about to leave the view. */
-  lookahead: 0.16,
-  /** Time constants (s): zoom-out is quick so a ball never leaves the view; zoom-in is gentle. */
-  outTau: 0.07,
+  /** Seconds of velocity lookahead: starts the (slow) zoom-out early for a ball heading out of view. */
+  lookahead: 0.3,
+  /**
+   * Time constants (s). Zoom-out eases (playtest Nov 20: 0.07 felt abrupt → 0.2); zoom-in is gentler.
+   * The hard `edgePad` limit below still guarantees a ball never leaves the view while easing out.
+   */
+  outTau: 0.2,
+  /** A ball's center is always kept at least this far (world units) inside the view edge. */
+  edgePad: 0.45,
   inTau: 0.22,
   /** Ignore zoom-in targets less than this above the current zoom (prevents hunting). */
   inDeadband: 0.012,
@@ -123,6 +128,10 @@ export class Camera {
       const tau = hurry ? this.cfg.inTau / 3 : this.cfg.inTau;
       this.zoom = goal - (goal - this.zoom) * Math.exp(-dt / tau);
     }
+    // Never let the easing lag a ball out of view: clamp to what the current positions strictly need.
+    let must = 1;
+    for (const b of balls) must = Math.min(must, zoomFor(this.view, b, this.cfg.edgePad, this.cfg.anchor, this.cfg.home));
+    this.zoom = Math.min(this.zoom, Math.max(this.cfg.minZoom, must));
     if (1 - this.zoom < this.cfg.snap) this.zoom = 1;
     this.zoom = Math.min(1, Math.max(this.cfg.minZoom, this.zoom));
     const d = Math.sign(this.zoom - prev);

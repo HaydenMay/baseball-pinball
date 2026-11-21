@@ -132,10 +132,13 @@ export class BuildUI {
       return;
     }
     this.tag();
+    // V2: the machine just grew. Rebuild the board now so the draft can preview the new section's mounts.
+    if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), this.run.target);
+    const grew = this.run.sectionGrant ? `THE MACHINE GREW: ${this.run.sectionGrant.name.toUpperCase()} UNLOCKED (FREE). ` : '';
     this.host.showOverlay(
       `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} CLEARED`,
       `${fmt(sim.rules.score)} / ${fmt(this.run.target)}`,
-      `${this.run.powerGrant ? `INNING ${this.run.powerGrant.inning} UNLOCKED — MAX POWER +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} TOTAL). ` : ''}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
+      `${grew}${this.run.powerGrant ? `INNING ${this.run.powerGrant.inning} UNLOCKED — MAX POWER +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} TOTAL). ` : ''}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
       'CHOOSE REWARD',
       () => {
         this.host.hideOverlay();
@@ -261,9 +264,9 @@ export class BuildUI {
       ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · ⚡${r.powerUsed}/${r.maxPower} used · tap a card to preview it</span>${manageBtn}</div>`
       : `<div class="phead"><b>SHOP</b><span>$${r.money} · ⚡${r.powerUsed}/${r.maxPower} used · buy as many as you can afford</span>${manageBtn}</div>`;
     // Small, non-blocking reward line when this clear finished an inning.
-    const grant = r.powerGrant
-      ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>`
-      : '';
+    const grant =
+      (r.powerGrant ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>` : '') +
+      (r.sectionGrant ? `<div class="pgrant grew">THE MACHINE GREW — ${r.sectionGrant.name.toUpperCase()} UNLOCKED · FREE HOME RUN RAMP + NEW MOUNTS</div>` : '');
     const foot = draft
       ? ''
       : `<div class="pfoot"><button data-act="reroll" ${r.money < r.rerollPrice ? 'disabled' : ''}>REROLL $${r.rerollPrice}</button><button class="next" data-act="next">NEXT: TARGET ${fmt(

@@ -10,6 +10,7 @@ import { RunRecorder, type RunRecord, type Store } from './telemetry/run-recorde
 import { renderReport, reportFilename } from './telemetry/report-html.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
+import { V2 } from './machines/sections.ts';
 import { GameView, VIEW } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
@@ -341,6 +342,7 @@ w.playtest = {
 // ─── V2 fixed-anchor zoom camera (build test, ?v2=1 while it's being proven) ───
 const v2 = buildMode && new URLSearchParams(location.search).get('v2') === '1';
 if (v2) {
+  V2.enabled = true;
   view.enableCamera(new Camera(VIEW));
   /**
    * Dev harness: `v2cam.probe([{x:10,y:-6},{x:10,y:24}], 3)` frames those points for 3 s (no physics
@@ -474,3 +476,15 @@ const build: BuildUI | null = buildMode
   : null;
 build?.start();
 (window as any).build = build;
+// V2 dev helper (?v2=1 only): grow the machine now instead of clearing C3 first. `v2dev.grow()` then READY.
+if (v2 && build) {
+  (window as any).v2dev = {
+    grow() {
+      const r = (window as any).buildRun as import('./run/run.ts').Run;
+      if (!r.sections.includes('upperDeck')) r.sections.push('upperDeck');
+      sim = makeSim(r.preset(), r.target);
+      view.setLayout(sim.layout);
+      return r.sections;
+    },
+  };
+}

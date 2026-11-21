@@ -1,3 +1,4 @@
+import { deckFloorPolygon } from '../src/machines/sections.ts';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import * as P from 'planck';
@@ -259,7 +260,9 @@ test('draft and shop never offer an impossible machine', () => {
 
 // ── physical validity of every mount combination ──
 function insideTable(x: number, y: number) {
-  const poly = OUTER_WALL;
+  return inPoly(OUTER_WALL, x, y) || (y < 0.65 && inPoly(deckFloorPolygon(), x, y));
+}
+function inPoly(poly: { x: number; y: number }[], x: number, y: number) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const a = poly[i], b = poly[j];
@@ -292,10 +295,14 @@ const FULL_BUILDS: [string, string][][] = [
   [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur'], ['spinner', 'lane-l'], ['spinner', 'lane-r'], ['bank', 'bank-cards'], ['bank', 'bank-stars'], ['jackpot-gate', 'jackpot-lane'], ['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['glove-scoop', 'pocket-r'], ['twin-bumpers', 'flank-l'], ['twin-bumpers', 'flank-r']],
   [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['spinner', 'lane-l'], ['bank', 'bank-stars'], ['turbo-ramp', 'orbit-l'], ['glove-scoop', 'pocket-r'], ['splitter', 'center-r'], ['twin-bumpers', 'flank-l'], ['bumper-cluster', 'cluster-r']],
   [['paired-gates', 'gate-l+gate-r'], ['bonus-bumper', 'pocket-ul'], ['bonus-bumper', 'pocket-ur'], ['spinner', 'lane-l'], ['spinner', 'lane-r'], ['bank', 'bank-cards'], ['bank', 'bank-stars'], ['jackpot-gate', 'jackpot-lane'], ['turbo-ramp', 'orbit-l'], ['bridge-ramp', 'bridge'], ['long-loop', 'loop-r']],
+  // V2 Upper Deck builds (deck mounts need the section; fullBuild unlocks it when a deck mount is listed)
+  [['paired-gates', 'gate-l+gate-r'], ['spinner', 'lane-r'], ['turbo-ramp', 'orbit-l'], ['long-loop', 'loop-r'], ['bonus-bumper', 'deck-l'], ['bumper-cluster', 'deck-r']],
+  [['mult-gate', 'gate-r'], ['bridge-ramp', 'bridge'], ['glove-scoop', 'pocket-r'], ['bumper-cluster', 'deck-l'], ['bonus-bumper', 'deck-r']],
 ];
 function fullBuild(list: [string, string][]) {
   const r = new Run(1);
   r.maxPower = 99;
+  if (list.some(([, p]) => p.startsWith('deck-'))) r.sections = ['upperDeck'];
   for (const [k, p] of list) {
     const res = r.installForTest(k, p);
     assert.ok(res.ok, `${k} @ ${p}: ${(res as any).reason}`);
@@ -335,7 +342,7 @@ test('full builds cover every placement, and every machine fits the factory tabl
     }
     for (const sp of s.layout.splitters) assert.ok(!staticOverlap(s, sp.hatch.x, sp.hatch.y, rad), 'hatch open');
   }
-  assert.equal(MOUNTS.length, 17, '11 original + 2 alley-top gate + left/right flank, right mid-field and Long Loop sites');
+  assert.equal(MOUNTS.length, 19, '11 original + 2 alley-top gate + left/right flank, right mid-field and Long Loop sites + 2 Upper Deck sites');
 });
 
 test('fully built machines: no traps, soft-locks or tunneling under random play', () => {

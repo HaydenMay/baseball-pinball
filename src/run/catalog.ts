@@ -4,6 +4,7 @@
  * Prices and costs are experimental test values (see economy.ts).
  */
 import { RALLY_CHARGES, type MechanismDef, type Pt } from '../machines/mechanisms.ts';
+import { UPPER_DECK, type SectionId } from '../machines/sections.ts';
 
 
 /**
@@ -20,7 +21,12 @@ export type Mount = {
   r: number;
   /** Mounts that can't both be filled (overlapping footprint or blocked entrance/exit). */
   conflicts?: string[];
+  /** V2: the structural section this mount lives in (only offered once that section is unlocked). */
+  section?: SectionId;
 };
+
+/** V2 Upper Deck mount centers (in the deck, between its side wall and the free deck bumpers). */
+const DECK_SITES = { 'deck-l': { x: 4.0, y: -4.8 }, 'deck-r': { x: 16.0, y: -4.8 } };
 
 /** Fixed mount sites. Each fits the ORIGINAL table without moving any factory part. */
 export const MOUNTS: Mount[] = [
@@ -50,6 +56,11 @@ export const MOUNTS: Mount[] = [
   // Long Loop: climbs the right wall over the right flank and pocket, crosses the top, descends the left
   // side over the left flank. Its mouth needs the factory mid-right bumper gone (as on Map 1).
   { id: 'loop-r', name: 'Long Loop (right wall → top → left side)', anchor: { x: 17.6, y: 12.5 }, r: 2.4, conflicts: ['pocket-r', 'flank-l', 'flank-r', 'cluster-r'] },
+  // ── V2 Upper Deck sites (EXPERIMENTAL; see docs/V2_EXPANDABLE_MACHINE_PLAYTEST.md) ──
+  // Either side of the deck, beside the free deck bumpers. The Home Run Ramp's raised climb runs up the right
+  // wall (x≈18.2), clear of deck-r's footprint, and its release crosses above both sites.
+  { id: 'deck-l', name: 'Upper Deck left', anchor: DECK_SITES['deck-l'], r: 1.6, section: 'upperDeck' },
+  { id: 'deck-r', name: 'Upper Deck right', anchor: DECK_SITES['deck-r'], r: 1.6, section: 'upperDeck' },
 ];
 
 /** Gameplay family for weighting and group effects. */
@@ -99,8 +110,8 @@ const twin = (side: 1 | -1, cx: number): MechanismDef[] => [
   { type: 'bumper', id: 'twin-b', powerCost: 1, x: cx + side * 0.1, y: 12.5, r: 0.55, points: 250, kick: 15 },
 ];
 const CLUSTER = { cx: 16.2, cy: 11.0, side: 2.1, r: 0.5, points: 200, kick: 15 };
-const clusterParts = (): MechanismDef[] => {
-  const { cx, cy, side, r, points, kick } = CLUSTER;
+const clusterParts = (cx = CLUSTER.cx, cy = CLUSTER.cy): MechanismDef[] => {
+  const { side, r, points, kick } = CLUSTER;
   const h = (side * Math.sqrt(3)) / 2;
   return [
     { type: 'bumper', id: 'cluster-a', powerCost: 1, x: cx, y: +(cy - (2 * h) / 3).toFixed(2), r, points, kick },
@@ -160,7 +171,7 @@ export const MACHINES: MachineOffer[] = [
     power: 3,
     price: 13,
     pieces: 3,
-    at: { 'cluster-r': clusterParts() },
+    at: { 'cluster-r': clusterParts(), 'deck-l': clusterParts(DECK_SITES['deck-l'].x, DECK_SITES['deck-l'].y), 'deck-r': clusterParts(DECK_SITES['deck-r'].x, DECK_SITES['deck-r'].y) },
   },
   {
     key: 'long-loop',
@@ -199,6 +210,8 @@ export const MACHINES: MachineOffer[] = [
     at: {
       'pocket-ul': { type: 'bumper', id: 'bonus', powerCost: 1, x: 8.45, y: 6.2, r: 0.7, points: 300, kick: 16 },
       'pocket-ur': { type: 'bumper', id: 'bonus', powerCost: 1, x: 11.55, y: 6.2, r: 0.7, points: 300, kick: 16 },
+      'deck-l': { type: 'bumper', id: 'bonus', powerCost: 1, ...DECK_SITES['deck-l'], r: 0.7, points: 300, kick: 16 },
+      'deck-r': { type: 'bumper', id: 'bonus', powerCost: 1, ...DECK_SITES['deck-r'], r: 0.7, points: 300, kick: 16 },
     },
   },
   {
@@ -313,6 +326,8 @@ export const MACHINES: MachineOffer[] = [
 export type BoardView = {
   parts: { id: string; type: string; offerKey: string; name: string; mount: string; family: Family }[];
   displaced: string[];
+  /** V2 sections unlocked (their free fixtures are targetable like factory parts). */
+  sections?: SectionId[];
 };
 
 /** A modifier template; `targets(board)` lists the parts it can apply to right now. */
@@ -357,8 +372,10 @@ const childLabel = (p: BoardView['parts'][number]) => {
 };
 
 /** THIS bumper: factory bumpers still on the table + every installed bumper part (bundle children included). */
+const DECK_BUMPER_LABELS: Record<string, string> = { 'deck-bumper-l': 'Upper Deck left bumper', 'deck-bumper-r': 'Upper Deck right bumper', 'deck-bumper-c': 'Upper Deck center bumper' };
 const bumperTargets = (b: BoardView) => [
   ...FACTORY_BUMPERS.filter(f => !b.displaced.includes(f.key)),
+  ...(b.sections?.includes('upperDeck') ? UPPER_DECK.bumpers.map(d => ({ key: d.id, label: DECK_BUMPER_LABELS[d.id] ?? d.id })) : []),
   ...partsOf(b, p => p.type === 'bumper').map(p => ({ key: p.id, label: `${p.name}${childLabel(p)} (${mountName(p.mount)})` })),
 ];
 const gateTargets = (b: BoardView) => partsOf(b, p => p.type === 'multgate').map(p => ({ key: p.id, label: `${mountName(p.mount)} gate` }));
@@ -368,7 +385,10 @@ const bankTargets = (b: BoardView) => partsOf(b, p => p.type === 'bank').map(p =
 const ofOffer = (key: string, label: (p: BoardView['parts'][number]) => string) => (b: BoardView) => partsOf(b, p => p.offerKey === key).map(p => ({ key: p.id, label: label(p) }));
 /** Group targets only appear once the family exists on the board (so the card always does something). */
 const all = (key: string, label: string, has: (b: BoardView) => boolean) => (b: BoardView) => (has(b) ? [{ key, label }] : []);
-const hasRamp = (b: BoardView) => b.parts.some(p => p.type === 'ramp');
+/** The Upper Deck's free Home Run Ramp counts, so ALL-ramp cards apply to it once the deck is unlocked. */
+const hasRamp = (b: BoardView) => b.parts.some(p => p.type === 'ramp') || !!b.sections?.includes('upperDeck');
+/** Checkpoint ramps are bought ramps (the free Home Run Ramp pays one completion award, no checkpoints). */
+const hasCheckpointRamp = (b: BoardView) => b.parts.some(p => p.type === 'ramp');
 const hasGate = (b: BoardView) => b.parts.some(p => p.type === 'multgate');
 
 /** Experimental generator cadence: hits on ONE chosen bumper per payout. */
@@ -391,7 +411,7 @@ export const MODS: ModTemplate[] = [
   { key: 'crowd-noise', name: 'Crowd Noise', effect: `ALL bumpers: every ${CROWD_GEN_EVERY} bumper hits (any bumper): +0.1×`, gen: { every: CROWD_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 6, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (counted together)' }] },
   { key: 'standing-ovation', name: 'Standing Ovation', effect: `ALL bumpers: every ${CROWD_GEN_EVERY} bumper hits (any bumper): +0.2×`, gen: { every: CROWD_GEN_EVERY, tenths: 2 }, tier: 'draft', price: 0, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (counted together)' }] },
   { key: 'gate-network', name: 'Gate Network', effect: 'ALL multiplier gates: +0.1× more per pass', gen: { every: 1, tenths: 1 }, tier: 'both', price: 7, family: 'gate', scope: 'all', targets: all('multgate:*', 'ALL multiplier gates (incl. future)', hasGate) },
-  { key: 'express-track', name: 'Express Track', effect: 'ALL ramps: +250 on every checkpoint (+2,000 per full ride)', add: 250, tier: 'shop', price: 6, family: 'ramp', scope: 'all', targets: all('ramps:*', 'ALL ramps, every checkpoint (incl. future)', hasRamp) },
+  { key: 'express-track', name: 'Express Track', effect: 'ALL ramps: +250 on every checkpoint (+2,000 per full ride)', add: 250, tier: 'shop', price: 6, family: 'ramp', scope: 'all', targets: all('ramps:*', 'ALL ramps, every checkpoint (incl. future)', hasCheckpointRamp) },
   { key: 'grand-tour', name: 'Grand Tour', effect: 'ALL ramps: each full ride +0.2×', gen: { every: 1, tenths: 2 }, tier: 'draft', price: 0, family: 'ramp', scope: 'all', targets: all('ramp:*', 'ALL ramps, full rides (incl. future)', hasRamp) },
   // ── Cross-family: a full ramp ride charges the next bumper hits ──
   { key: 'rally-fuel', name: 'Rally Fuel', effect: `After any full ramp ride, the next ${RALLY_CHARGES} bumper hits score +500 each`, add: 500, tier: 'draft', price: 0, family: 'ramp', scope: 'cross', targets: all('cross:ride-bumpers', `Ramp ride → next ${RALLY_CHARGES} bumper hits`, hasRamp) },
@@ -425,6 +445,7 @@ export function familyOfKey(key: string, board: BoardView): Family | null {
   const part = board.parts.find(p => p.id === base);
   if (part) return part.family;
   if (FACTORY_BUMPERS.some(f => f.key === key)) return 'bumper';
+  if (UPPER_DECK.bumpers.some(d => d.id === key)) return 'bumper';
   if (key === 'jackpot') return 'jackpot';
   return null;
 }

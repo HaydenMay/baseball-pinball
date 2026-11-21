@@ -42,6 +42,8 @@ export type Preset = {
   /** Base-table parts this preset displaces to make physical room (ids from board.ts). */
   removeBase: string[];
   mechanisms: MechanismDef[];
+  /** V2 structural sections (build-test ?v2=1 only; absent everywhere else). */
+  sections?: import('./sections.ts').SectionId[];
   /** Pre-stacked test modifiers imitating a mature build (config only; no modifier system yet). */
   modifiers?: ModifierTable;
 };

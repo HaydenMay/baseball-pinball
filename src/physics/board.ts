@@ -6,6 +6,7 @@ import * as P from 'planck';
 import { config } from '../config.ts';
 import { buildRampPath, type BankDef, type GateDef, type MultGateDef, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
+import { HOME_RUN_RAMP, UPPER_DECK, boundsFor, deckDivider, deckOutline, type Rect4, type SectionId } from '../machines/sections.ts';
 
 export type Pt = { x: number; y: number };
 export type MachineKind = 'bumper' | 'target' | 'jackpot' | 'post' | 'sling' | 'wall' | 'lane' | 'rail' | 'ramp' | 'scoop' | 'splitter' | 'gate' | 'multiball' | 'spinner';
@@ -134,11 +135,15 @@ export type Layout = {
   spinners: SpinnerDef[];
   banks: BankDef[];
   multGates: MultGateDef[];
+  /** V2 structural sections physically present (empty on every classic route). */
+  sections: SectionId[];
+  /** Playable world bounds (table + sections): camera framing and the out-of-table safety drain. */
+  bounds: Rect4;
 };
 
 /** The factory table every map shares. */
 export function baseLayout(): Layout {
-  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [], multGates: [] };
+  return { bumpers: [...BUMPERS], roundTargets: [...ROUND_TARGETS], boxTargets: [...BOX_TARGETS], posts: [...POSTS], lanes: [...LANES], slings: [...SLINGS], ramps: [], scoops: [], splitters: [], gates: [], spinners: [], banks: [], multGates: [], sections: [], bounds: boundsFor([]) };
 }
 
 /** Base table minus the preset's displaced parts, plus its mechanisms. */
@@ -150,6 +155,13 @@ export function layoutFor(preset?: Preset): Layout {
   l.roundTargets = keep(l.roundTargets);
   l.boxTargets = keep(l.boxTargets);
   l.posts = keep(l.posts);
+  // V2 sections first: their free fixtures are part of the structure (never Power, never sold).
+  if (preset.sections?.includes('upperDeck')) {
+    l.sections.push('upperDeck');
+    for (const b of UPPER_DECK.bumpers) l.bumpers.push({ ...b, kind: 'bumper', style: 'ball', points: UPPER_DECK.bumperPoints, kick: UPPER_DECK.bumperKick });
+    l.ramps.push(buildRampPath(HOME_RUN_RAMP));
+  }
+  l.bounds = boundsFor(l.sections);
   for (const m of preset.mechanisms) {
     if (m.type === 'ramp') l.ramps.push(buildRampPath(m));
     else if (m.type === 'scoop') l.scoops.push(m);
@@ -161,6 +173,26 @@ export function layoutFor(preset?: Preset): Layout {
     else if (m.type === 'bumper') l.bumpers.push({ id: m.id, kind: 'bumper', x: m.x, y: m.y, r: m.r, style: 'bonus', points: m.points, kick: m.kick });
   }
   return l;
+}
+
+/**
+ * Outer collision walls as open chains plus closed loops. Classic: the one OUTER_WALL chain (unchanged).
+ * Upper Deck: the top rail is cut at the two gaps; the table's left wall runs into the deck outline and
+ * back out into the right wall (one chain), and the center divider is a closed loop.
+ */
+export function wallChains(layout: Pick<Layout, 'sections'>): { pts: Pt[]; loop: boolean }[] {
+  if (!layout.sections.includes('upperDeck')) return [{ pts: OUTER_WALL, loop: false }];
+  const [gl, gr] = UPPER_DECK.gaps;
+  const top = UPPER_DECK.railY;
+  // OUTER_WALL goes left drain lip → up the left → along the top (y = top) → down the right.
+  const iTop = OUTER_WALL.findIndex(p => p.y === top); // first top-rail corner (left)
+  const jTop = OUTER_WALL.length - 1 - [...OUTER_WALL].reverse().findIndex(p => p.y === top); // last (right)
+  const left = OUTER_WALL.slice(0, iTop + 1).filter(p => !(p.y === top && p.x >= gl.x0));
+  const right = OUTER_WALL.slice(jTop).filter(p => !(p.y === top && p.x <= gr.x1));
+  return [
+    { pts: [...left, ...deckOutline(), ...right], loop: false },
+    { pts: deckDivider(), loop: true },
+  ];
 }
 
 /** Polygon for a splitter's standup target (faces down toward the batter, peaked top so nothing rests on it). */
@@ -183,8 +215,10 @@ export function scoopArc(s: ScoopDef, r = s.cupR): Pt[] {
 /** Build all static collision bodies into a planck world. */
 export function buildBoard(world: P.World, layout: Layout = baseLayout()) {
   const body = world.createBody();
-  const chain = body.createFixture(P.Chain(OUTER_WALL.map(p => P.Vec2(p.x, p.y)), false), { restitution: config.wall.restitution, friction: 0 });
-  chain.setUserData({ kind: 'wall', id: 'wall' } satisfies FixtureData);
+  for (const w of wallChains(layout)) {
+    const chain = body.createFixture(P.Chain(w.pts.map(p => P.Vec2(p.x, p.y)), w.loop), { restitution: config.wall.restitution, friction: 0 });
+    chain.setUserData({ kind: 'wall', id: 'wall' } satisfies FixtureData);
+  }
   const { bumpers: BUMPERS, roundTargets: ROUND_TARGETS, boxTargets: BOX_TARGETS, posts: POSTS, lanes: LANES, slings: SLINGS } = layout;
 
   for (const b of BUMPERS) {

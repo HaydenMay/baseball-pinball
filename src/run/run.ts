@@ -16,6 +16,7 @@
  */
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
+import { SECTION_UNLOCKS, V2, type SectionId } from '../machines/sections.ts';
 import { MACHINES, MODS, MOUNTS, familyOfKey, placementsOf, type BoardView, type Family, type MachineOffer, type Mount, type Placement } from './catalog.ts';
 import { ECONOMY, inningOf, targetFor } from './economy.ts';
 import { OFFER_WEIGHTS, investment, pickWeighted, weigh } from './weights.ts';
@@ -123,6 +124,12 @@ export class Run {
    * draft/shop as "INNING n UNLOCKED"). Cleared when the next challenge starts.
    */
   powerGrant: { inning: number; gained: number; maxPower: number } | null = null;
+  /** V2 Expandable Machine (build-test ?v2=1): structural sections are granted by progression. */
+  v2 = V2.enabled;
+  /** Structural sections unlocked so far (free; never Power, money or a draft pick). */
+  sections: SectionId[] = [];
+  /** Set by the clear that unlocked a section (shown on the between-challenge screens). */
+  sectionGrant: { id: SectionId; name: string } | null = null;
   private seed: number;
   private uid = 1;
   private itemSeq = 1;
@@ -160,6 +167,7 @@ export class Run {
     return {
       parts: this.installed.flatMap(i => i.parts.map((d, k) => ({ id: d.id, type: d.type, offerKey: i.offerKey, name: i.name, mount: partMount(i, k), family: i.family }))),
       displaced: this.displaced,
+      sections: [...this.sections],
     };
   }
 
@@ -176,10 +184,22 @@ export class Run {
       removeBase: [...BUILD_TEST_REMOVED, ...this.displaced],
       mechanisms: this.installed.flatMap(i => i.parts),
       modifiers: structuredClone(this.mods),
+      ...(this.sections.length ? { sections: [...this.sections] } : {}),
     };
   }
 
   // ───────── placement / feasibility ─────────
+
+  /** A mount exists right now: factory mounts always, section mounts once that section is unlocked. */
+  mountOpen(id: string) {
+    const s = MOUNTS.find(m => m.id === id)?.section;
+    return !s || this.sections.includes(s);
+  }
+
+  /** Placements of a machine whose mounts all exist right now. */
+  places(m: MachineOffer) {
+    return placementsOf(m).filter(p => p.mounts.every(id => this.mountOpen(id)));
+  }
 
   mountStatus(id: string): MountStatus {
     const mount = MOUNTS.find(m => m.id === id)!;
@@ -208,7 +228,7 @@ export class Run {
     if (o.kind === 'modifier') return { ok: true, mounts: [] };
     const m = MACHINES.find(m => m.key === o.key)!;
     if (m.power > this.maxPower) return { ok: false, reason: `Needs ⚡${m.power}; max Power is ${this.maxPower}`, fixable: false };
-    const places = placementsOf(m);
+    const places = this.places(m);
     const free = places.filter(p => this.blockersOf(p).length === 0);
     const room = this.maxPower - this.powerUsed;
     if (free.length && m.power <= room) return { ok: true, mounts: free.map(p => p.id) };
@@ -241,7 +261,7 @@ export class Run {
    */
   feasible(m: MachineOffer) {
     if (m.power > this.maxPower) return false;
-    return placementsOf(m).some(p => !this.blockersOf(p).some(i => i.offerKey === m.key || sameParts(i, m)));
+    return this.places(m).some(p => !this.blockersOf(p).some(i => i.offerKey === m.key || sameParts(i, m)));
   }
 
   // ───────── offers ─────────
@@ -259,7 +279,7 @@ export class Run {
   private makeMachineOffer(m: MachineOffer, w?: ReturnType<typeof weigh>): Offer {
     return {
       uid: this.uid++, kind: 'machine', key: m.key, name: m.name, desc: m.desc, power: m.power, price: m.price,
-      mounts: placementsOf(m).map(p => p.id), pieces: m.pieces,
+      mounts: this.places(m).map(p => p.id), pieces: m.pieces,
       ...(w ? { origin: w.origin, weight: +w.weight.toFixed(2), synergies: w.synergies } : {}),
     };
   }
@@ -341,6 +361,16 @@ export class Run {
       this.maxPower += ECONOMY.powerPerInning;
       this.powerGrant = { inning: inningOf(this.challenge) + 1, gained: ECONOMY.powerPerInning, maxPower: this.maxPower };
       this.history.push(`Inning ${this.powerGrant.inning} unlocked: max Power ${this.maxPower}`);
+    }
+    // V2: the machine grows (free structure, before this clear's draft so its mounts can be offered at once).
+    if (this.v2) {
+      for (const [id, after] of Object.entries(SECTION_UNLOCKS) as [SectionId, number][]) {
+        if (after === this.challenge && !this.sections.includes(id)) {
+          this.sections.push(id);
+          this.sectionGrant = { id, name: SECTION_NAMES[id] };
+          this.history.push(`Machine grew: ${SECTION_NAMES[id]} unlocked`);
+        }
+      }
     }
     this.draft = this.roll(ECONOMY.draftSize, 'draft');
     return earned;
@@ -478,10 +508,13 @@ export class Run {
     this.challenge++;
     this.phase = 'challenge';
     this.powerGrant = null;
+    this.sectionGrant = null;
     this.shop = [];
     return true;
   }
 }
+
+const SECTION_NAMES: Record<SectionId, string> = { upperDeck: 'Upper Deck' };
 
 /** A paired-gate bundle and single gates hold the same part types: treat as the same machine for offers. */
 function sameParts(i: Installed, m: MachineOffer) {

@@ -4,7 +4,8 @@
  * so the art always matches the collision geometry.
  */
 import { config } from '../config.ts';
-import { MOUND, OUTER_WALL, lowerWallX, targetPoly, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
+import { MOUND, OUTER_WALL, lowerWallX, targetPoly, wallChains, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
+import { UPPER_DECK, deckFloorPolygon } from '../machines/sections.ts';
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
 import { drawGlow, underlay, Vfx } from './vfx.ts';
@@ -68,6 +69,30 @@ export function drawBaseball(ctx: CanvasRenderingContext2D, x: number, y: number
     ctx.lineWidth = r * 0.06;
   }
   ctx.restore();
+}
+
+/** Floodlight panels beside the Upper Deck (outside its walls; seen when the camera zooms out). */
+const DECK_FLOODLIGHTS = [
+  { x: -0.55, y: -6.2 },
+  { x: 20.55, y: -6.2 },
+];
+
+/** Chase bulbs along the outer rail (classic: exactly the old OUTER_WALL spacing). */
+function bulbsFor(layout: Pick<Layout, 'sections'>): Pt[] {
+  const out: Pt[] = [];
+  const pts = wallChains(layout)[0].pts;
+  let carry = 0.6;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (b.y > 30.7 && a.y > 30.5) continue;
+    let d = carry;
+    while (d < len) {
+      out.push({ x: a.x + ((b.x - a.x) * d) / len, y: a.y + ((b.y - a.y) * d) / len });
+      d += 1.45;
+    }
+    carry = d - len;
+  }
+  return out;
 }
 
 function playfieldPolygon(): Pt[] {
@@ -137,6 +162,7 @@ export class GameView {
   /** Turn on the V2 camera (build test with ?v2=1). Rebuilds the layer caches once. */
   enableCamera(cam: Camera) {
     this.camera = cam;
+    cam.bounds = { ...this.layout.bounds };
     if (this.cssW) this.resize(this.cssW, true);
   }
 
@@ -196,8 +222,21 @@ export class GameView {
     this.drawLaneAndApron(ctx);
     ctx.restore();
 
-    this.drawRails(ctx, poly);
-    this.drawFloodlights(ctx);
+    const deck = this.layout.sections.includes('upperDeck');
+    if (deck) this.drawDeck(ctx);
+    if (!deck) this.drawRails(ctx, poly);
+    else
+      for (const w of wallChains(this.layout)) {
+        if (w.loop) {
+          // the solid divider between the two gaps
+          ctx.fillStyle = this.theme.m.trimDeep;
+          path(ctx, w.pts);
+          ctx.fill();
+        }
+        this.drawRails(ctx, w.loop ? [...w.pts, w.pts[0]] : w.pts);
+      }
+    // With the Upper Deck the floodlights move out beside the deck (only seen zoomed out).
+    this.drawFloodlights(ctx, deck ? DECK_FLOODLIGHTS : undefined);
     this.drawCrest(ctx);
     for (const s of this.layout.slings) this.drawSlingBody(ctx, s.poly, s.face, s.kickDir);
     for (const p of this.layout.posts) this.drawPost(ctx, p.x, p.y, p.r);
@@ -373,6 +412,42 @@ export class GameView {
     ctx.restore();
   }
 
+  /** V2 Upper Deck floor: the table's turf continued up, tinted as its own level, with painted seat rows. */
+  private drawDeck(ctx: CanvasRenderingContext2D) {
+    const d = UPPER_DECK;
+    ctx.save();
+    path(ctx, deckFloorPolygon());
+    ctx.clip();
+    const g = ctx.createLinearGradient(0, d.roofY, 0, d.railY);
+    g.addColorStop(0, this.theme.m.turf[2]);
+    g.addColorStop(1, this.theme.m.turf[0]);
+    ctx.fillStyle = g;
+    ctx.fillRect(d.wallX0 - 1, d.roofY - 1, d.wallX1 - d.wallX0 + 2, d.railY - d.roofY + 2);
+    for (let x = 0; x < 20; x += 3.2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.045)';
+      ctx.fillRect(x, d.roofY - 1, 1.6, d.railY - d.roofY + 2);
+    }
+    ctx.fillStyle = d.tint;
+    ctx.fillRect(d.wallX0 - 1, d.roofY - 1, d.wallX1 - d.wallX0 + 2, d.railY - d.roofY + 2);
+    // seat-row arcs (paint only)
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.06;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(10, 6, 12.6 + i * 0.9, Math.PI * 1.2, Math.PI * 1.8);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = d.labelAlpha;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `italic 800 0.9px ${FONT}`;
+    ctx.fillText(d.label, 10, d.roofY + 1.15);
+    ctx.globalAlpha = 1;
+    this.fillGrain(ctx);
+    ctx.restore();
+  }
+
   private drawTurf(ctx: CanvasRenderingContext2D) {
     const g = ctx.createLinearGradient(0, 0, 0, 32);
     g.addColorStop(0, this.theme.m.turf[0]);
@@ -396,7 +471,11 @@ export class GameView {
     r.addColorStop(1, 'rgba(0,10,20,0.45)');
     ctx.fillStyle = r;
     ctx.fillRect(-1, -1, 22, 35);
-    // turf grain (pixel space)
+    this.fillGrain(ctx);
+  }
+
+  /** Turf grain over the current clip (pixel space, phase locked to the 100% view's pixel grid). */
+  private fillGrain(ctx: CanvasRenderingContext2D) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Generated once per view and reused on every static redraw (theme switch, layout change, camera
@@ -576,26 +655,11 @@ export class GameView {
   lastDt = 0;
   /** Pre-rendered raised ramp structures (drawn above floor balls). */
   rampLayer = document.createElement('canvas');
-  bulbs: Pt[] = (() => {
-    const out: Pt[] = [];
-    const pts = OUTER_WALL;
-    let carry = 0.6;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
-      if (b.y > 30.7 && a.y > 30.5) continue;
-      let d = carry;
-      while (d < len) {
-        out.push({ x: a.x + ((b.x - a.x) * d) / len, y: a.y + ((b.y - a.y) * d) / len });
-        d += 1.45;
-      }
-      carry = d - len;
-    }
-    return out;
-  })();
+  bulbs: Pt[] = bulbsFor({ sections: [] });
 
-  private drawFloodlights(ctx: CanvasRenderingContext2D) {
-    for (const cx of [1.6, 18.4]) {
-      const x = cx - 1.35, y = -1.55;
+  private drawFloodlights(ctx: CanvasRenderingContext2D, at: { x: number; y: number }[] = [{ x: 1.6, y: -1.55 }, { x: 18.4, y: -1.55 }]) {
+    for (const { x: cx, y } of at) {
+      const x = cx - 1.35;
       ctx.fillStyle = this.theme.m.floodPanel;
       ctx.strokeStyle = this.theme.m.trimDeep;
       ctx.lineWidth = 0.08;
@@ -956,6 +1020,8 @@ export class GameView {
   /** Swap in a rebuilt machine (build-test installs) and redraw the static layers. */
   setLayout(layout: Layout) {
     this.layout = layout;
+    this.bulbs = bulbsFor(layout);
+    if (this.camera) this.camera.bounds = { ...layout.bounds };
     this.lit.clear();
     this.spin.clear();
     this.drawStatic();

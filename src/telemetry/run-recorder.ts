@@ -461,6 +461,9 @@ export class RunRecorder {
       r.money.earned += earned;
       this.log('clearReward', { earned, money: run.money });
       if (run.powerGrant) this.log('powerGrant', { ...run.powerGrant });
+      // V2: structural section unlock (free; physically present from the next challenge's board on)
+      const sg = (run as any).sectionGrant as { id: string; name: string } | null | undefined;
+      if (sg) this.log('sectionUnlock', { ...sg });
       this.log('draftOffers', { offers: run.draft.map(o => summarizeOffer(o, (run as any).check?.bind(run))) });
       this.save();
     }

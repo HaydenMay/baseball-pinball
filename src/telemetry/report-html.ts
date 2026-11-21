@@ -137,6 +137,8 @@ function ledgerText(e: LedgerEntry): string {
       return `Clear reward +$${e.earned} (now $${e.money})`;
     case 'powerGrant':
       return `Inning ${e.inning} unlocked · max Power +${e.gained} (${e.maxPower} total)`;
+    case 'sectionUnlock':
+      return `Machine grew · ${e.name} unlocked (free)`;
     case 'draftOffers':
       return `Free draft offered: ${(e.offers as any[]).map(o).join(' | ')}`;
     case 'draftTaken':

@@ -498,7 +498,8 @@ export class Simulation {
     }
 
     // Any exit through the bottom of the table is a drain, wherever it happens.
-    if (p.y > config.drainY || p.x < -1 || p.x > config.table.width + 1 || p.y < -1) this.drainBall(ball);
+    const B = this.layout.bounds;
+    if (p.y > config.drainY || p.x < B.x0 - 1 || p.x > B.x1 + 1 || p.y < B.y0 - 1) this.drainBall(ball);
   }
 
   private enterRamp(ball: Ball, r: RampPath, speed: number) {
