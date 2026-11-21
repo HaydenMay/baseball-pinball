@@ -14,7 +14,7 @@ import { GameRules } from '../core/rules.ts';
 import { batAngleAt, findContact, swingStateAt, type Contact } from '../core/swing.ts';
 import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
-import { RALLY_CHARGES, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
+import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 
 export type SimEvent =
@@ -545,8 +545,15 @@ export class Simulation {
     ball.height = rampHeight(st.r, st.s);
 
     if (st.dir === 1 && st.s >= st.r.length) {
-      const sp = Math.max(d.exitMin, Math.min(d.exitMax, st.v));
-      const v = { x: st.r.exitDir.x * sp, y: st.r.exitDir.y * sp };
+      let sp = Math.max(d.exitMin, Math.min(d.exitMax, st.v));
+      let dir = st.r.exitDir;
+      if (d.exitSpread) {
+        // V2.1: seeded per-release variety (two draws, in this order, only for ramps that opt in)
+        const da = (this.random() * 2 - 1) * d.exitSpread.angle;
+        sp *= 1 + (this.random() * 2 - 1) * d.exitSpread.speed;
+        dir = { x: dir.x * Math.cos(da) - dir.y * Math.sin(da), y: dir.x * Math.sin(da) + dir.y * Math.cos(da) };
+      }
+      const v = { x: dir.x * sp, y: dir.y * sp };
       if (cps.length) {
         // The finish checkpoint already paid (and ran completion generators); this is presentation only.
         this.emit({ type: 'ramp', id: d.id, phase: 'complete', x: st.r.exit.x, y: st.r.exit.y, points: 0, ball: ball.id });
@@ -608,8 +615,10 @@ export class Simulation {
     // Failsafe: the hold is a fixed timer, so a captured ball always comes back out.
     if (h.t >= h.scoop.holdSeconds) {
       const s = h.scoop;
-      // ±0.1 rad and ±8% speed so the relaunch doesn't replay the exact same bounce sequence every time
-      const a = s.ejectAngle + (this.random() - 0.5) * 0.2, sp = s.ejectSpeed * (0.92 + this.random() * 0.16);
+      // Seeded relaunch variety so the eject doesn't replay the same bounce sequence (default ±0.1 rad, ±8%;
+      // written so the default reproduces the pre-V2.1 numbers bit for bit).
+      const sv = s.ejectSpread ?? SCOOP_EJECT_SPREAD;
+      const a = s.ejectAngle + (this.random() - 0.5) * (2 * sv.angle), sp = s.ejectSpeed * (1 - sv.speed + this.random() * (2 * sv.speed));
       const v = { x: Math.cos(a) * sp, y: Math.sin(a) * sp };
       this.releaseToField(ball, { x: s.x, y: s.y }, v);
       ball.ignore[s.id] = this.time + (s.recatchDelay ?? 0.8);

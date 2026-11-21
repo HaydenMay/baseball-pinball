@@ -49,7 +49,17 @@ export type RampDef = Base & {
    * full height and falls for `fall` seconds onto the field below before it can collide again.
    */
   exit?: { mode: 'release' | 'drop'; fall: number };
+  /**
+   * V2.1 per-release variety (EXPERIMENTAL, opt-in): each completed ride turns the exit heading by up to
+   * ±`angle` radians and scales the exit speed by up to ±`speed` (fraction), uniformly, using the sim's
+   * seeded RNG (exactly two draws per completed ride, only when set). Absent → the fixed exit (every
+   * original-map ramp). Never touches the ride, checkpoints or scoring — only where the ball goes next.
+   */
+  exitSpread?: { angle: number; speed: number };
 };
+
+/** Default scoop relaunch variety (±0.1 rad, ±8% speed): the pre-V2.1 behavior, kept for every original map. */
+export const SCOOP_EJECT_SPREAD = { angle: 0.1, speed: 0.08 };
 
 /** Glove scoop: a cup that catches the ball, holds it, then fires it back onto the field. */
 export type ScoopDef = Base & {
@@ -68,6 +78,8 @@ export type ScoopDef = Base & {
   points: number;
   /** Seconds after an eject before the same ball can be caught again (stops endless catch loops). */
   recatchDelay?: number;
+  /** V2.1: relaunch variety (±rad, ±speed fraction; seeded). Default SCOOP_EJECT_SPREAD. */
+  ejectSpread?: { angle: number; speed: number };
 };
 
 /** Multiball splitter: a standup target that, after `hitsToArm` hits, launches an extra ball from its hatch. */
