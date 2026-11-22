@@ -4,6 +4,7 @@
  * gesture (Ready), as browsers require.
  */
 import type { SimEvent } from '../physics/sim.ts';
+import type { MomentKind } from './juice.ts';
 
 type Voice = { t: number };
 
@@ -91,8 +92,23 @@ export class Sfx {
     switch (e.type) {
       case 'bat':
         if (this.ok('bat', 0.05)) {
-          this.noise(0.06, 0.9, 1500);
-          this.tone(180, 0.08, 'triangle', 0.5);
+          // sweet spot: brighter, longer crack (the sound teaches the timing)
+          this.noise(e.sweet ? 0.09 : 0.06, e.sweet ? 1 : 0.9, e.sweet ? 2600 : 1500);
+          this.tone(e.sweet ? 320 : 180, e.sweet ? 0.12 : 0.08, 'triangle', 0.5);
+        }
+        break;
+      case 'swing':
+        // short whoosh: a swing is never silent
+        if (this.ok('swing', 0.1)) this.noise(0.09, 0.22, 2200);
+        break;
+      case 'serve':
+        // the pitch leaving the mound
+        if (this.ok('serve', 0.3)) this.tone(320, 0.06, 'sine', 0.2, 0, 180);
+        break;
+      case 'deckRally':
+        if (e.phase === 'end' && (e.gained ?? 0) > 0 && this.ok('rallyEnd', 0.3)) {
+          const dings = Math.min(6, Math.max(1, Math.round((e.gained ?? 0) / 1000)));
+          for (let i = 0; i < dings; i++) this.tone(1319, 0.08, 'triangle', 0.2, i * 0.07);
         }
         break;
       case 'machine':
@@ -146,6 +162,40 @@ export class Sfx {
       case 'drain':
         if (e.strike && this.ok('drain', 0.3)) this.tone(220, 0.5, 'triangle', 0.3, 0, 70);
         break;
+    }
+  }
+
+  /** Stingers for big moments (see juice.ts). Synth placeholders until the sample set lands. */
+  moment(kind: MomentKind) {
+    if (!this.ctx || this.muted) return;
+    const arp = (notes: number[], step: number, type: OscillatorType, vol: number, dur = 0.2) => notes.forEach((f, i) => this.tone(f, dur, type, vol, i * step));
+    switch (kind) {
+      case 'homeRun':
+        // ballpark-organ "charge!" run
+        if (this.ok('m-hr', 0.5)) {
+          arp([392, 523, 659, 784], 0.11, 'square', 0.12, 0.14);
+          this.tone(659, 0.16, 'square', 0.12, 0.5);
+          this.tone(784, 0.4, 'square', 0.14, 0.66);
+        }
+        break;
+      case 'cleared':
+      case 'runComplete':
+        if (this.ok('m-clear', 0.5)) {
+          arp([523, 659, 784, 1046], 0.09, 'triangle', 0.3, 0.22);
+          [523, 659, 784, 1046].forEach(f => this.tone(f, 0.7, 'triangle', 0.16, 0.42));
+        }
+        break;
+      case 'foul':
+        if (this.ok('m-foul', 0.4)) this.tone(600, 0.18, 'sine', 0.25, 0, 900);
+        break;
+      case 'gameOver':
+        if (this.ok('m-over', 0.5)) arp([392, 370, 349, 262], 0.22, 'triangle', 0.28, 0.3);
+        break;
+      case 'sweet':
+        if (this.ok('m-sweet', 0.2)) this.tone(1568, 0.16, 'sine', 0.2, 0.03);
+        break;
+      default:
+        break; // strike/jackpot/multiball/bank already have event sounds
     }
   }
 }

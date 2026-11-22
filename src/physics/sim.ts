@@ -17,6 +17,7 @@ import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type 
 import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 import { DECK_RALLY, UPPER_DECK } from '../machines/sections.ts';
+import { PLAY, isSweetSpot } from '../core/play-rules.ts';
 
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
@@ -24,7 +25,9 @@ export type SimEvent =
   /** One of a ramp's checkpoints paid out (index 0-based of `count`). */
   | { type: 'rampCheckpoint'; id: string; index: number; count: number; x: number; y: number; points: number; ball: number }
   | { type: 'bank'; id: string; points: number; ball: number }
-  | { type: 'bat'; contact: Contact; x: number; y: number; ball: number }
+  | { type: 'bat'; contact: Contact; x: number; y: number; ball: number; sweet?: boolean }
+  /** Player route: a swing finished without touching a ball. */
+  | { type: 'whiff' }
   | { type: 'swing' }
   | { type: 'serve' }
   | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback' | 'land'; x: number; y: number; points: number; ball: number }
@@ -59,7 +62,7 @@ export type SimEvent =
   | { type: 'deckRally'; phase: 'start' | 'end'; ball: number; x: number; y: number; reason?: 'returned' | 'drain' | 'removed'; hits?: number; gained?: number }
   /** Global strike multiplier rose: `gain` and `total` in tenths (total 13 = ×1.3). */
   | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank'; id: string; x: number; y: number; gain: number; total: number; ball: number }
-  | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number };
+  | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number; foul?: boolean };
 
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
 
@@ -75,6 +78,8 @@ export type PitchCarry = {
   genCount: [string, number][];
   rallyCharges: number;
   rng: number;
+  /** Player route: free fouls left this challenge (absent in older saves = full). */
+  foulsLeft?: number;
 };
 
 export type Ball = {
@@ -117,6 +122,14 @@ export class Simulation {
   time = 0;
   swingStart = -100;
   swingId = 0;
+  /** Player route (PLAY): did the current swing touch a ball / was its whiff already reported. */
+  private swingHit = true;
+  private whiffSwingId = 0;
+  /** A swing pressed during recovery waits until this sim time (PLAY.swingBuffer). */
+  private swingQueuedUntil = -1;
+  /** Did any ball touch the bat this pitch; free fouls left this challenge. */
+  private pitchTouched = false;
+  foulsLeft = PLAY.foulsPerChallenge;
   events: SimEvent[] = [];
   /** Splitter state per id. */
   splitters = new Map<string, { charge: number; lastHit: number; readyAt: number; launchAt: number | null }>();
@@ -304,12 +317,16 @@ export class Simulation {
     this.clearBalls();
     this.batterX = config.batter.startX;
     this.swingStart = -100;
+    this.swingHit = true;
+    this.swingQueuedUntil = -1;
+    this.pitchTouched = false;
     // Mechanism progress (multiball charge, bank lamps) carries over between strikes; it only
     // resets when a new game or challenge starts (first pitch).
     if (this.rules.pitchNumber === 1) {
       for (const st of this.splitters.values()) Object.assign(st, { charge: 0, lastHit: -10, readyAt: 0, launchAt: null });
       for (const b of this.banks.values()) b.clear();
       this.genCount.clear();
+      this.foulsLeft = PLAY.foulsPerChallenge;
     } else {
       // a launch that was mid-fire when the last ball drained stays one hit away
       for (const [id, st] of this.splitters) {
@@ -337,6 +354,7 @@ export class Simulation {
       genCount: [...this.genCount],
       rallyCharges: this.rallyCharges,
       rng: this.seed,
+      foulsLeft: this.foulsLeft,
     };
   }
 
@@ -362,6 +380,7 @@ export class Simulation {
     this.genCount = new Map(c.genCount);
     this.rallyCharges = c.rallyCharges;
     this.seed = c.rng >>> 0 || 1;
+    this.foulsLeft = c.foulsLeft ?? PLAY.foulsPerChallenge;
   }
 
   private clearBalls() {
@@ -395,9 +414,16 @@ export class Simulation {
   swing() {
     if (this.rules.phase !== 'live') return false;
     const s = config.swing;
-    if (this.swingT < s.swingSeconds + s.recoverSeconds + s.cooldownSeconds) return false;
+    const lockout = PLAY.enabled && !this.swingHit ? PLAY.whiffLockout : 0;
+    const wait = s.swingSeconds + s.recoverSeconds + s.cooldownSeconds + lockout - this.swingT;
+    if (wait > 0) {
+      if (PLAY.enabled && wait <= PLAY.swingBuffer) this.swingQueuedUntil = this.time + wait;
+      return false;
+    }
+    this.swingQueuedUntil = -1;
     this.swingStart = this.time;
     this.swingId++;
+    this.swingHit = false;
     this.emit({ type: 'swing' });
     return true;
   }
@@ -483,10 +509,14 @@ export class Simulation {
       if (controls.swingPressed) {
         this.swing();
         controls.swingPressed = false;
-      }
+      } else if (this.swingQueuedUntil >= 0 && this.time >= this.swingQueuedUntil) this.swing();
       if (this.rules.phase === 'live') this.batterX += controls.moveAxis * b.moveSpeed * dt + controls.dragDelta;
       controls.dragDelta = 0;
       this.batterX = Math.max(b.minX, Math.min(b.maxX, this.batterX));
+    }
+    if (PLAY.enabled && !this.swingHit && this.whiffSwingId !== this.swingId && this.swingT >= config.swing.swingSeconds) {
+      this.whiffSwingId = this.swingId;
+      this.emit({ type: 'whiff' });
     }
     if (!this.balls.length) return;
 
@@ -555,7 +585,11 @@ export class Simulation {
       this.rules.batHit();
       // Bat hits are ordinary scoring: they follow the global multiplier like everything else.
       this.award('bat', 'bat', config.batHitPoints, config.batHitPoints, ball);
-      this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id });
+      this.swingHit = true;
+      this.pitchTouched = true;
+      const sweet = PLAY.enabled && isSweetSpot(contact.angle, config.swing.centerAngle);
+      if (sweet) this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, PLAY.sweetSpot.points, ball);
+      this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id, ...(sweet ? { sweet } : {}) });
     }
 
     // Ramp mouths: crossing into the mouth while moving up the ramp starts the ride.
@@ -842,10 +876,13 @@ export class Simulation {
     this.bodyToBall.delete(ball.body);
     this.world.destroyBody(ball.body);
     this.pendingKicks = this.pendingKicks.filter(k => k.ball !== ball);
-    const strike = this.rules.drain();
+    // Foul ball (player route): the last ball of a pitch that never touched the bat is a free re-pitch, once per challenge.
+    const foul = PLAY.enabled && !this.pitchTouched && this.foulsLeft > 0 && this.rules.phase === 'live' && this.rules.ballsLive === 1;
+    if (foul) this.foulsLeft--;
+    const strike = foul ? this.rules.foul() : this.rules.drain();
     if (strike) this.clearBalls();
     const side = x < 8.2 ? 'left' : x > 11.8 ? 'right' : 'center';
-    this.emit({ type: 'drain', x, strike, side, ball: ball.id, ballsLeft: this.balls.length });
+    this.emit({ type: 'drain', x, strike, side, ball: ball.id, ballsLeft: this.balls.length, ...(foul ? { foul } : {}) });
   }
 }
 

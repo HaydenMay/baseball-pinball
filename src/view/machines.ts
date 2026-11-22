@@ -10,7 +10,7 @@ import { config } from '../config.ts';
 import { dropLanding, rampAt, rampHeight, type Pt, type RampPath, type SpinnerDef } from '../machines/mechanisms.ts';
 import { scoopArc, splitterPoly } from '../physics/board.ts';
 import type { Simulation, SimEvent } from '../physics/sim.ts';
-import { drawGlow, underlay } from './vfx.ts';
+import { drawGlow, readableSize, underlay, VFX_TEXT } from './vfx.ts';
 import { BROADCAST_CLASSIC, derived, rgba, type Materials, type Theme } from './theme.ts';
 import type { MultGateDef } from '../machines/mechanisms.ts';
 
@@ -677,11 +677,12 @@ function drawRideTallies(ctx: CanvasRenderingContext2D, view: GameView) {
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     ctx.scale(pulse, pulse);
-    ctx.font = `italic 800 ${t.last ? 0.62 : 0.5}px ${FONT}`;
+    const fs = readableSize(ctx, t.last ? 0.62 : 0.5, VFX_TEXT.minTallyPx);
+    ctx.font = `italic 800 ${fs.toFixed(3)}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const text = `${t.last ? 'RIDE ' : ''}+${t.value.toLocaleString()}`;
-    ctx.lineWidth = 0.14;
+    ctx.lineWidth = 0.14 * (fs / 0.5);
     ctx.strokeStyle = '#05080f';
     ctx.strokeText(text, 0, 0);
     ctx.fillStyle = t.last ? th.impactCore : th.jackpotAccent;
@@ -699,7 +700,8 @@ export function onMechanismEvent(view: GameView, e: SimEvent) {
     // V2.2: modest feedback — one headline on arrival, a small tally when the ball goes back downstairs
     if (e.phase === 'start') {
       v.flash(e.x, e.y, 2.2, th.jackpotAccent, 0.35);
-      v.flicker(10, UPPER_DECK.roofY + 1.1, 'HOME RUN!  RALLY ×2', th.jackpotAccent, DECK_RALLY_UI.headline);
+      // the player route shows a big HOME RUN banner instead (juice.ts); this in-world headline is the fallback
+      if (!view.bigMoments) v.flicker(10, UPPER_DECK.roofY + 1.1, 'HOME RUN!  RALLY ×2', th.jackpotAccent, DECK_RALLY_UI.headline);
     } else if (e.reason === 'returned' && e.gained) {
       v.flicker(e.x, e.y + 0.9, `RALLY +${e.gained.toLocaleString()}`, th.energySecondary, DECK_RALLY_UI.tally);
     }

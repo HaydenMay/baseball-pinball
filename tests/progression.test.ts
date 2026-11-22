@@ -117,9 +117,9 @@ test('power: the grant lands before the inning-ending draft is rolled, so the ne
 
 // ───────── B. Target curve ─────────
 
-test('targets: seeds unchanged, then ×1.4 per challenge (experimental)', () => {
+test('targets: softened C1–C4, then ×1.4 per challenge from C3 = 8,000 (C5+ unchanged)', () => {
   assert.equal(ECONOMY.targetGrowth, 1.4);
-  const want = [1500, 4000, 8000, 11200, 15700, 22000, 30700, 43000, 60200, 84300, 118100, 165300, 231400, 324000, 453600];
+  const want = [1200, 2400, 4500, 8000, 15700, 22000, 30700, 43000, 60200, 84300, 118100, 165300, 231400, 324000, 453600];
   assert.deepEqual(Array.from({ length: 15 }, (_, i) => targetFor(i + 1)), want);
   assert.deepEqual([25, 26, 27].map(targetFor), [13119200, 18366900, 25713600]);
 });

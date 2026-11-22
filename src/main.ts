@@ -4,6 +4,9 @@ import '@fontsource/barlow-condensed/800-italic.css';
 import './style.css';
 import { BRAND } from './core/brand.ts';
 import { Coach, TipBook } from './run/coach.ts';
+import { Juice, JUICE, type MomentKind } from './view/juice.ts';
+import { PLAY } from './core/play-rules.ts';
+import { ECONOMY } from './run/economy.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
@@ -51,15 +54,35 @@ function onSimEvent(e: SimEvent) {
   view.onSimEvent(e);
   sfx.onEvent(e);
   telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber, sim);
-  // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
-  if (e.type === 'drain' && e.strike) onDrain();
-  if (e.type === 'clear') build?.onClear();
   if (e.type === 'mult') procMult();
   if (coach) {
     if (e.type === 'swing') coach.onSwing();
     else if (e.type === 'bat') coach.onHit();
-    else if ((e.type === 'drain' && e.strike) || e.type === 'clear') coach.pause();
+    else if ((e.type === 'drain' && (e.strike || e.foul)) || e.type === 'clear') coach.pause();
   }
+  // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
+  if (juice) {
+    // Big moments (presentation only); end-of-pitch moments hold their card for a short beat.
+    if (e.type === 'bat') {
+      juice.hitStop();
+      if (e.sweet) {
+        juice.play('sweet', Math.round(PLAY.sweetSpot.points * (sim.rules.multTenths / 10)));
+        sfx.moment('sweet');
+      }
+    } else if (e.type === 'deckRally' && e.phase === 'start') {
+      juice.play('homeRun');
+      sfx.moment('homeRun');
+    } else if (e.type === 'machine' && e.kind === 'jackpot') juice.play('jackpot', e.points);
+    else if (e.type === 'multiball') juice.play('multiball');
+    else if (e.type === 'bank') juice.play('bank', e.points);
+    else if (e.type === 'clear') {
+      const final = !!build && build.run.challenge >= ECONOMY.lastChallenge;
+      return beat(final ? 'runComplete' : 'cleared', () => build?.onClear());
+    } else if (e.type === 'drain' && e.foul) return beat('foul', onFoul);
+    else if (e.type === 'drain' && e.strike) return beat(sim.rules.phase === 'over' ? 'gameOver' : 'strike', onDrain, sim.rules.strikes);
+  }
+  if (e.type === 'drain' && e.strike) onDrain();
+  if (e.type === 'clear') build?.onClear();
 }
 function makeSim(p: Preset, target: number | null) {
   const s = new Simulation({ preset: p, seed: (Math.random() * 2 ** 32) >>> 0, onEvent: onSimEvent });
@@ -72,6 +95,24 @@ const view = new GameView(canvas, theme, sim.layout);
 const v2 = isV2Route(location.pathname, location.search);
 // First-time tips only on the player route (frozen/legacy routes stay as they were).
 const coach: Coach | null = v2 && buildMode ? new Coach(stage, new TipBook(browserStore())) : null;
+// Player-route batting rules (whiff lockout, sweet spot, foul ball) and big-moment presentation.
+const player = v2 && buildMode;
+PLAY.enabled = player;
+const juice: Juice | null = player ? new Juice(stage, canvas) : null;
+view.bigMoments = !!juice;
+/** A moment's beat is playing before its card (READY is held until the card shows). */
+let beatTimer = 0;
+let beatPending = false;
+function beat(kind: MomentKind, then: () => void, n?: number) {
+  juice!.play(kind, n);
+  sfx.moment(kind);
+  beatPending = true;
+  clearTimeout(beatTimer);
+  beatTimer = window.setTimeout(() => {
+    beatPending = false;
+    then();
+  }, JUICE.beatMs[kind as keyof typeof JUICE.beatMs] ?? 700);
+}
 $('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? (v2 ? 'PLAY BALL' : 'LEGACY') : 'BASELINE';
 // The run route is what playtesters see: no "prototype/test" wording there (the legacy and map routes keep theirs).
 document.title = buildMode ? (v2 ? BRAND.name : `${BRAND.name} · Legacy run`) : `${BRAND.name} · ${preset.name}`;
@@ -130,7 +171,11 @@ function updateHud() {
     shown.strikes = r.strikes;
   }
   const n = sim.balls.length;
-  const state = paused ? 'PAUSED' : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  const runEnd = build?.run.phase === 'won' ? 'RUN COMPLETE' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
+  const state = paused ? 'PAUSED' : runEnd ? runEnd : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  // Pause only means something during a live pitch (it used to sit there on the game-over card).
+  const canPause = paused || r.phase === 'live';
+  if (pauseBtn.disabled === canPause) pauseBtn.disabled = !canPause;
   if (state !== shown.state) {
     hud.state.textContent = state;
     shown.state = state;
@@ -148,6 +193,8 @@ altBtn.hidden = true;
 let altAction: () => void = () => {};
 altBtn.addEventListener('click', () => altAction());
 readyBtn.after(altBtn);
+/** Has this session thrown a pitch yet (controls hints retire after it). */
+let pitchedOnce = false;
 function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string, alt?: { label: string; action: () => void }) {
   altBtn.hidden = !alt;
   if (alt) {
@@ -162,14 +209,24 @@ function showOverlay(kicker: string, title: string, text: string, button: string
   for (const el of document.querySelectorAll<HTMLElement>('#devReport, .dev-hint')) el.hidden = true;
   readyBtn.textContent = button;
   overlayAction = action;
+  // Controls hints belong on the cards before the first pitch only (not on strike / clear / game-over cards).
+  for (const el of document.querySelectorAll<HTMLElement>('#overlay .hint')) el.classList.toggle('spent', pitchedOnce);
+  // First-time tips that would cover the table mid-play are shown on the next card instead.
+  const tip = coach?.cardTip(sim.layout.sections.includes('upperDeck')) ?? '';
+  const tipEl = $('#overlayTip');
+  tipEl.innerHTML = tip;
+  tipEl.hidden = !tip;
   overlay.hidden = false;
   readyBtn.focus({ preventScroll: true });
 }
 function onReady() {
   sfx.unlock();
   if (paused) return togglePause();
+  if (beatPending) return;
   if (!sim.ready()) return;
+  pitchedOnce = true;
   coach?.onPitch(sim.layout.sections.includes('upperDeck'));
+  juice?.reset();
   overlay.hidden = true;
   readyBtn.blur();
   keys.clear();
@@ -189,6 +246,11 @@ function onDrain() {
   if (r.phase === 'over') showOverlay('THREE STRIKES', 'GAME OVER', `Final score ${r.score.toLocaleString()}. Run it back?`, 'PLAY AGAIN');
   else showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', r.ballScore > 0 ? `+${r.ballScore.toLocaleString()} banked. Batter re-centers for the next pitch.` : 'No points that ball. Batter re-centers for the next pitch.', 'READY');
 }
+function onFoul() {
+  const r = sim.rules;
+  if (build && r.phase === 'ready') build.savePitch(sim.carryState());
+  showOverlay('FOUL BALL', 'NO STRIKE', `That pitch never touched the bat, so it doesn't count. One free foul per challenge.${r.ballScore ? ` +${r.ballScore.toLocaleString()} banked.` : ''}`, 'READY');
+}
 function togglePause() {
   if (sim.rules.phase !== 'live') return;
   paused = !paused;
@@ -207,6 +269,16 @@ function togglePause() {
   }
 }
 readyBtn.addEventListener('click', () => overlayAction());
+// Phone interruptions: switching apps/tabs or turning the phone sideways pauses a live pitch.
+const pauseIfLive = () => {
+  if (!paused && sim.rules.phase === 'live') togglePause();
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseIfLive();
+});
+matchMedia('(orientation: landscape) and (max-height: 500px)').addEventListener('change', e => {
+  if (e.matches) pauseIfLive();
+});
 const muteBtn = $<HTMLButtonElement>('#mute');
 const showMute = () => {
   muteBtn.textContent = sfx.muted ? '🔇' : '🔊';
@@ -299,7 +371,11 @@ function tick(ms: number) {
   if (!paused) {
     controls.moveAxis = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
     if (coach && (controls.moveAxis || controls.dragDelta) && sim.rules.phase === 'live') coach.onMove();
-    acc += delta;
+    if (juice) {
+      juice.update(delta);
+      view.bulbChase = juice.chase;
+    }
+    acc += delta * (juice ? juice.timeScale() : 1);
     while (acc >= STEP) {
       sim.step(STEP, controls);
       acc -= STEP;
@@ -524,6 +600,7 @@ let settings: Settings = loadSettings();
 const applySettings = () => {
   view.vfx.intensity = effectsIntensity(settings);
   document.body.classList.toggle('fx-reduced', settings.effects === 'reduced');
+  if (juice) juice.reduced = settings.effects === 'reduced';
   if (coach) {
     coach.book.enabled = settings.tips;
     coach.refresh();
@@ -566,6 +643,7 @@ function toTitle() {
   if (paused) togglePause();
   overlay.hidden = true;
   coach?.pause();
+  juice?.reset();
   title.show(readSave(saveStore, saveRoute));
 }
 if (build && title) build.host.toTitle = toTitle;

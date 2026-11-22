@@ -236,7 +236,7 @@ export class BuildUI {
     this.tag();
     this.save();
     this.host.showOverlay(
-      `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} OF ${ECONOMY.lastChallenge}`,
+      `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
       `TARGET ${fmt(this.run.target)}`,
       this.run.challenge === 1
         ? 'Factory table. Reach the target within three strikes to earn an upgrade.'
@@ -285,16 +285,18 @@ export class BuildUI {
     }
     this.tag();
     this.save();
-    // V2: the machine just grew. Rebuild the board now so the draft can preview the new section's mounts.
-    if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), this.run.target);
-    const grew = this.run.sectionGrant ? `THE MACHINE GREW: ${this.run.sectionGrant.name.toUpperCase()} UNLOCKED (FREE). ` : '';
+    const grew = this.run.sectionGrant ? `The machine grew: ${this.run.sectionGrant.name} unlocked (free). ` : '';
+    const inning = this.run.powerGrant ? `Inning ${this.run.powerGrant.inning} unlocked: max Power +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} total). ` : '';
     this.host.showOverlay(
-      `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} CLEARED`,
-      `${fmt(sim.rules.score)} / ${fmt(this.run.target)}`,
-      `${grew}${this.run.powerGrant ? `INNING ${this.run.powerGrant.inning} UNLOCKED — MAX POWER +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} TOTAL). ` : ''}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
+      `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
+      'CHALLENGE CLEARED',
+      `${fmt(sim.rules.score)} / ${fmt(this.run.target)}. ${grew}${inning}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
       'CHOOSE REWARD',
       () => {
         this.host.hideOverlay();
+        // V2: the machine just grew. Rebuild the board only now (the clear card keeps showing the cleared
+        // score in the HUD behind it), so the draft can preview the new section's mounts.
+        if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), this.run.target);
         this.openPanel();
       },
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,

@@ -88,6 +88,14 @@ export class GameRules {
     return true;
   }
 
+  /** The last ball left without touching the bat and a free foul was available: back to READY, no strike. */
+  foul(): boolean {
+    if (this.phase !== 'live' || this.ballsLive <= 0) return false;
+    this.ballsLive = 0;
+    this.phase = 'ready';
+    return false;
+  }
+
   reset() {
     this.phase = 'ready';
     this.strikes = 0;

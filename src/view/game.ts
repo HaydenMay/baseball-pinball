@@ -12,6 +12,7 @@ import { drawGlow, underlay, Vfx } from './vfx.ts';
 import { Camera, cameraBalls, visibleRect, type CamBall, type Rect } from './camera.ts';
 import { drawMachinesFloorDynamic, drawMachinesFloorStatic, drawMachinesRaised, onMechanismEvent } from './machines.ts';
 import { derived, type Theme } from './theme.ts';
+import { JUICE } from './juice.ts';
 
 /** Visible world rectangle (a little beyond the rails for the frame and floodlights). */
 export const VIEW = { x0: -0.9, y0: -1.7, w: 21.8, h: 34.1 };
@@ -905,6 +906,13 @@ export class GameView {
   }
 
   // ───────────────────────────── dynamic layer ─────────────────────────────
+  /** Big-moment bulb chase set by the main loop from Juice (null = normal attract chase). */
+  bulbChase: { color: string; left: number } | null = null;
+  /** Player route: big moments get a DOM banner (juice.ts), so in-world headlines are skipped. */
+  bigMoments = false;
+  /** Where the WHIFF tag appears (updated each frame from the batter's hands). */
+  private whiffAt = { x: 10, y: 24 };
+
   onSimEvent(e: import('../physics/sim.ts').SimEvent) {
     const t = this.theme;
     if (e.type === 'machine') {
@@ -923,6 +931,7 @@ export class GameView {
         const s = this.layout.slings.find(s => s.id === e.id)!;
         this.lit.set(e.id, 0.35);
         this.vfx.slingHit(e.x, e.y, s.kickDir.x, s.kickDir.y);
+        if (e.points) this.vfx.flicker(e.x + s.kickDir.x * 0.8, e.y - 0.5, '+' + e.points, t.impactCore, 0.4);
       } else if (e.kind === 'lane') {
         this.lit.set(e.id, 1.0);
         const l = this.layout.lanes.find(l => l.id === e.id)!;
@@ -938,6 +947,12 @@ export class GameView {
       this.vfx.batHit(e.x, e.y, e.contact.velocity.x, e.contact.velocity.y);
       this.lastContact = { x: e.x, y: e.y, vx: e.contact.velocity.x, vy: e.contact.velocity.y, angle: e.contact.angle };
       this.lit.set('bat', 0.18);
+      if (e.sweet) {
+        this.vfx.flash(e.x, e.y, 2.2, t.impactCore, 0.16);
+        this.vfx.ring(e.x, e.y, 0.5, 2.4, t.energyPrimary, 0.32, true, 0.14);
+      }
+    } else if (e.type === 'whiff') {
+      this.vfx.flicker(this.whiffAt.x, this.whiffAt.y, 'WHIFF', t.m.trimDeep, 0.45);
     } else if (e.type === 'serve') {
       this.trails.clear();
       this.lit.set('mound', 0.4);
@@ -1046,9 +1061,18 @@ export class GameView {
     ctx.setLineDash([]);
     if (this.highlightLabel && this.highlights.length) {
       const top = this.highlights.reduce((a, h) => (h.y - h.r < a.y - a.r ? h : a));
-      const y = Math.max(0.2, top.y - top.r - 0.55), x = Math.min(17.5, Math.max(2.5, top.x));
-      ctx.font = `italic 800 0.62px ${FONT}`;
-      const w = ctx.measureText(this.highlightLabel).width + 0.6;
+      // keep the whole label on the table: shrink long labels to fit, then clamp the center by its width
+      const maxW = VIEW.w - 0.8;
+      let fs = 0.62;
+      ctx.font = `italic 800 ${fs}px ${FONT}`;
+      const raw = ctx.measureText(this.highlightLabel).width + 0.6;
+      if (raw > maxW) {
+        fs *= maxW / raw;
+        ctx.font = `italic 800 ${fs.toFixed(3)}px ${FONT}`;
+      }
+      const w = Math.min(raw, maxW);
+      const x0 = VIEW.x0 + 0.4 + w / 2, x1 = VIEW.x0 + VIEW.w - 0.4 - w / 2;
+      const y = Math.max(0.2, top.y - top.r - 0.55), x = Math.min(x1, Math.max(x0, top.x));
       ctx.fillStyle = '#06101ee6';
       ctx.strokeStyle = this.theme.energyPrimary;
       ctx.lineWidth = 0.05;
@@ -1067,7 +1091,14 @@ export class GameView {
   private drawBulbs(ctx: CanvasRenderingContext2D) {
     const t = this.time;
     ctx.globalCompositeOperation = 'lighter';
+    const boost = this.bulbChase;
     this.bulbs.forEach((b, i) => {
+      if (boost) {
+        // big-moment light show: fast chase in the moment's color, brighter and larger
+        const c = 0.5 + 0.5 * Math.sin(t * 3 * JUICE.chaseSpeed - i * 0.9);
+        drawGlow(ctx, boost.color, b.x, b.y, 0.7, 0.25 + c * 0.6);
+        return;
+      }
       const chase = 0.5 + 0.5 * Math.sin(t * 3 - i * 0.55);
       drawGlow(ctx, this.theme.railLight, b.x, b.y, 0.42, 0.22 + chase * 0.2);
     });
@@ -1184,6 +1215,7 @@ export class GameView {
 
   private drawBatter(ctx: CanvasRenderingContext2D, sim: Simulation) {
     const hands = sim.hands;
+    this.whiffAt = { x: hands.x, y: hands.y - 1.6 };
     const S = 1.45; // batter art scale (cosmetic only; collision comes from config.swing)
     const bx = sim.batterBodyX, by = config.batter.handsY + 0.42;
     const angle = sim.batAngle;

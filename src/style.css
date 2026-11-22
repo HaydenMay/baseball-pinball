@@ -40,6 +40,8 @@
   --cyan: #6fe6ff;
   --amber: #ffcb5c;
   --board-aspect: 0.6393; /* VIEW.w / VIEW.h in game.ts */
+  /* Phone: scoreboard + status strip height (measured ≈ 115 px) the board must leave room for. */
+  --hud-h-phone: 118px;
   --hud-h: 98px;
   --font: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
 }
@@ -321,7 +323,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   html, body { height: 100%; overflow: hidden; touch-action: none; }
   #app { padding: 0; height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   aside { display: none; }
-  .cabinet { --hud-h: 92px; --w: min(100vw, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--hud-h)) * var(--board-aspect))); filter: none; }
+  .cabinet { --hud-h: var(--hud-h-phone); --w: min(100vw, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--hud-h)) * var(--board-aspect))); filter: none; }
   .scoreboard { border-radius: 10px 10px 0 0; padding: 4px; gap: 4px; }
   #stage { border-radius: 0 0 12px 12px; }
 }
@@ -481,7 +483,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .title-credits { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; font: 500 14px/1.35 system-ui, sans-serif; color: #d7e1ee; }
 .title-credits dt { font: 800 13px var(--font); letter-spacing: 0.08em; color: var(--gold-hi); }
 .title-credits dd { margin: 0; }
-.title-version { margin: 12px 0 0; font: 600 12px var(--font); color: var(--m-label); }
+.title-version { margin: 14px 0 4px; text-align: center; font: 600 12px var(--font); color: var(--m-label); }
 .title-card button:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
 /* Effects: Reduced (Settings) also stops the bouncing UI animations */
 body.fx-reduced .multwrap.proc .screen.mult, body.fx-reduced .multwrap.proc .rays, body.fx-reduced .multwrap.proc .mwin, body.fx-reduced .multwrap.proc strong { animation: none; }
@@ -525,3 +527,40 @@ body.fx-reduced .coach-arrows, body.fx-reduced .coach-ring { animation: none; }
 .ptip button { flex: none; min-height: 36px; padding: 4px 10px; font: italic 800 13px var(--font); letter-spacing: 0.06em; color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); border: 0; border-radius: 7px; cursor: pointer; }
 .title-mini { flex: none; min-height: 38px; padding: 4px 12px; font: 800 13px var(--font); letter-spacing: 0.06em; color: #e8eef6; background: transparent; border: 1px solid var(--gold); border-radius: 8px; cursor: pointer; }
 .title-mini:disabled { opacity: 0.45; cursor: default; }
+
+/* ─── Big moments (src/view/juice.ts) ─── */
+:root {
+  --moment-top: 30%;          /* banner position on the stage */
+  --moment-big: 44px;
+  --moment-mid: 30px;
+  --moment-sub: 15px;
+  --moment-plate: #050b18d9;  /* dark backing so text reads over any table art */
+}
+.table-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 3; mix-blend-mode: screen; }
+.moment { position: absolute; left: 50%; top: var(--moment-top); z-index: 5; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 18px 10px; border-radius: 14px; background: var(--moment-plate); border: 2px solid var(--moment-color, var(--gold)); box-shadow: 0 0 24px color-mix(in srgb, var(--moment-color, #fff) 55%, transparent), 0 10px 30px #000a; transform: translate(-50%, -50%) scale(0.4); opacity: 0; white-space: nowrap; }
+.moment[hidden] { display: none; }
+.moment b { font: italic 900 var(--moment-big)/1 var(--font); letter-spacing: 0.04em; color: var(--moment-color, var(--gold-hi)); text-shadow: 0 0 14px color-mix(in srgb, var(--moment-color, #fff) 70%, transparent), 0 3px 0 #000; }
+.moment.mid b { font-size: var(--moment-mid); }
+.moment small { font: 800 var(--moment-sub)/1.1 var(--font); letter-spacing: 0.12em; color: #f4f8ff; }
+.moment.show { animation: moment-pop 0.32s cubic-bezier(0.2, 1.6, 0.4, 1) forwards; }
+.moment.out { opacity: 0; transform: translate(-50%, -60%) scale(1); transition: opacity 0.28s, transform 0.28s; }
+@keyframes moment-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+body.fx-reduced .moment.show { animation-duration: 0.01s; }
+#game { will-change: transform; }
+
+/* Landscape phone: ask for portrait (the game also pauses). */
+.rotate { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .rotate { display: flex; position: fixed; inset: 0; z-index: 50; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: linear-gradient(var(--m-page-a), var(--m-page-b)); color: #eef4f7; text-align: center; font-family: var(--font); }
+  .rotate b { font: italic 900 30px var(--font); letter-spacing: 0.06em; color: var(--gold-hi); }
+  .rotate span { font-size: 54px; animation: rotate-hint 1.6s ease-in-out infinite; }
+  .rotate p { margin: 0; font-size: 16px; color: #c2d2dc; }
+}
+@keyframes rotate-hint { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
+body.fx-reduced .rotate span { animation: none; }
+
+/* Card extras: controls hints retire after the first pitch; first-time tips ride on the card. */
+#overlay .hint.spent { display: none; }
+.card-tip { margin: 8px 0 2px; padding: 8px 10px; border-radius: 8px; background: var(--coach-tip-bg); border: 1px solid var(--gold); font: 500 14px/1.35 system-ui, sans-serif; color: #e8eef6; text-align: left; }
+.card-tip b { color: var(--gold-hi); font-weight: 800; }
+#pause:disabled { opacity: 0.35; cursor: default; }

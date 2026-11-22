@@ -11,8 +11,13 @@ export const ECONOMY = {
   powerPerInning: 1,
   /** APPROVED: a full run is 5 innings × 3 (Starter, Reliever, Closer) = 15 challenges; clearing C15 wins. */
   lastChallenge: 15,
-  /** Challenge score targets for the first challenges; past the list, each target is the last × growth. */
-  targets: [1500, 4000, 8000],
+  /**
+   * Challenge score targets for the first challenges (Nov 22: softened from 1,500 / 4,000 / 8,000 / 11,200 so
+   * a casual player reaches the first shop and the Upper Deck). Past the list, targets grow from `growthBase`.
+   */
+  targets: [1200, 2400, 4500, 8000],
+  /** Later targets = growthBase.target × growth^(challenge − growthBase.challenge); keeps C5+ as before. */
+  growthBase: { challenge: 3, target: 8000 },
   /** EXPERIMENTAL test value (was 1.6): growth per challenge after the seeded targets. Not final tuning. */
   targetGrowth: 1.4,
   /** Money awarded on a clear: base + per unused strike. */
@@ -30,7 +35,8 @@ export const ECONOMY = {
 export function targetFor(challenge: number) {
   const t = ECONOMY.targets;
   if (challenge <= t.length) return t[challenge - 1];
-  return Math.round((t[t.length - 1] * Math.pow(ECONOMY.targetGrowth, challenge - t.length)) / 100) * 100;
+  const g = ECONOMY.growthBase;
+  return Math.round((g.target * Math.pow(ECONOMY.targetGrowth, challenge - g.challenge)) / 100) * 100;
 }
 
 /** Inning (1-based) a challenge belongs to. */

@@ -57,6 +57,21 @@ export function drawGlow(ctx: CanvasRenderingContext2D, color: string, x: number
   ctx.globalAlpha = 1;
 }
 
+/** On-table text stays readable on a phone whatever the camera zoom (critic: popups fell to 6–7 px). */
+export const VFX_TEXT = {
+  /** Smallest CSS px for floating score popups. */
+  minPopupPx: 14,
+  /** Smallest CSS px for running ride tallies. */
+  minTallyPx: 15,
+};
+
+/** World-unit font size for `base` units, raised so it renders at least `minCssPx` on screen. */
+export function readableSize(ctx: CanvasRenderingContext2D, base: number, minCssPx: number) {
+  const dpr = typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 2.5);
+  const cssPerUnit = Math.abs(ctx.getTransform().a) / dpr || 1;
+  return Math.max(base, minCssPx / cssPerUnit);
+}
+
 export class Vfx {
   particles: Particle[] = [];
   rings: Ring[] = [];
@@ -218,12 +233,13 @@ export class Vfx {
       }
     }
     ctx.globalCompositeOperation = 'source-over';
+    const size = this.flickers.length ? readableSize(ctx, 0.62, VFX_TEXT.minPopupPx) : 0.62;
     for (const f of this.flickers) {
       const k = f.life / f.max;
       ctx.globalAlpha = Math.min(1, k * 2.2);
-      ctx.font = 'italic 800 0.62px "Barlow Condensed", "Arial Narrow", sans-serif';
+      ctx.font = `italic 800 ${size.toFixed(3)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
       ctx.textAlign = 'center';
-      ctx.lineWidth = 0.12;
+      ctx.lineWidth = 0.12 * (size / 0.62);
       ctx.strokeStyle = '#06101dcc';
       ctx.strokeText(f.text, f.x, f.y);
       ctx.fillStyle = f.color;

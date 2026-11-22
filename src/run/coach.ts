@@ -2,12 +2,13 @@
  * First-time teaching (1.0 scope #8): short, skippable hints shown the first time each idea comes up.
  * Seen tips persist per device (`bp-tips`); Settings can turn tips off or show them again.
  *
- * In play (non-blocking, never pauses the game):
- *   controls: first pitches: "DRAG to move" (left half) / "TAP to swing" (right half). Each half fades
- *             once used; done after both, after the first hit, or after `controlsMaxPitches`.
- *   aim:      right after the first hit: early pulls left, late pushes right.
- *   deck:     first pitch with the Upper Deck on the table: where the Home Run ramp is and what it pays.
- * In the build panel (a dismissible banner): draft (Power), shop (money, THIS/ALL, selling).
+ * In play (non-blocking, never pauses the game, never over the upper table):
+ *   controls: first pitches: "DRAG to move" (left half) / "TAP to swing" (right half) under the batter.
+ *             Each half fades once used; done after both, after the first hit, or after `controlsMaxPitches`.
+ * On the next card between pitches (critic: mid-play toasts covered the top bumpers):
+ *   aim:      after the first hit: early pulls left, late pushes right, sweet spot.
+ *   deck:     once the Upper Deck is on the table: where the Home Run ramp is and what it pays.
+ * In the build panel (a dismissible banner): draft (Power), shop (money, tap to preview).
  */
 import type { Store } from './save.ts';
 
@@ -15,9 +16,6 @@ export type TipId = 'controls' | 'aim' | 'deck' | 'draft' | 'shop';
 
 export const COACH = {
   key: 'bp-tips',
-  /** Seconds the in-play toasts stay up. */
-  aimToastSec: 4.5,
-  deckToastSec: 7,
   /** Give up on the controls hint after this many pitches (the player clearly found their own way). */
   controlsMaxPitches: 3,
   /** Fade time for hints, ms (matches --coach-fade in style.css). */
@@ -33,8 +31,8 @@ export const TIPS = {
     rightSub: 'right thumb · swing',
     keys: '<b>A / D</b> or <b>← →</b> to move · <b>SPACE</b> to swing',
   },
-  aim: 'Nice hit! Swing <b>early</b> to pull it left, <b>late</b> to push it right.',
-  deck: '<b>THE UPPER DECK IS OPEN.</b> Send the ball into the <b>HOME RUN</b> ramp on the right: 3,000 points and <b>×2</b> on everything upstairs.',
+  aim: '<b>AIMING:</b> swing <b>early</b> to pull the ball left, <b>late</b> to push it right. Nail the middle for a <b>SWEET SPOT</b> bonus.',
+  deck: '<b>NEW: THE UPPER DECK.</b> Send the ball into the <b>HOME RUN</b> ramp on the right for 3,000 points and <b>×2</b> on everything upstairs.',
   draft: '<b>POWER ⚡</b> is your table’s budget: machines use it, boosts don’t. Tap a card to see where it goes.',
   shop: 'Spend <b>$</b> on boosts. Tap a card to see what it powers up on the table. Money you don’t spend carries over.',
 };
@@ -110,10 +108,10 @@ export class Coach {
   readonly book: TipBook;
   private el: HTMLDivElement;
   private ctl: HTMLDivElement;
-  private toastEl: HTMLDivElement;
   private lesson = new ControlsLesson();
-  private toastTimer = 0;
   private live = false;
+  /** The player has hit the ball, so the aim tip is ready for the next card. */
+  private aimEarned = false;
   private touch: boolean;
 
   constructor(stage: HTMLElement, book: TipBook) {
@@ -129,10 +127,7 @@ export class Coach {
       ? `<div class="coach-half l"><b>${c.left}</b><span class="coach-arrows">◀ ▶</span><small>${c.leftSub}</small></div><div class="coach-half r"><b>${c.right}</b><span class="coach-ring"></span><small>${c.rightSub}</small></div>`
       : `<div class="coach-pill">${c.keys}</div>`;
     this.ctl.hidden = true;
-    this.toastEl = document.createElement('div');
-    this.toastEl.className = 'coach-toast';
-    this.toastEl.hidden = true;
-    this.el.append(this.ctl, this.toastEl);
+    this.el.append(this.ctl);
     stage.appendChild(this.el);
   }
 
@@ -143,10 +138,6 @@ export class Coach {
       this.lesson.pitch();
       if (this.lesson.done) this.book.mark('controls');
       else this.showControls();
-    }
-    if (deckOpen && this.book.shouldShow('deck')) {
-      this.book.mark('deck');
-      this.toast(TIPS.deck, COACH.deckToastSec);
     }
   }
   onMove() {
@@ -167,16 +158,28 @@ export class Coach {
       this.lesson.hit();
       this.afterControls();
     }
-    if (this.book.shouldShow('aim')) {
+    if (this.book.shouldShow('aim')) this.aimEarned = true;
+  }
+
+  /**
+   * Tips that used to pop up over the table mid-play now ride on the next card between pitches:
+   * the aim tip after the first hit, the Upper Deck tip once the deck is on the table. One per card.
+   */
+  cardTip(deckOpen: boolean): string {
+    if (this.aimEarned && this.book.shouldShow('aim')) {
       this.book.mark('aim');
-      this.toast(TIPS.aim, COACH.aimToastSec);
+      return TIPS.aim;
     }
+    if (deckOpen && this.book.shouldShow('deck')) {
+      this.book.mark('deck');
+      return TIPS.deck;
+    }
+    return '';
   }
   /** Pitch ended, paused, overlay or title shown: tuck everything away (unfinished lessons resume next pitch). */
   pause() {
     this.live = false;
     this.fade(this.ctl);
-    this.hideToast();
   }
   /** Settings changed (tips off, or shown again). */
   refresh() {
@@ -195,17 +198,6 @@ export class Coach {
     if (!this.lesson.done) return;
     this.book.mark('controls');
     this.fade(this.ctl);
-  }
-  private toast(html: string, sec: number) {
-    clearTimeout(this.toastTimer);
-    this.toastEl.innerHTML = html;
-    this.toastEl.classList.remove('out');
-    this.toastEl.hidden = false;
-    this.toastTimer = window.setTimeout(() => this.hideToast(), sec * 1000);
-  }
-  private hideToast() {
-    clearTimeout(this.toastTimer);
-    this.fade(this.toastEl);
   }
   private fade(el: HTMLElement) {
     if (el.hidden) return;
