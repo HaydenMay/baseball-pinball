@@ -13,6 +13,8 @@ import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
 import { setupInstall } from './core/install.ts';
 import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
+import { TitleScreen } from './run/title.ts';
+import { effectsIntensity, loadSettings, saveSettings, type Settings } from './core/settings.ts';
 import { GameView, VIEW } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
@@ -184,7 +186,10 @@ function togglePause() {
   touch.clear();
   pauseBtn.textContent = paused ? '▶' : 'II';
   pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
-  if (paused) showOverlay('TIMEOUT', 'PAUSED', 'Take a breath.', 'RESUME');
+  if (paused) {
+    const menu = !!(window as any).title;
+    showOverlay('TIMEOUT', 'PAUSED', menu ? 'Take a breath. Your run is saved: from the main menu, Continue restarts this pitch.' : 'Take a breath.', 'RESUME', undefined, undefined, menu ? { label: 'MAIN MENU', action: () => toTitle() } : undefined);
+  }
   else {
     overlay.hidden = true;
     readyBtn.blur();
@@ -501,8 +506,51 @@ const build: BuildUI | null = buildMode
       stage,
     )
   : null;
-build?.boot(readSave(saveStore, saveRoute));
+// Player settings (effects intensity; sound uses the audio module's own setting)
+let settings: Settings = loadSettings();
+const applySettings = () => {
+  view.vfx.intensity = effectsIntensity(settings);
+  document.body.classList.toggle('fx-reduced', settings.effects === 'reduced');
+};
+applySettings();
+
+// Title screen on the player-facing run route; the legacy route keeps the direct Continue/New Run cards.
+const title: TitleScreen | null =
+  v2 && build
+    ? new TitleScreen(
+        {
+          onContinue: f => build.resume(f),
+          onNewRun: () => build.newRun(),
+          clearSave: () => clearSave(saveStore, saveRoute),
+          preview: f => build.peek(f),
+          getSound: () => !sfx.muted,
+          setSound: on => {
+            sfx.unlock();
+            sfx.setMuted(!on);
+            showMute();
+          },
+          getSettings: () => settings,
+          setSettings: s => {
+            settings = s;
+            saveSettings(s);
+            applySettings();
+          },
+          version: `${BUILD_INFO.version} (${BUILD_INFO.commit.slice(0, 7)})`,
+        },
+        stage,
+      )
+    : null;
+function toTitle() {
+  if (!title || !build) return;
+  if (paused) togglePause();
+  overlay.hidden = true;
+  title.show(readSave(saveStore, saveRoute));
+}
+if (build && title) build.host.toTitle = toTitle;
+if (title) toTitle();
+else build?.boot(readSave(saveStore, saveRoute));
 (window as any).build = build;
+(window as any).title = title;
 // V2 dev helper (?v2=1 only): grow the machine now instead of clearing C3 first. `v2dev.grow()` then READY.
 if (v2 && build) {
   (window as any).v2dev = {

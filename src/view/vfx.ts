@@ -63,11 +63,17 @@ export class Vfx {
   flickers: Flicker[] = [];
   flashes: Flash[] = [];
   theme: Theme;
+  /** Effects scale from Settings (1 = full; reduced shrinks particle counts and flashes). Presentation only. */
+  intensity = 1;
   constructor(theme: Theme) {
     this.theme = theme;
   }
+  private scaled(n: number) {
+    return this.intensity >= 1 ? n : Math.max(1, Math.round(n * this.intensity));
+  }
 
   sparks(x: number, y: number, n: number, speed: number, color: string, dirX = 0, dirY = 0, spread = Math.PI) {
+    n = this.scaled(n);
     const base = Math.atan2(dirY, dirX);
     for (let i = 0; i < n; i++) {
       const a = dirX || dirY ? base + (Math.random() - 0.5) * spread * 2 : Math.random() * Math.PI * 2;
@@ -78,6 +84,7 @@ export class Vfx {
   }
 
   fragments(x: number, y: number, n: number, color: string, dirX: number, dirY: number) {
+    n = this.scaled(n);
     const base = Math.atan2(dirY, dirX);
     for (let i = 0; i < n; i++) {
       const a = base + (Math.random() - 0.5) * 1.8;
@@ -92,6 +99,7 @@ export class Vfx {
   }
 
   flash(x: number, y: number, r: number, color: string, dur: number) {
+    if (this.intensity < 1) r *= 0.5 + 0.5 * this.intensity;
     this.flashes.push({ x, y, r, life: dur, max: dur, color });
   }
 

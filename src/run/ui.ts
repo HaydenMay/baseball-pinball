@@ -32,6 +32,8 @@ export type BuildHost = {
   saveRun?: (run: Run, pitch?: PitchCarry) => void;
   /** Forget the saved run (it ended). */
   clearRun?: () => void;
+  /** Back to the title screen (only on routes that have one). */
+  toTitle?: () => void;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -103,12 +105,27 @@ export class BuildUI {
     this.start();
   }
 
+  /** Show a saved run's table (or the factory table for null) behind a menu, without starting anything. */
+  peek(f: SaveFile | null) {
+    this.closePanel();
+    const p = f ? Run.fromSave(f.run).run : new Run(1);
+    this.host.loadMachine(p.preset(), p.target);
+    this.host.setTag(f ? `C${p.challenge} · $${p.money} · ⚡${p.powerUsed}/${p.maxPower}` : '');
+  }
+
+  /** Throw away the in-memory run and start a fresh one at challenge 1. */
+  newRun() {
+    this.closePanel();
+    this.runSeed = (Math.random() * 2 ** 32) >>> 0;
+    this.run = new Run(this.runSeed);
+    (window as any).buildRun = this.run;
+    this.start();
+  }
+
   private offerContinue(f: SaveFile) {
     const r = f.run;
     // show the saved machine behind the card, so "continue" visibly means *this* table
-    const peek = Run.fromSave(f.run).run;
-    this.host.loadMachine(peek.preset(), peek.target);
-    this.host.setTag(`C${peek.challenge} · $${peek.money} · ⚡${peek.powerUsed}/${peek.maxPower}`);
+    this.peek(f);
     const where = r.phase === 'challenge' ? `${roleOf(r.challenge)} · challenge ${r.challenge} of ${ECONOMY.lastChallenge}` : `after challenge ${r.challenge} (${r.phase === 'draft' ? 'free pick' : 'shop'})`;
     const pitch = f.pitch ? ` · ${fmt(f.pitch.score)} scored, strike ${f.pitch.strikes} of 3` : '';
     const nMods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
@@ -240,13 +257,9 @@ export class BuildUI {
         'RUN COMPLETE',
         `${fmt(sim.rules.score)} / ${fmt(this.run.target)} on challenge ${this.run.challenge}. Final machine: ${this.machineLine()}.`,
         'NEW RUN',
-        () => {
-          this.runSeed = (Math.random() * 2 ** 32) >>> 0;
-          this.run = new Run(this.runSeed);
-          (window as any).buildRun = this.run;
-          this.start();
-        },
+        () => this.newRun(),
         `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
+        this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
       );
       if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
       return;
@@ -282,12 +295,9 @@ export class BuildUI {
       'CHALLENGE FAILED',
       `${fmt(sim.rules.score)} of ${fmt(this.run.target)} on challenge ${this.run.challenge}. Machine: ${this.machineLine()}.`,
       'NEW RUN',
-      () => {
-        this.runSeed = (Math.random() * 2 ** 32) >>> 0;
-        this.run = new Run(this.runSeed);
-        (window as any).buildRun = this.run;
-        this.start();
-      },
+      () => this.newRun(),
+      undefined,
+      this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
     );
     // The terminal record is archived before the restart button, so it stays downloadable afterwards too.
     if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());

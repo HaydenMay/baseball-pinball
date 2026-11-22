@@ -441,3 +441,47 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .alt-btn { display: block; margin: 12px auto 0; min-height: 44px; padding: 8px 22px; font: italic 800 14px var(--font); letter-spacing: 0.1em; color: var(--m-label); background: transparent; border: 1px solid currentColor; border-radius: 8px; opacity: 0.85; cursor: pointer; }
 .alt-btn[hidden] { display: none; }
 .alt-btn:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
+
+/* ───────── Title screen (src/run/title.ts) — colors from the theme variables so it restyles with the theme ───────── */
+#title {
+  --title-dim: #050b16d9;      /* veil over the live table */
+  --title-logo-a: var(--gold-hi);
+  --title-logo-b: var(--gold);
+  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 14px;
+  background: radial-gradient(ellipse at 50% 40%, #06101e99, var(--title-dim));
+}
+#title[hidden] { display: none; }
+.title-card { width: min(88%, 360px); max-height: 92%; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 22px 18px 18px;
+  background: linear-gradient(var(--m-card-a), var(--m-card-b)); border: 1px solid var(--gold); border-radius: 16px; box-shadow: 0 0 0 1px #000, 0 18px 40px #000b, inset 0 1px 0 #fbe3a655; }
+.title-kicker { font: 700 11px var(--font); letter-spacing: 0.24em; color: var(--m-label); }
+.title-logo { margin: 2px 0 0; line-height: 0.86; font: italic 900 54px var(--font); letter-spacing: 0.01em; color: #f4f6f9; text-shadow: 0 3px 0 #000a; }
+.title-logo span, .title-logo b { display: block; }
+.title-logo b { font-weight: 900; background: linear-gradient(var(--title-logo-a), var(--title-logo-b)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 3px 0 #000a); }
+.title-tag { margin: 2px 0 6px; font: 600 15px/1.25 var(--font); color: #d7e1ee; }
+.title-notice { margin: 0; padding: 7px 10px; border-radius: 8px; font: 600 13px/1.3 var(--font); color: #ffd9a6; background: #ffb34714; border: 1px solid #ffb34755; }
+.title-primary { width: 100%; max-width: 260px; min-height: 50px; font: italic 800 22px var(--font); letter-spacing: 0.08em; border: 0; border-radius: 9px;
+  color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); box-shadow: 0 0 0 1px var(--m-btn-edge), 0 6px 18px #ffb34755; cursor: pointer; }
+.title-secondary { width: 100%; max-width: 260px; min-height: 44px; font: italic 800 16px var(--font); letter-spacing: 0.1em; color: #e8eef6; background: transparent; border: 1px solid var(--gold); border-radius: 9px; cursor: pointer; }
+.title-save { margin: -2px 0 4px; font: 600 12px/1.3 var(--font); color: var(--m-label); }
+.title-links { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.title-links button { min-height: 40px; padding: 6px 10px; font: 700 13px var(--font); letter-spacing: 0.08em; color: var(--m-label); background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 8px; cursor: pointer; }
+.title-back { align-self: flex-start; min-height: 36px; padding: 4px 10px; font: 700 13px var(--font); letter-spacing: 0.06em; color: var(--m-label); background: transparent; border: 1px solid #ffffff22; border-radius: 8px; cursor: pointer; }
+.title-h { margin: 2px 0 4px; font: italic 900 30px var(--font); color: #f4f6f9; }
+.title-text { margin: 0 0 6px; font: 600 15px/1.35 var(--font); color: #d7e1ee; }
+.title-scroll { overflow-y: auto; overscroll-behavior: contain; text-align: left; width: 100%; padding-right: 4px; }
+.title-scroll section { padding: 8px 0; border-top: 1px solid #ffffff14; }
+.title-scroll h3 { margin: 0 0 3px; font: italic 800 15px var(--font); letter-spacing: 0.06em; color: var(--gold-hi); }
+.title-scroll p { margin: 0; font: 500 14px/1.38 system-ui, sans-serif; color: #d7e1ee; }
+.title-scroll b { color: #fff; }
+.title-setting { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid #ffffff14; text-align: left; font: 700 16px var(--font); color: #e8eef6; }
+.title-setting small { display: block; font: 500 12px/1.3 system-ui, sans-serif; color: var(--m-label); }
+.seg { display: flex; flex: none; border: 1px solid var(--gold); border-radius: 8px; overflow: hidden; }
+.seg button { min-height: 38px; min-width: 64px; padding: 4px 8px; font: 800 13px var(--font); letter-spacing: 0.06em; color: var(--m-label); background: transparent; border: 0; cursor: pointer; }
+.seg button.on { color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); }
+.title-credits { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; font: 500 14px/1.35 system-ui, sans-serif; color: #d7e1ee; }
+.title-credits dt { font: 800 13px var(--font); letter-spacing: 0.08em; color: var(--gold-hi); }
+.title-credits dd { margin: 0; }
+.title-version { margin: 12px 0 0; font: 600 12px var(--font); color: var(--m-label); }
+.title-card button:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
+/* Effects: Reduced (Settings) also stops the bouncing UI animations */
+body.fx-reduced .multwrap.proc .screen.mult, body.fx-reduced .multwrap.proc .rays, body.fx-reduced .multwrap.proc .mwin, body.fx-reduced .multwrap.proc strong { animation: none; }
