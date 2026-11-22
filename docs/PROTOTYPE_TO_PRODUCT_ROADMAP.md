@@ -42,7 +42,7 @@ A stranger can open the actual game, learn the movement/swing, understand target
 
 ## 2. Audit of the present prototype
 
-This inventory is grounded in the source of `src/main.ts`, `src/core/rules.ts`, `src/run/run.ts`, `src/run/ui.ts`, `src/run/catalog.ts`, `src/run/weights.ts`, `src/physics/sim.ts`, `src/physics/board.ts`, `src/machines/sections.ts`, `src/view/game.ts`, `src/view/audio.ts`, `src/view/theme.ts`, `src/view/vfx.ts`, ``docs/V2_2_UPPER_DECK_RALLY.md`, and the repository's tests/documentation at audit time.
+This inventory is grounded in the source of `src/main.ts`, `src/core/rules.ts`, `src/run/run.ts`, `src/run/ui.ts`, `src/run/catalog.ts`, `src/run/weights.ts`, `src/physics/sim.ts`, `src/physics/board.ts`, `src/machines/sections.ts`, `src/view/game.ts`, `src/view/audio.ts`, `src/view/theme.ts`, `src/view/vfx.ts`, `docs/V2_2_UPPER_DECK_RALLY.md`, and the repository's tests/documentation at audit time.
 
 | Area | Verified state | Product gap |
 |---|---|---|
