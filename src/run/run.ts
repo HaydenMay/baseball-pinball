@@ -503,6 +503,61 @@ export class Run {
     return { ok: true as const, ...info };
   }
 
+  // ───────── save / continue ─────────
+
+  /**
+   * Everything needed to continue this run later (plain JSON). Installed machines are saved as
+   * (catalog key, placement, uid, provenance, price paid) and rebuilt from the catalog on load, so a
+   * catalog fix reaches saved runs too; offers, modifiers and the RNG state are saved as they are.
+   */
+  toSave(): RunSave {
+    return {
+      challenge: this.challenge, money: this.money, maxPower: this.maxPower, phase: this.phase,
+      installed: this.installed.map(i => ({ uid: i.uid, offerKey: i.offerKey, placement: i.placement, via: i.via, paid: i.paid })),
+      mods: structuredClone(this.mods), draft: structuredClone(this.draft), shop: structuredClone(this.shop), rerolls: this.rerolls,
+      history: this.history.slice(-RUN_SAVE_HISTORY), powerGrant: this.powerGrant && { ...this.powerGrant },
+      v2: this.v2, sections: [...this.sections], sectionGrant: this.sectionGrant && { ...this.sectionGrant },
+      rng: this.seed, uid: this.uid, itemSeq: this.itemSeq,
+    };
+  }
+
+  /**
+   * Rebuild a run from `toSave()` output. Never throws on a stale item: a machine the catalog can no
+   * longer place is refunded in full and noted in the history (the rest of the run continues).
+   */
+  static fromSave(s: RunSave): { run: Run; dropped: string[] } {
+    const r = new Run(1);
+    r.challenge = s.challenge;
+    r.money = s.money;
+    r.maxPower = s.maxPower;
+    r.phase = s.phase;
+    r.mods = structuredClone(s.mods);
+    r.draft = structuredClone(s.draft);
+    r.shop = structuredClone(s.shop);
+    r.rerolls = s.rerolls;
+    r.history = [...s.history];
+    r.powerGrant = s.powerGrant && { ...s.powerGrant };
+    r.v2 = s.v2;
+    r.sections = [...s.sections];
+    r.sectionGrant = s.sectionGrant && { ...s.sectionGrant };
+    r.seed = Number.isFinite(s.rng) && s.rng !== 0 ? s.rng : 1; // exact (only its low 32 bits matter to random())
+    r.uid = s.uid;
+    r.itemSeq = s.itemSeq;
+    const dropped: string[] = [];
+    for (const it of s.installed) {
+      const m = MACHINES.find(m => m.key === it.offerKey);
+      const p = m && placementsOf(m).find(p => p.id === it.placement);
+      if (!m || !p || !p.mounts.every(id => r.mountOpen(id))) {
+        r.money += it.paid;
+        dropped.push(it.offerKey);
+        r.history.push(`  (save) ${it.offerKey} @ ${it.placement} no longer fits: refunded $${it.paid}`);
+        continue;
+      }
+      r.installed.push(buildItem(m, p, it.uid, it.via, it.paid));
+    }
+    return { run: r, dropped };
+  }
+
   /** Leave the shop: next challenge on the same machine. */
   next() {
     if (this.phase !== 'shop') return false;
@@ -516,6 +571,31 @@ export class Run {
 }
 
 const SECTION_NAMES: Record<SectionId, string> = { upperDeck: 'Upper Deck' };
+
+/** History lines kept in a save (the playtest log can get long; the run itself doesn't need it). */
+const RUN_SAVE_HISTORY = 200;
+
+/** Serialized run (see Run.toSave / Run.fromSave and src/run/save.ts). */
+export type RunSave = {
+  challenge: number;
+  money: number;
+  maxPower: number;
+  phase: Phase;
+  installed: { uid: string; offerKey: string; placement: string; via: Installed['via']; paid: number }[];
+  mods: ModifierTable;
+  draft: Offer[];
+  shop: Offer[];
+  rerolls: number;
+  history: string[];
+  powerGrant: Run['powerGrant'];
+  v2: boolean;
+  sections: SectionId[];
+  sectionGrant: Run['sectionGrant'];
+  /** RNG state (so offers rolled after loading are the same as if the page had stayed open). */
+  rng: number;
+  uid: number;
+  itemSeq: number;
+};
 
 /** A paired-gate bundle and single gates hold the same part types: treat as the same machine for offers. */
 function sameParts(i: Installed, m: MachineOffer) {

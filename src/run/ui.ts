@@ -11,13 +11,15 @@ import type { GameView } from '../view/game.ts';
 import type { Simulation } from '../physics/sim.ts';
 import type { Preset } from '../machines/presets.ts';
 import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
+import type { PitchCarry } from '../physics/sim.ts';
+import type { LoadResult, SaveFile } from './save.ts';
 
 export type BuildHost = {
   view: GameView;
   getSim: () => Simulation;
   /** Rebuild the table for this machine with a challenge target. */
   loadMachine: (preset: Preset, target: number) => void;
-  showOverlay: (kicker: string, title: string, text: string, button: string, action: () => void, info?: string) => void;
+  showOverlay: (kicker: string, title: string, text: string, button: string, action: () => void, info?: string, alt?: { label: string; action: () => void }) => void;
   hideOverlay: () => void;
   setTag: (text: string) => void;
   startPitch: () => void;
@@ -26,6 +28,10 @@ export type BuildHost = {
   /** Offer a report download on the current overlay (shown only with ?devAnalytics=1). */
   devReport?: (label: string, get: () => RunRecord | null) => void;
   theme?: string;
+  /** Save & continue (src/run/save.ts): write the run at a safe point (with between-pitches state if given). */
+  saveRun?: (run: Run, pitch?: PitchCarry) => void;
+  /** Forget the saved run (it ended). */
+  clearRun?: () => void;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -77,9 +83,122 @@ export class BuildUI {
     this.host.setTag(`C${r.challenge} · $${r.money} · ⚡${r.powerUsed}/${r.maxPower}`);
   }
 
+  /**
+   * First screen of the run route: continue a saved run if there is one, otherwise start fresh.
+   * `load` comes from readSave(); an unreadable save is set aside (never deleted) and explained once.
+   */
+  boot(load: LoadResult) {
+    if (load.ok) return this.offerContinue(load.file);
+    if (load.reason !== 'none') {
+      return this.host.showOverlay(
+        'SAVED RUN',
+        'COULDN’T CONTINUE',
+        load.reason === 'newer'
+          ? 'Your saved run is from a newer version of the game. It has been kept aside; start a new run here.'
+          : 'Your saved run couldn’t be read. It has been kept aside; start a new run.',
+        'NEW RUN',
+        () => this.start(),
+      );
+    }
+    this.start();
+  }
+
+  private offerContinue(f: SaveFile) {
+    const r = f.run;
+    // show the saved machine behind the card, so "continue" visibly means *this* table
+    const peek = Run.fromSave(f.run).run;
+    this.host.loadMachine(peek.preset(), peek.target);
+    this.host.setTag(`C${peek.challenge} · $${peek.money} · ⚡${peek.powerUsed}/${peek.maxPower}`);
+    const where = r.phase === 'challenge' ? `${roleOf(r.challenge)} · challenge ${r.challenge} of ${ECONOMY.lastChallenge}` : `after challenge ${r.challenge} (${r.phase === 'draft' ? 'free pick' : 'shop'})`;
+    const pitch = f.pitch ? ` · ${fmt(f.pitch.score)} scored, strike ${f.pitch.strikes} of 3` : '';
+    const nMods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
+    this.host.showOverlay(
+      'WELCOME BACK',
+      'CONTINUE YOUR RUN?',
+      `${where[0].toUpperCase()}${where.slice(1)}${pitch}. ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${nMods} modifier${nMods === 1 ? '' : 's'} · $${r.money}.`,
+      'CONTINUE',
+      () => this.resume(f),
+      `Saved ${new Date(f.savedAt).toLocaleString()}`,
+      { label: 'NEW RUN', action: () => this.confirmNewRun(f) },
+    );
+  }
+
+  private confirmNewRun(f: SaveFile) {
+    this.host.showOverlay(
+      'START OVER?',
+      'NEW RUN',
+      'This ends your saved run for good.',
+      'START OVER',
+      () => {
+        this.host.clearRun?.();
+        this.start();
+      },
+      undefined,
+      { label: 'BACK', action: () => this.offerContinue(f) },
+    );
+  }
+
+  /** Continue a saved run at its safe point. */
+  resume(f: SaveFile) {
+    const { run, dropped } = Run.fromSave(f.run);
+    this.run = run;
+    (window as any).buildRun = run;
+    const rec = this.host.recorder;
+    if (rec) {
+      rec.startRun({ route: location.pathname, theme: this.host.theme ?? '', runSeed: this.runSeed });
+      this.recordedRun = run;
+    }
+    this.host.loadMachine(run.preset(), run.target);
+    this.tag();
+    const note = dropped.length ? ` (${dropped.length} machine${dropped.length > 1 ? 's' : ''} no longer fit after an update and were refunded.)` : '';
+    if (run.phase === 'challenge') {
+      if (f.pitch) this.host.getSim().restoreCarry(f.pitch);
+      rec?.startChallenge(run, this.host.getSim().rules.maxStrikes);
+      const s = this.host.getSim().rules;
+      this.host.showOverlay(
+        `${roleOf(run.challenge)} · RUN RESUMED`,
+        `TARGET ${fmt(run.target)}`,
+        f.pitch
+          ? `${fmt(s.score)} scored so far, ${fmt(Math.max(0, run.target - s.score))} to go · strike ${s.strikes} of ${s.maxStrikes}.${note}`
+          : `Your machine: ${this.machineLine()}.${note}`,
+        'PLAY BALL',
+        () => this.host.startPitch(),
+        `POWER ${run.powerUsed}/${run.maxPower} · $${run.money}`,
+      );
+      return;
+    }
+    // Free pick / shop: straight back to the panel (one CONTINUE tap is enough), unless something changed
+    if (!dropped.length) {
+      this.host.hideOverlay();
+      return this.openPanel();
+    }
+    this.host.showOverlay(
+      'RUN RESUMED',
+      run.phase === 'draft' ? 'YOUR FREE PICK' : 'THE SHOP',
+      `Right where you left off.${note}`,
+      'CONTINUE',
+      () => {
+        this.host.hideOverlay();
+        this.openPanel();
+      },
+      `POWER ${run.powerUsed}/${run.maxPower} · $${run.money}`,
+    );
+  }
+
+  /** Save at a safe point (challenge start card, draft, shop). */
+  private save() {
+    if (this.run.phase === 'challenge' || this.run.phase === 'draft' || this.run.phase === 'shop') this.host.saveRun?.(this.run);
+  }
+
+  /** Between pitches of the current challenge (called by the host after a drain that wasn't the last strike). */
+  savePitch(carry: PitchCarry) {
+    if (this.run.phase === 'challenge') this.host.saveRun?.(this.run, carry);
+  }
+
   start() {
     this.host.loadMachine(this.run.preset(), this.run.target);
     this.tag();
+    this.save();
     this.host.showOverlay(
       `${roleOf(this.run.challenge)} · CHALLENGE ${this.run.challenge} OF ${ECONOMY.lastChallenge}`,
       `TARGET ${fmt(this.run.target)}`,
@@ -113,6 +232,7 @@ export class BuildUI {
     rec?.afterClear(this.run, this.lastEarned);
     const victory = this.run.won;
     if (victory) {
+      this.host.clearRun?.();
       rec?.endRun('completed');
       this.tag();
       this.host.showOverlay(
@@ -132,6 +252,7 @@ export class BuildUI {
       return;
     }
     this.tag();
+    this.save();
     // V2: the machine just grew. Rebuild the board now so the draft can preview the new section's mounts.
     if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), this.run.target);
     const grew = this.run.sectionGrant ? `THE MACHINE GREW: ${this.run.sectionGrant.name.toUpperCase()} UNLOCKED (FREE). ` : '';
@@ -154,6 +275,7 @@ export class BuildUI {
     const rec = this.host.recorder;
     rec?.endChallenge(this.run, sim, 'failed');
     this.run.fail();
+    this.host.clearRun?.();
     rec?.endRun('failed');
     this.host.showOverlay(
       'THREE STRIKES',
@@ -258,6 +380,8 @@ export class BuildUI {
   private render() {
     const r = this.run;
     const draft = r.phase === 'draft';
+    // every pick / buy / sale / reroll re-renders: that's the safe point for the draft and shop
+    this.save();
     if (this.mode === 'manage') return this.renderManage();
     const manageBtn = `<button class="pmanage" data-act="manage">MANAGE MACHINE</button>`;
     const head = draft

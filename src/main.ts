@@ -12,6 +12,7 @@ import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
 import { setupInstall } from './core/install.ts';
+import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
 import { GameView, VIEW } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
@@ -127,7 +128,21 @@ function updateHud() {
 
 // ─── Flow ───
 let overlayAction: () => void = () => onReady();
-function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string) {
+/** Secondary overlay action (e.g. NEW RUN next to CONTINUE); hidden unless a screen asks for it. */
+const altBtn = document.createElement('button');
+altBtn.type = 'button';
+altBtn.id = 'overlayAlt';
+altBtn.className = 'alt-btn';
+altBtn.hidden = true;
+let altAction: () => void = () => {};
+altBtn.addEventListener('click', () => altAction());
+readyBtn.after(altBtn);
+function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string, alt?: { label: string; action: () => void }) {
+  altBtn.hidden = !alt;
+  if (alt) {
+    altBtn.textContent = alt.label;
+    altAction = alt.action;
+  }
   $('#overlayKicker').textContent = kicker;
   $('#overlayTitle').textContent = title;
   $('#overlayText').textContent = text;
@@ -154,6 +169,8 @@ function onDrain() {
   const r = sim.rules;
   if (build && r.phase === 'over') return build.onFail();
   if (build) {
+    // safe point: between pitches of this challenge (a reload resumes here, before the next pitch)
+    if (r.phase === 'ready') build.savePitch(sim.carryState());
     const left = (r.target ?? 0) - r.score;
     return showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', `+${r.ballScore.toLocaleString()} banked. ${left.toLocaleString()} to go for this challenge.`, 'READY');
   }
@@ -208,7 +225,7 @@ window.addEventListener('keydown', e => {
   }
   if (sim.rules.phase !== 'live' || paused) {
     // Enter always confirms the Ready card (the focused button already handles its own Enter/Space).
-    if (k === 'enter' && !overlay.hidden && e.target !== readyBtn) {
+    if (k === 'enter' && !overlay.hidden && e.target !== readyBtn && e.target !== altBtn) {
       e.preventDefault();
       overlayAction();
     }
@@ -449,6 +466,9 @@ w.playtest.downloadHtml = (which: 'current' | 'last' | number = 'current') =>
   downloadReport(which === 'current' ? (recorder?.snapshot() ?? null) : (recorder?.archivedRuns()[which === 'last' ? 0 : which] ?? null));
 
 // ─── Build-test roguelite loop (/build-test/) ───
+// Save & continue (player-facing, local to this browser; one save per run route)
+const saveStore = browserStore();
+const saveRoute = location.pathname.replace(/\/+$/, '').split('/').pop() || 'build-test';
 const build: BuildUI | null = buildMode
   ? new BuildUI(
       {
@@ -469,6 +489,8 @@ const build: BuildUI | null = buildMode
         startPitch: () => onReady(),
         recorder,
         theme: theme.id,
+        saveRun: (run, pitch) => writeSave(saveStore, { route: saveRoute, build: BUILD_INFO.commit.slice(0, 7), run: run.toSave(), ...(pitch ? { pitch } : {}) }),
+        clearRun: () => clearSave(saveStore, saveRoute),
         devReport: (label, get) => {
           if (!devAnalytics) return;
           devGet = get;
@@ -479,7 +501,7 @@ const build: BuildUI | null = buildMode
       stage,
     )
   : null;
-build?.start();
+build?.boot(readSave(saveStore, saveRoute));
 (window as any).build = build;
 // V2 dev helper (?v2=1 only): grow the machine now instead of clearing C3 first. `v2dev.grow()` then READY.
 if (v2 && build) {

@@ -63,6 +63,20 @@ export type SimEvent =
 
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
 
+/** Between-pitches carry-over (see Simulation.carryState). */
+export type PitchCarry = {
+  score: number;
+  strikes: number;
+  pitchNumber: number;
+  multTenths: number;
+  hits: number;
+  splitters: [string, number][];
+  banks: [string, string[]][];
+  genCount: [string, number][];
+  rallyCharges: number;
+  rng: number;
+};
+
 export type Ball = {
   id: number;
   body: P.Body;
@@ -307,6 +321,47 @@ export class Simulation {
     this.addBall(config.pitch.x, config.pitch.y, 0, config.pitch.speed);
     this.emit({ type: 'serve' });
     return true;
+  }
+
+  /**
+   * Between-pitches state that carries to the next pitch of this challenge (score, strikes, global
+   * multiplier, multiball charge, bank lamps, generator counters, Rally Fuel, RNG). Only valid while
+   * waiting for READY; used to save and continue a run at a pitch boundary.
+   */
+  carryState(): PitchCarry {
+    const r = this.rules;
+    return {
+      score: r.score, strikes: r.strikes, pitchNumber: r.pitchNumber, multTenths: r.multTenths, hits: r.hits,
+      splitters: [...this.splitters].map(([id, st]) => [id, st.charge]),
+      banks: [...this.banks].map(([id, lit]) => [id, [...lit]]),
+      genCount: [...this.genCount],
+      rallyCharges: this.rallyCharges,
+      rng: this.seed,
+    };
+  }
+
+  /** Restore `carryState()` onto a freshly built sim of the same machine (before its next READY). */
+  restoreCarry(c: PitchCarry) {
+    const r = this.rules;
+    r.phase = 'ready';
+    r.score = c.score;
+    r.strikes = c.strikes;
+    r.pitchNumber = c.pitchNumber;
+    r.multTenths = c.multTenths;
+    r.hits = c.hits;
+    for (const [id, charge] of c.splitters) {
+      const st = this.splitters.get(id);
+      if (st) Object.assign(st, { charge, lastHit: -10, readyAt: 0, launchAt: null });
+    }
+    for (const [id, lit] of c.banks) {
+      const set = this.banks.get(id);
+      if (!set) continue;
+      set.clear();
+      for (const t of lit) set.add(t);
+    }
+    this.genCount = new Map(c.genCount);
+    this.rallyCharges = c.rallyCharges;
+    this.seed = c.rng >>> 0 || 1;
   }
 
   private clearBalls() {

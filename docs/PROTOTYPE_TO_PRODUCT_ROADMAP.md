@@ -590,7 +590,7 @@ For 3D art, preserve original mesh decomposition, Blender object names, pivots, 
 > - **D-17 / D-19 / D-20 → SUPERSEDED.** No separate demo build, no demo-to-full save transfer and no download wrapper for 1.0. §17's demo/paywall funnel is DEFERRED; revisit only if the model changes.
 > - **D-21 → AMENDED:** $0.99 is the *suggested* support amount, not a minimum price.
 > - **D-07 → DEFERRED: C9 Side Chamber is out of 1.0.** It's more camera, art, boss and save work, and it makes the game bigger rather than more fun. The Upper Deck stays the single expansion.
-> - **D-06 → RECOMMENDED: save only at safe points.** That means between challenges and on the draft and shop screens, never mid-pitch. Reloading during a pitch restarts that pitch (score and strikes as they were at the pitch's start).
+> - **D-06 → IMPLEMENTED (Nov 21, `src/run/save.ts`): save only at safe points.** That means between challenges and on the draft and shop screens, never mid-pitch. Reloading during a pitch restarts that pitch (score and strikes as they were at the pitch's start).
 > - **D-10 → RECOMMENDED:** refine one of the two existing looks (Broadcast Classic / Toxic Thunder) into the final style. No three-new-directions contact sheet.
 > - **D-22 (new) → OPEN: player analytics.** The browser makes this possible (as with *Draftbound*). Mirror Draftbound's approach once it's reviewed. Keep it privacy-respecting and disclosed, and never let it change gameplay.
 > - **Routes:** `/build-test/` is now the player-facing run, with the Upper Deck and zoom camera on by default and no `?v2=1` needed. `/build-test-legacy/` keeps the pre-V2 run. `/`, `/1`–`/3` are unchanged.
