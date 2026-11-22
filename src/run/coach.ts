@@ -35,8 +35,8 @@ export const TIPS = {
   },
   aim: 'Nice hit! Swing <b>early</b> to pull it left, <b>late</b> to push it right.',
   deck: '<b>THE UPPER DECK IS OPEN.</b> Send the ball into the <b>HOME RUN</b> ramp on the right: 3,000 points and <b>×2</b> on everything upstairs.',
-  draft: '<b>POWER ⚡</b> is your table’s budget: machines use it, modifiers don’t. Tap a card to see where it goes.',
-  shop: 'Spend <b>$</b> on more parts. <b>THIS</b> boosts one part, <b>ALL</b> boosts every part of that kind. Short on Power? Sell something in <b>MANAGE MACHINE</b>.',
+  draft: '<b>POWER ⚡</b> is your table’s budget: machines use it, boosts don’t. Tap a card to see where it goes.',
+  shop: 'Spend <b>$</b> on boosts. Tap a card to see what it powers up on the table. Money you don’t spend carries over.',
 };
 
 /** Which tips this device has already seen (pure; storage injected for tests). */

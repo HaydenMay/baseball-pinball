@@ -304,11 +304,11 @@ export class Run {
     const out: Offer[] = [];
     const mods = this.modCandidates(where, board, inv);
     const pickMod = (): Offer | null => {
-      const pool = mods.filter(x => x.targets.some(tg => !out.some(o => o.kind === 'modifier' && o.key === x.t.key && o.target.key === tg.key)));
+      // One card per effect in a roll: the same boost on two different parts is one choice dressed up as two.
+      const pool = mods.filter(x => !out.some(o => o.kind === 'modifier' && o.key === x.t.key));
       if (!pool.length) return null;
       const x = pool[pickWeighted(pool.map(p => p.w.weight), this.random())];
-      const targets = x.targets.filter(tg => !out.some(o => o.kind === 'modifier' && o.key === x.t.key && o.target.key === tg.key));
-      const target = targets[Math.floor(this.random() * targets.length)];
+      const target = x.targets[Math.floor(this.random() * x.targets.length)];
       const mod: Modifier = { note: x.t.name };
       if (x.t.add) mod.add = x.t.add;
       if (x.t.mul) mod.mul = x.t.mul;

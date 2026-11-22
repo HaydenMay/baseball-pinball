@@ -45,6 +45,20 @@ const ROLES = ['STARTER', 'RELIEVER', 'CLOSER'];
 export const roleOf = (c: number) => `INNING ${Math.ceil(c / ECONOMY.challengesPerInning)} · ${ROLES[(c - 1) % ECONOMY.challengesPerInning]}`;
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+
+/** Player-facing name for a modifier card (internally "modifier"). */
+export const BOOST = 'BOOST';
+/**
+ * One plain line per card: the effect with its target folded in ("×2 points on Glove bumper"), so a card
+ * never needs a separate "Applies to" line or THIS/ALL jargon. The board highlight shows where.
+ */
+export function cardEffect(o: Offer): string {
+  if (o.kind !== 'modifier') return o.desc;
+  const where = o.target.label.split(',')[0].replace(/ \((full ride|complete all 3)\)$/, '');
+  if (o.scope === 'this') return (/THIS [a-z]+/.test(o.desc) ? o.desc.replace(/THIS [a-z]+/, where) : `${o.desc} on ${where}`).replace(/ Ramp ramp/g, ' Ramp');
+  return o.desc.replace(/\bALL\b/g, 'All');
+}
+
 export class BuildUI {
   run: Run;
   host: BuildHost;
@@ -137,7 +151,7 @@ export class BuildUI {
     this.host.showOverlay(
       'WELCOME BACK',
       'CONTINUE YOUR RUN?',
-      `${where[0].toUpperCase()}${where.slice(1)}${pitch}. ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${nMods} modifier${nMods === 1 ? '' : 's'} · $${r.money}.`,
+      `${where[0].toUpperCase()}${where.slice(1)}${pitch}. ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${nMods} boost${nMods === 1 ? '' : 's'} · $${r.money}.`,
       'CONTINUE',
       () => this.resume(f),
       `Saved ${new Date(f.savedAt).toLocaleString()}`,
@@ -357,7 +371,7 @@ export class BuildUI {
       v.highlightLabel = places.length === 1 ? places[0].split('+').map(mountName).join(' + ') : chk.ok ? 'Pick a spot' : 'Needs room: Manage Machine';
     } else {
       v.highlights = anchorsFor(this.host.getSim().layout, o.target.key);
-      v.highlightLabel = `${o.name}: ${o.desc}`;
+      v.highlightLabel = `${o.name}: ${cardEffect(o)}`;
     }
   }
 
@@ -375,18 +389,17 @@ export class BuildUI {
           .join('')}</div>`;
       } else if (chk.ok) where = `Installs at: ${placeName(chk.mounts[0])}`;
       else if (chk.fixable) where = `Needs room: ${esc(chk.reason.replace(/ — use Manage Machine$/, ''))}`;
-    } else where = `Applies to: ${esc(o.target.label)}`;
+    }
     const needsMount = o.kind === 'machine' && chk.ok && chk.mounts.length > 1 && !(selected && this.sel?.mount);
     const disabled = !chk.ok || !afford || needsMount;
     const reason = !chk.ok ? (chk.fixable ? 'NEEDS ROOM' : chk.reason) : !afford ? `Need $${o.price}` : needsMount ? 'Pick a spot' : '';
     const action = isShop ? `BUY $${o.price}` : 'TAKE FREE';
-    const scope = o.kind === 'modifier' ? (o.scope === 'all' ? 'ALL' : o.scope === 'cross' ? 'CROSS' : 'THIS') : '';
-    const tag = o.kind === 'machine' ? `MACHINE${o.pieces ? ` · ${o.pieces} PIECES` : ''} · ⚡${o.power}` : `MODIFIER · ${scope} · no power`;
+    const tag = o.kind === 'machine' ? `MACHINE${o.pieces ? ` · ${o.pieces} PIECES` : ''} · ⚡${o.power}` : BOOST;
     const manage = o.kind === 'machine' && !chk.ok && chk.fixable ? `<button class="omanage" data-act="manage" data-uid="${o.uid}">MANAGE MACHINE</button>` : '';
     return `<div class="offer ${o.kind} ${selected ? 'sel' : ''} ${!chk.ok ? 'locked' : ''}" data-uid="${o.uid}">
       <div class="otag">${tag}</div>
       <div class="oname">${o.name}</div>
-      <div class="odesc">${o.desc}</div>
+      <div class="odesc">${cardEffect(o)}</div>
       ${where ? `<div class="owhere">${where}</div>` : ''}${mountsHtml}
       ${manage || `<button class="obuy" data-act="take" data-uid="${o.uid}" ${disabled ? 'disabled' : ''}>${reason || action}</button>`}
     </div>`;
@@ -451,7 +464,7 @@ export class BuildUI {
         const refund = Math.floor(it.paid / 2);
         return `<div class="mrow ${on ? 'on' : ''}" data-act="msel" data-item="${esc(it.uid)}">
           <div class="mname">${esc(it.name)}${it.parts.length > 1 ? ` <span class="mpieces">${it.parts.length} pieces</span>` : ''}</div>
-          <div class="mmeta">${it.mounts.map(mountName).join(' + ')} · ⚡${it.power} · ${it.via === 'shop' ? `paid $${it.paid} → refund $${refund}` : 'free reward → $0'}${modCount ? ` · ${modCount} modifier${modCount > 1 ? 's' : ''} here` : ''}${it.displaces.length ? ` · replaces ${it.displaces.join(', ')}` : ''}</div>
+          <div class="mmeta">${it.mounts.map(mountName).join(' + ')} · ⚡${it.power} · ${it.via === 'shop' ? `paid $${it.paid} → refund $${refund}` : 'free reward → $0'}${modCount ? ` · ${modCount} boost${modCount > 1 ? 's' : ''} here` : ''}${it.displaces.length ? ` · replaces ${it.displaces.join(', ')}` : ''}</div>
         </div>`;
       })
       .join('');
@@ -463,14 +476,14 @@ export class BuildUI {
       detail = this.confirming
         ? `<div class="mconfirm"><b>Sell ${esc(info.name)}?</b>
             <div>Power ⚡${info.powerBefore} → ⚡${info.powerAfter} · refund $${info.refund}</div>
-            ${info.dormant.length ? `<div>Stays on the board, dormant until a compatible part returns to this site:<br>${list(info.dormant)}</div>` : '<div>No modifiers are anchored to it.</div>'}
+            ${info.dormant.length ? `<div>Stays on the board, dormant until a compatible part returns to this site:<br>${list(info.dormant)}</div>` : '<div>No boosts on it.</div>'}
             ${info.waking.length ? `<div>Factory part returns; these wake up:<br>${list(info.waking)}</div>` : ''}
             <div class="mbtns"><button data-act="mcancel">CANCEL</button><button class="danger" data-act="mconfirm">CONFIRM SELL</button></div></div>`
-        : `<div class="mconfirm"><div>Selling frees ⚡${info.powerFreed} (⚡${info.powerBefore} → ⚡${info.powerAfter}) and pays $${info.refund}. Modifiers are never deleted.</div>
+        : `<div class="mconfirm"><div>Selling frees ⚡${info.powerFreed} (⚡${info.powerBefore} → ⚡${info.powerAfter}) and pays $${info.refund}. Boosts are never deleted.</div>
             <div class="mbtns"><button class="danger" data-act="msell">SELL / DISMANTLE</button></div></div>`;
     }
     const dorm = dormant.length
-      ? `<div class="mdorm">Dormant modifiers (waiting for a compatible part at their site): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))} @ ${esc(k)}`).join(' · ')}</div>`
+      ? `<div class="mdorm">Waiting boosts (they wake up when a matching part returns to their spot): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))} @ ${esc(k)}`).join(' · ')}</div>`
       : '';
     this.panel.innerHTML = `<div class="phead"><button class="back" data-act="mback">◀ BACK TO ${r.phase === 'draft' ? 'FREE PICK' : 'SHOP'}</button><b>MANAGE</b><span>⚡${r.powerUsed}/${r.maxPower} · $${r.money}</span></div>
       ${this.saleNote ? `<div class="pgrant">${esc(this.saleNote)}</div>` : ''}
@@ -508,7 +521,7 @@ export class BuildUI {
         const res = this.run.sell(this.msel);
         if (res.ok) {
           this.host.recorder?.sale(this.run, res, dormantBefore);
-          this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${res.dormant.length ? `, ${res.dormant.reduce((n, d) => n + d.names.length, 0)} modifier(s) dormant` : ''}.`;
+          this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${res.dormant.length ? `, ${res.dormant.reduce((n, d) => n + d.names.length, 0)} boost(s) waiting` : ''}.`;
           this.host.loadMachine(this.run.preset(), this.run.target);
         }
         this.msel = null;
