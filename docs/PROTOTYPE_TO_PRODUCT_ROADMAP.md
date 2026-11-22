@@ -670,3 +670,144 @@ Multiple whole-run playtests, device/iframe verification, build-family balance, 
 Update this roadmap when milestones are approved, not just when prompts are written. A work package becomes **IMPLEMENTED** only after the actual repository change exists; **TESTED** only after tests and the relevant visual/user observation have been performed. Each update should link commit(s), regression/test results, short mobile clips, open issues and decisions/supersessions. Do not create multiple conflicting “master” plans.
 
 **Next recommended action:** Run Assignment 1. Choose a visual direction and shop presentation on cheap concept sheets, design the first Closer, settle C9 expansion and saving, then build one complete polished first inning. **Do not start by implementing all of 1.0 at once.**
+---
+
+## 17. Final product milestone — free browser demo + paid $0.99 complete game
+
+> **User-approved commercial direction, November 21, 2026:** After the full game is finished and release-tested, prepare a **free, playable browser demo embedded on the itch.io product page**, and offer the **complete game for $0.99 USD**. The demo is a deliberate conversion experience: **try before you buy**, not a placeholder video. The creator controls the wider itch launch plan.  
+> **Status:** **DECIDED commercial intent / OPEN technical distribution model and demo cutoff.** This is intentionally **last in the development roadmap**, with early platform feasibility work required to avoid a late architectural trap.
+
+### 17.1 Important itch.io constraint: “paid” is not the same as “browser-locked”
+
+**Verified against itch.io creator documentation on Nov. 21, 2026:**
+
+- itch.io **HTML Game** uploads run in an embedded iframe, and HTML5 browser-playable games are **donation-based**, not natively purchaser-gated. The official HTML5 guide explicitly says that paid access requires setting **Kind of Game = Downloadable**; this does **not** automatically give the customer a paywalled “play in browser” experience.
+- itch.io **Paid** pricing can set a **$0.99 minimum**, with customers allowed to pay more. Downloaded full-game files can be limited to purchasers while designated demo downloads can remain free.
+- A free HTML5 embed and paid downloadable files can coexist in some project setups; **verify the exact live editor UI, game type, and purchase flow on a private/draft test page before depending on the combination**. Do not treat older forum replies as a guaranteed current configuration.
+- The current source repository is **public** and the existing browser build is publicly hosted for prototype testing. **A paywall on the UI does not hide publicly hosted JavaScript or public source code.** Decide how to separate production source, preview builds, protected files, and public demo assets **well before release**. Changing repository visibility later does not erase copies/history already made public.
+- A client-side demo flag, secret route, JavaScript “unlock” boolean, localStorage entitlement, or hidden screen **is not secure paid access**. Never describe that as an actual lock.
+
+**Official source links (revalidate before launch):**
+1. [itch.io — Uploading HTML5 games](https://itch.io/docs/creators/html5) (see “Can I take payments with my HTML5 game?” and iframe/mobile packaging).
+2. [itch.io — Pricing](https://itch.io/docs/creators/pricing) (paid minimum prices, individually priced files and ownership).
+3. [itch.io — Offer a demo alongside your purchasable games](https://itch.io/updates/offer-a-demo-alongside-your-purchasable-games).
+4. [itch.io forum — paid HTML5 browser access](https://itch.io/t/6277781/can-i-lock-browser-based-html-game-behind-paywall) (user discussion, supplementary evidence, **not** authoritative platform policy).
+
+### 17.2 Distribution options — choose explicitly before implementation
+
+| Option | Free demo | $0.99 full game | Advantages | Tradeoffs / status |
+|---|---|---|---|---|
+| **A — itch free browser demo + paid downloadable full release** | Embedded HTML5 demo on itch page | Buyers download a complete packaged desktop game (e.g. Windows application) | **Recommended low-complexity 1.0 business model** using itch's purchase/file entitlement system; no custom accounts/backend | Requires a safe, tested downloadable packaging path; full game **not directly paywalled in browser**. Windows-centric delivery may conflict with mobile-first audience. **OPEN approval** |
+| **B — itch free demo + separately authenticated, hosted full web game** | Same page embed | Payment verified server-side, purchaser account/session authorizes full game on a protected host | Delivers full game in browser/mobile after paying | Nontrivial backend, purchaser verification, accounts/sessions/support, hosting/security/cost; itch HTML5 native gating is **not** this feature. **OPEN feasibility spike and approval** |
+| **C — other verified browser entitlement/distribution arrangement** | Embedded demo | A platform-supported paid browser delivery workflow confirmed directly with itch or another chosen provider | May give desired seamless browser purchase | **Unverified**, never promise capability without live proof; requires creator choice |
+| **D — voluntary support / honor-system full web build** | Free demo | $0.99 suggested contribution; game can still be accessed without purchase | Easiest browser access and implementation | **Not a real lock**, contradicts paid-access requirement unless creator explicitly accepts it |
+
+**Decision D-16:** Must choose whether **“paid full game” means a downloadable version** or **a browser-playable, authentically purchaser-gated full game**. The difference materially changes implementation scope, the support burden, and whether mobile buyers can play. Do not silently choose A merely because it is easiest; do not promise B without a security and payment verification plan.
+
+**Packaging spike for Option A:** Test a genuine desktop executable wrapper (e.g. a lightweight shell suitable for the existing web runtime) versus any supported offline HTML bundle. **Do not assume unzipping Vite files and double-clicking \`index.html\` works**: browser \`file://\` module/fetch/security restrictions may prevent it. The installer-free or packaged program must be genuinely launchable and QA-tested. If a native wrapper is used, choose a narrowly scoped one; do not rewrite the game engine.
+
+**Security spike for Option B:** Define the purchase/entitlement source, server-side verification, session/login lifecycle, hosting access checks, recovery on new device, privacy/security responsibilities, refund/access policy and ongoing cost. No client-only lock. Validate the itch payment-to-entitlement connection with an actual sanctioned integration before budgeting implementation.
+
+### 17.3 Demo game design — show the hook, then invite purchase
+
+**Goal:** An unaided visitor gets a compelling sample of **skill batting + a memorable upgrade choice + machine synergy + one boss** before being shown exactly what the $0.99 game contains.
+
+**Recommended prototype (not final approved cutoff):**
+1. **Start instantly:** Demo-only title/card with a clear **Play Free Demo** action. No accounts, purchases, mandatory signups or heavy tutorial walls.
+2. **Learn to hit:** Short contextual left-thumb/right-thumb (and desktop) controls, then skillful ball contact and scoring.
+3. **See progression:** Offer a real 1-of-3 draft and enough shop interaction to make one meaningful machine-building decision; don't reduce demo to a scripted animation.
+4. **Experience a Closer:** Let the visitor play **Inning 1's three challenges** including the first boss, so they see what separates this from endless traditional pinball.
+5. **Show the ceiling:** The upper deck currently unlocks after C3, right at the proposed demo finish. Evaluate **a brief playable Upper Deck bonus encounter or teaser** against ending immediately after the boss. Don't promise a feature they never see; likewise don't give away a disproportionate amount of the five-inning progression.
+6. **End cleanly:** Celebrate demo completion, show a short run summary, and present a clear **Get Full Game — $0.99** purchase action plus **Replay Demo**. No deceptive “your save is gone unless you pay” pressure.
+7. **Explain value:** Show genuine full-game differentiators: five innings, five distinct Closers, deeper machines and upgrade synergies, additional machine growth (if included), longer runs and save/continue.
+8. **Avoid dead-end frustration:** If the player loses before the demo endpoint, allow normal replay or a clearly labeled demo restart. Don't force purchase to retry the demo.
+9. **Keep momentum:** Measure time to first hit, first upgrade, first boss, demo completion and click-to-purchase; adjust cutoff using player data.
+
+**Demo cutoff alternatives to evaluate cheaply:**
+- **Short:** 1 inning (C1–C3) + trailer/teaser of upper deck. Simplest and likely most conversion-focused.
+- **Slightly longer:** C1–C3 + one playable Home Run/Upper Deck showcase challenge. Stronger demonstration of the growing machine, but more work and a larger sample.
+- **Curated standalone demo mode:** A shorter, deliberately authored sample of batting, a shop interaction, and a Closer, with limited upper-deck access. Best pacing control but risks divergence from full game and more testing.
+
+**Decision D-17:** Choose the sample length and what progress carries from demo to full game. Prefer **no automatic save transfer for v1**, unless players strongly value it and the save schema safely supports it; allowing a fresh run is simpler and matches roguelite expectations. This is a recommendation, not a settled choice.
+
+### 17.4 Build two distinct, reproducible deliverables
+
+**Do not maintain two manually divergent games.** Share the engine, physics, card catalog source, UI components, art and SFX. Define explicit builds and capability boundaries.
+
+- [ ] **Demo profile:** Only approved demo content, demo save namespace, no full-run/C15 progression paths, no debug controls, no direct route to paid content. Bundle must contain only demo-required assets/data where feasible.
+- [ ] **Full profile:** All five innings, bosses, complete machine progression, save/continue and settings; all production assets. Not deployed publicly if genuine paywall required.
+- [ ] Define clear build scripts/entrypoints and environment-independent static asset paths. No “dev query parameter” controlling access to a paid game.
+- [ ] Reuse exactly the same rules for overlapping demo/full encounters; no demo-only manipulative difficulty unless documented as an intentional curated sample.
+- [ ] Share styling, accessibility and audio so the demo actually reflects purchased quality.
+- [ ] Preserve deterministic regression tests for the demo boundary and the full endgame.
+- [ ] Give demo and full distinct product identifiers, save schema namespaces, update/version information and launch copy; avoid demo overwriting paid saves when origins/storage are shared.
+- [ ] Strip dev tools, log endpoints, unfinished boss assets and private keys. **Never bundle credentials or actual entitlement secrets in HTML/JS.**
+- [ ] Check the publicly accessible repo/build hosting paths: it is impossible to claim technical exclusivity over already-public source without addressing the distribution model. Do not rewrite public history pretending it never existed.
+- [ ] Include a clear local license/readme and usage instructions appropriate to downloadable or web-accessed full game.
+
+**Proposed scripts/artifacts (names are illustrative, finalize after choosing distribution):**
+- `npm run build:demo` → zipped, itch-embeddable browser demo with relative assets and `index.html` at archive root.
+- `npm run build:full` → complete production build for the chosen paid packaging route.
+- `npm run test:demo` and `npm run test:full` (or precise existing test subsets) → one canonical codebase, distinct release guarantees.
+- Versioned archives / packaging manifest and checksum in a release folder; CI/manual steps reproducible.
+
+### 17.5 Demo and paid-product end screens / UX
+
+**Demo front door:**
+- “**Try Baseball Pinball — Free Demo**” with immediate launch.
+- Brief controls, responsive phone/tablet/desktop sizing, muted-friendly behavior and smooth return to itch game page.
+
+**Demo end / purchase moment:**
+- Headline emphasizing what they achieved; genuine game footage/highlights or a minimal feature preview.
+- “**Unlock the Full Game — $0.99**” with a real itch purchase URL/action (provided by the project, not invented in code).
+- Distinguish features they **already played** from features available only in the full product.
+- Visible Replay Demo button; no aggressive repeated interstitials during gameplay.
+- If full purchase is downloadable, **say so clearly** and identify supported platforms. Do not imply a mobile browser buyer can keep playing online if that is untrue.
+- If full product is authenticated web access, explain where to sign in/launch after purchase and how to recover access.
+
+**Paid full version:**
+- Normal title/new/continue, no fake demo limit or upsell clutter.
+- Run persistence and replay work according to product save policy.
+- Optional indicator on home page noting “Full Game,” not a trial expiration.
+- Clear update/bug support path and credits.
+
+### 17.6 Validation matrix — must pass on the **actual itch product experience**
+
+- [ ] A fresh visitor can launch the demo **for free without payment** in the embedded page.
+- [ ] Phone users can start it in itch's mobile fullscreen/launch behavior, swing with both thumbs, pause and finish without scrolling.
+- [ ] Browser demo does not expose any full-game levels, save loopholes or privileged assets by changing a URL parameter.
+- [ ] Demo reaches its designed endpoint, can't accidentally progress into paid content, and Replay Demo works.
+- [ ] The purchase button opens the **actual product's** checkout flow; $0.99 minimum displayed correctly, tax/payment caveats as platform requires.
+- [ ] Anonymous/nonbuyer cannot obtain paid downloadable files through the public page; verify from fresh private-browser session.
+- [ ] If full game is desktop downloadable: buy/test entitlement using a permitted test purchase or sanctioned key, download, install/start and complete real play; verify no missing assets and no assumption of local dev server.
+- [ ] If full game is authentically web-gated: verify purchase server-side; unpurchased, refunded, expired and valid sessions behave correctly; no bypass by inspecting JS/client flags. Validate security with someone qualified.
+- [ ] Cross-device/mobile buyer journey matches page wording — don't sell a mobile-only player something unusable on their device.
+- [ ] Demo and full saves do not corrupt each other; private mode, page reload and upgrades handled deliberately.
+- [ ] Music/SFX rights, licenses, version metadata and privacy statements accurate for **both** packages.
+- [ ] Test real compressed bundle inside itch, not only GitHub Pages or local `vite preview`. Check relative paths, fullscreen, audio unlock, safe-area insets, frames and UX.
+- [ ] Re-test all 15 challenges on full version and every available demo level after final branch cut.
+- [ ] Keep rollback artifacts and clear version stamps for both releases.
+
+### 17.7 Definition of this final milestone complete
+
+- **Commercial plan decided:** free browser demo and $0.99 full game agreed, with **actual paid delivery model explicitly selected and verified**.
+- Demo is a **real polished and limited playable game**, not merely the full build with a hidden menu item.
+- Demo and full game are built from the shared production codebase, do not require secret query parameters, and have distinct tested distribution artifacts.
+- The free embedded demo, checkout/purchase, buyer access and full-game launch all work on the actual itch page.
+- Buyers receive the promised supported platform experience; **if true browser-only full access remains a requirement, do not call this complete by substituting an unapproved download**.
+- Creator signs off on the free visitor-to-purchaser journey and complete paid product.
+
+### Decision register additions for M7
+
+| ID | Decision | Status / recommendation |
+|---|---|---|
+| **D-16** | **Paid delivery:** downloadable full game for $0.99 vs authentically paid browser-only full game | **OPEN / CRITICAL.** Itch native HTML5 is donation-based; verify before implementation. |
+| **D-17** | **Demo cutoff:** first inning, first inning + Upper Deck showcase, or curated shorter sample | **OPEN.** Start with first inning, experiment with one brief Upper Deck teaser. |
+| **D-18** | **Source/distribution exposure:** public repository and public build vs protected full paid content | **OPEN / CRITICAL.** No client flag can secure publicly hosted code. |
+| **D-19** | **Progress transfer:** fresh full run vs optional migration from demo | **OPEN.** Fresh start recommended unless value proven. |
+| **D-20** | **Download packaging target:** Windows desktop wrapper, validated offline browser archive, or verified authenticated web host | **OPEN / DEPENDENT ON D-16.** Must meet phone/desktop promises. |
+| **D-21** | **Product price:** $0.99 USD minimum for the complete game | **DECIDED.** Check payment/platform display before launch; voluntary tips above minimum may be allowed by itch pricing. |
+
+**Next planning checkpoint (earlier than M7 implementation):** Resolve **D-16** during M0/M1 feasibility work, even though **building and publishing the demo/purchase funnel belongs at the END**. Otherwise the finished mobile-first game could accidentally depend on a paid-browser capability itch doesn't provide.
+
+**Milestone ordering amendment:** M6 = complete paid-game release candidate validated; **M7 = derive the polished playable demo, implement and test the $0.99 full-game distribution path, then hand off to the owner's existing itch launch plan.**
