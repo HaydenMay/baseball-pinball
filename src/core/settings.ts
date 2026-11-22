@@ -5,6 +5,8 @@
 export type Settings = {
   /** 'reduced' = fewer particles, softer flashes, no UI bounce animations (defaults to the OS reduced-motion setting). */
   effects: 'full' | 'reduced';
+  /** First-time tips (src/run/coach.ts). */
+  tips: boolean;
 };
 
 export const SETTINGS = {
@@ -22,12 +24,12 @@ function osPrefersReduced() {
 }
 
 export function loadSettings(): Settings {
-  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full' };
+  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full', tips: true };
   try {
     const raw = localStorage.getItem(SETTINGS.key);
     if (!raw) return def;
     const s = JSON.parse(raw);
-    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects };
+    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects, tips: s.tips !== false };
   } catch {
     return def;
   }

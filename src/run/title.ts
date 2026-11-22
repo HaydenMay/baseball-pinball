@@ -49,6 +49,8 @@ export type TitleHost = {
   getSettings: () => Settings;
   setSettings: (s: Settings) => void;
   version: string;
+  /** Forget which first-time tips were seen. */
+  resetTips?: () => void;
 };
 
 type View = 'main' | 'confirm' | 'help' | 'settings' | 'credits';
@@ -59,6 +61,8 @@ export class TitleScreen {
   private save: SaveFile | null = null;
   private notice = '';
   private view: View = 'main';
+  /** "Show tips again" pressed during this settings visit. */
+  private tipsReset = false;
 
   constructor(host: TitleHost, stage: HTMLElement) {
     this.host = host;
@@ -121,7 +125,9 @@ export class TitleScreen {
       const sound = this.host.getSound();
       body = `${back}<h2 class="title-h">SETTINGS</h2>
         <div class="title-setting"><span>Sound</span><div class="seg"><button data-t="sound-on" class="${sound ? 'on' : ''}">ON</button><button data-t="sound-off" class="${sound ? '' : 'on'}">OFF</button></div></div>
-        <div class="title-setting"><span>Effects<small>Reduced = fewer sparks and flashes, no bouncing UI</small></span><div class="seg"><button data-t="fx-full" class="${st.effects === 'full' ? 'on' : ''}">FULL</button><button data-t="fx-reduced" class="${st.effects === 'reduced' ? 'on' : ''}">REDUCED</button></div></div>`;
+        <div class="title-setting"><span>Effects<small>Reduced = fewer sparks and flashes, no bouncing UI</small></span><div class="seg"><button data-t="fx-full" class="${st.effects === 'full' ? 'on' : ''}">FULL</button><button data-t="fx-reduced" class="${st.effects === 'reduced' ? 'on' : ''}">REDUCED</button></div></div>
+        <div class="title-setting"><span>Tips<small>Short hints the first time something new shows up</small></span><div class="seg"><button data-t="tips-on" class="${st.tips ? 'on' : ''}">ON</button><button data-t="tips-off" class="${st.tips ? '' : 'on'}">OFF</button></div></div>
+        <div class="title-setting"><span>${this.tipsReset ? 'Tips will show again' : 'Seen all the tips?'}</span><button class="title-mini" data-t="tips-reset" ${this.tipsReset ? 'disabled' : ''}>SHOW TIPS AGAIN</button></div>`;
     } else {
       body = `${back}<h2 class="title-h">CREDITS</h2><div class="title-scroll"><dl class="title-credits">${TITLE.credits.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl><p class="title-version">Version ${this.host.version}</p></div>`;
     }
@@ -149,12 +155,21 @@ export class TitleScreen {
       case 'sound-off':
         this.host.setSound(t === 'sound-on');
         break;
+      case 'tips-on':
+      case 'tips-off':
+        this.host.setSettings({ ...this.host.getSettings(), tips: t === 'tips-on' });
+        break;
+      case 'tips-reset':
+        this.host.resetTips?.();
+        this.tipsReset = true;
+        break;
       case 'fx-full':
       case 'fx-reduced':
         this.host.setSettings({ ...this.host.getSettings(), effects: t === 'fx-full' ? 'full' : 'reduced' });
         break;
       default:
         this.view = t as View;
+        this.tipsReset = false;
     }
     this.render();
   }

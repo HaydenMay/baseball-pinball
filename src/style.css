@@ -485,3 +485,43 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .title-card button:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
 /* Effects: Reduced (Settings) also stops the bouncing UI animations */
 body.fx-reduced .multwrap.proc .screen.mult, body.fx-reduced .multwrap.proc .rays, body.fx-reduced .multwrap.proc .mwin, body.fx-reduced .multwrap.proc strong { animation: none; }
+
+/* ─── First-time tips (src/run/coach.ts) ─── */
+:root {
+  --coach-fade: 350ms;               /* keep in step with COACH.fadeMs */
+  --coach-bottom: 2.5%;              /* controls hint height above the stage floor (below the batter) */
+  --coach-ink: #f4f8ff;
+  --coach-sub: #c9d6e8;
+  --coach-zone-l: #3fa9ff26;         /* left (move) zone tint */
+  --coach-zone-r: #ffc94a26;         /* right (swing) zone tint */
+  --coach-edge-l: #63b8ff99;
+  --coach-edge-r: #ffd36b99;
+  --coach-toast-bg: #071224e6;
+  --coach-toast-top: 13%;
+  --coach-tip-bg: #12305acc;
+}
+.coach { position: absolute; inset: 0; pointer-events: none; z-index: 4; font-family: var(--font); }
+.coach > [hidden] { display: none !important; }
+.coach-controls { position: absolute; left: 0; right: 0; bottom: var(--coach-bottom); display: flex; justify-content: center; gap: 10px; padding: 0 10px; transition: opacity var(--coach-fade); }
+.coach-half { flex: 1; max-width: 48%; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 6px 7px; border-radius: 14px; color: var(--coach-ink); text-shadow: 0 2px 4px #000c; transition: opacity var(--coach-fade), transform var(--coach-fade); }
+.coach-half.l { background: var(--coach-zone-l); border: 2px dashed var(--coach-edge-l); }
+.coach-half.r { background: var(--coach-zone-r); border: 2px dashed var(--coach-edge-r); }
+.coach-half b { font: italic 900 22px/1 var(--font); letter-spacing: 0.06em; }
+.coach-half small { font: 700 12px/1.2 var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--coach-sub); }
+.coach-half.done { opacity: 0.15; transform: scale(0.94); }
+.coach-arrows { font-size: 15px; letter-spacing: 0.5em; animation: coach-slide 1.3s ease-in-out infinite; }
+.coach-ring { width: 18px; height: 18px; border: 3px solid var(--coach-edge-r); border-radius: 50%; animation: coach-tap 1.1s ease-out infinite; }
+@keyframes coach-slide { 0%, 100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }
+@keyframes coach-tap { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+.coach-pill { padding: 9px 14px; border-radius: 999px; background: var(--coach-toast-bg); border: 1px solid var(--gold); color: var(--coach-ink); font: 700 15px var(--font); letter-spacing: 0.04em; }
+.coach-pill b, .coach-toast b { color: var(--gold-hi); }
+.coach-toast { position: absolute; left: 50%; top: var(--coach-toast-top); transform: translateX(-50%); width: min(88%, 340px); padding: 10px 14px; border-radius: 12px; background: var(--coach-toast-bg); border: 1px solid var(--gold); box-shadow: 0 8px 24px #000a; color: var(--coach-ink); font: 600 15px/1.3 var(--font); text-align: center; transition: opacity var(--coach-fade); }
+.coach .out { opacity: 0; }
+body.fx-reduced .coach-arrows, body.fx-reduced .coach-ring { animation: none; }
+/* Build panel tip banner */
+.ptip { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--coach-tip-bg); border: 1px solid var(--gold); }
+.ptip p { margin: 0; flex: 1; font: 500 13px/1.3 system-ui, sans-serif; color: #e8eef6; }
+.ptip p b { color: var(--gold-hi); font-weight: 800; }
+.ptip button { flex: none; min-height: 36px; padding: 4px 10px; font: italic 800 13px var(--font); letter-spacing: 0.06em; color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); border: 0; border-radius: 7px; cursor: pointer; }
+.title-mini { flex: none; min-height: 38px; padding: 4px 12px; font: 800 13px var(--font); letter-spacing: 0.06em; color: #e8eef6; background: transparent; border: 1px solid var(--gold); border-radius: 8px; cursor: pointer; }
+.title-mini:disabled { opacity: 0.45; cursor: default; }

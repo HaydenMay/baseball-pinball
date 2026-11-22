@@ -3,6 +3,7 @@ import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800-italic.css';
 import './style.css';
 import { BRAND } from './core/brand.ts';
+import { Coach, TipBook } from './run/coach.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
@@ -54,6 +55,11 @@ function onSimEvent(e: SimEvent) {
   if (e.type === 'drain' && e.strike) onDrain();
   if (e.type === 'clear') build?.onClear();
   if (e.type === 'mult') procMult();
+  if (coach) {
+    if (e.type === 'swing') coach.onSwing();
+    else if (e.type === 'bat') coach.onHit();
+    else if ((e.type === 'drain' && e.strike) || e.type === 'clear') coach.pause();
+  }
 }
 function makeSim(p: Preset, target: number | null) {
   const s = new Simulation({ preset: p, seed: (Math.random() * 2 ** 32) >>> 0, onEvent: onSimEvent });
@@ -64,6 +70,8 @@ function makeSim(p: Preset, target: number | null) {
 let sim: Simulation = makeSim(preset, null);
 const view = new GameView(canvas, theme, sim.layout);
 const v2 = isV2Route(location.pathname, location.search);
+// First-time tips only on the player route (frozen/legacy routes stay as they were).
+const coach: Coach | null = v2 && buildMode ? new Coach(stage, new TipBook(browserStore())) : null;
 $('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? (v2 ? 'PLAY BALL' : 'LEGACY') : 'BASELINE';
 // The run route is what playtesters see: no "prototype/test" wording there (the legacy and map routes keep theirs).
 document.title = buildMode ? (v2 ? BRAND.name : `${BRAND.name} · Legacy run`) : `${BRAND.name} · ${preset.name}`;
@@ -161,6 +169,7 @@ function onReady() {
   sfx.unlock();
   if (paused) return togglePause();
   if (!sim.ready()) return;
+  coach?.onPitch(sim.layout.sections.includes('upperDeck'));
   overlay.hidden = true;
   readyBtn.blur();
   keys.clear();
@@ -188,6 +197,7 @@ function togglePause() {
   pauseBtn.textContent = paused ? '▶' : 'II';
   pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
   if (paused) {
+    coach?.pause();
     const menu = !!(window as any).title;
     showOverlay('TIMEOUT', 'PAUSED', menu ? 'Take a breath. Your run is saved: from the main menu, Continue restarts this pitch.' : 'Take a breath.', 'RESUME', undefined, undefined, menu ? { label: 'MAIN MENU', action: () => toTitle() } : undefined);
   }
@@ -288,6 +298,7 @@ function tick(ms: number) {
   telemetry.active(delta * 1000, !paused && sim.rules.phase === 'live');
   if (!paused) {
     controls.moveAxis = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+    if (coach && (controls.moveAxis || controls.dragDelta) && sim.rules.phase === 'live') coach.onMove();
     acc += delta;
     while (acc >= STEP) {
       sim.step(STEP, controls);
@@ -493,6 +504,7 @@ const build: BuildUI | null = buildMode
         },
         setTag: t => ($('.strip .tag').textContent = t),
         startPitch: () => onReady(),
+        tips: coach?.book ?? null,
         recorder,
         theme: theme.id,
         saveRun: (run, pitch) => writeSave(saveStore, { route: saveRoute, build: BUILD_INFO.commit.slice(0, 7), run: run.toSave(), ...(pitch ? { pitch } : {}) }),
@@ -512,6 +524,10 @@ let settings: Settings = loadSettings();
 const applySettings = () => {
   view.vfx.intensity = effectsIntensity(settings);
   document.body.classList.toggle('fx-reduced', settings.effects === 'reduced');
+  if (coach) {
+    coach.book.enabled = settings.tips;
+    coach.refresh();
+  }
 };
 applySettings();
 
@@ -536,6 +552,10 @@ const title: TitleScreen | null =
             saveSettings(s);
             applySettings();
           },
+          resetTips: () => {
+            coach?.book.reset();
+            coach?.refresh();
+          },
           version: `${BUILD_INFO.version} (${BUILD_INFO.commit.slice(0, 7)})`,
         },
         stage,
@@ -545,6 +565,7 @@ function toTitle() {
   if (!title || !build) return;
   if (paused) togglePause();
   overlay.hidden = true;
+  coach?.pause();
   title.show(readSave(saveStore, saveRoute));
 }
 if (build && title) build.host.toTitle = toTitle;

@@ -12,6 +12,7 @@ import type { Simulation } from '../physics/sim.ts';
 import type { Preset } from '../machines/presets.ts';
 import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
 import type { PitchCarry } from '../physics/sim.ts';
+import { panelTip, type TipBook } from './coach.ts';
 import type { LoadResult, SaveFile } from './save.ts';
 
 export type BuildHost = {
@@ -34,6 +35,8 @@ export type BuildHost = {
   clearRun?: () => void;
   /** Back to the title screen (only on routes that have one). */
   toTitle?: () => void;
+  /** First-time tips (player route only). */
+  tips?: TipBook | null;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -59,6 +62,8 @@ export class BuildUI {
   /** The Run the recorder is currently recording (a new Run object starts a new recorded run). */
   private recordedRun: Run | null = null;
   private runSeed = 0;
+  /** Panel tips shown this session; marked seen once the player moves past that screen. */
+  private tipsShown = new Set<'draft' | 'shop'>();
 
   constructor(host: BuildHost, stage: HTMLElement) {
     this.host = host;
@@ -401,6 +406,10 @@ export class BuildUI {
     const grant =
       (r.powerGrant ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>` : '') +
       (r.sectionGrant ? `<div class="pgrant grew">THE MACHINE GREW — ${r.sectionGrant.name.toUpperCase()} UNLOCKED · FREE HOME RUN RAMP + NEW MOUNTS</div>` : '');
+    const tipId = draft ? 'draft' : 'shop';
+    for (const id of this.tipsShown) if (id !== tipId) this.host.tips?.mark(id);
+    const tip = panelTip(this.host.tips, tipId);
+    if (tip) this.tipsShown.add(tipId);
     const foot = draft
       ? ''
       : `<div class="pfoot"><button data-act="reroll" ${r.money < r.rerollPrice ? 'disabled' : ''}>REROLL $${r.rerollPrice}</button><button class="next" data-act="next">NEXT: TARGET ${fmt(
@@ -418,7 +427,7 @@ export class BuildUI {
         <div class="offers one">${this.card(selected)}</div>`;
     } else {
       this.panel.classList.remove('focus');
-      this.panel.innerHTML = `${head}${grant}<div class="offers ${draft ? 'draft' : 'shop'}">${this.offers().map(o => this.card(o)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
+      this.panel.innerHTML = `${head}${grant}${tip}<div class="offers ${draft ? 'draft' : 'shop'}">${this.offers().map(o => this.card(o)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
       <div class="pmachine">Machine: ${this.machineLine()}</div>${foot}`;
     }
     this.preview();
@@ -473,6 +482,12 @@ export class BuildUI {
   private onClick(e: MouseEvent) {
     const mel = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     const act = mel?.dataset.act;
+    if (act === 'tipok') {
+      const id = mel!.dataset.tip as 'draft' | 'shop';
+      this.host.tips?.mark(id);
+      e.stopPropagation();
+      return this.render();
+    }
     if (act === 'manage') {
       this.mode = 'manage';
       this.msel = null;
