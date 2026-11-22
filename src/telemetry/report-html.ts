@@ -283,7 +283,7 @@ ${table(['Target', 'Copies', 'By name'], fb.mods.map(m => [esc(m.target), m.copi
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
-<title>Baseball Pinball run ${esc(r.runId)} · ${esc(r.outcome)}</title>
+<title>Moonshot Pinball run ${esc(r.runId)} · ${esc(r.outcome)}</title>
 <style>
 :root{--bg:#0d1220;--fg:#e8edf7;--dim:#93a0b8;--line:#26304a;--card:#141b2d;--ok:#46c37b;--bad:#e2575b;--warn:#e0b84a;--tgt:#58637c;--acc:#6fb7ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -300,7 +300,7 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:50vh;ove
 ul{margin:4px 0;padding-left:18px}
 @media (max-width:600px){dl{grid-template-columns:1fr}dt{margin-top:6px}}
 </style></head><body><main>
-<h1>Baseball Pinball · developer run report ${synthetic ? '<span class="badge">SYNTHETIC TEST DATA</span>' : ''}</h1>
+<h1>Moonshot Pinball · developer run report ${synthetic ? '<span class="badge">SYNTHETIC TEST DATA</span>' : ''}</h1>
 <div class="sub">${esc(SCHEMA)} · run ${esc(r.runId)} · ${esc(r.route)} · theme ${esc(r.theme)} · generated offline</div>
 
 <section><details open><summary><h2 style="display:inline">1. Run overview</h2></summary><div><dl>${overview.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl></div></details></section>

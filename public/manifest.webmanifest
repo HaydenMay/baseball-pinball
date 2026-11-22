@@ -1,6 +1,6 @@
 {
-  "name": "Baseball Pinball",
-  "short_name": "BB Pinball",
+  "name": "Moonshot Pinball",
+  "short_name": "Moonshot",
   "description": "Swing, launch and build a ridiculous scoring machine across five innings.",
   "start_url": "./build-test/",
   "scope": "./",

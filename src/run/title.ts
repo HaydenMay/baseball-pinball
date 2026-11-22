@@ -6,13 +6,14 @@
  * theme's CSS variables (style.css `.title-*`), so a theme or art pass restyles it for free.
  */
 import { ECONOMY } from './economy.ts';
+import { BRAND } from '../core/brand.ts';
 import type { LoadResult, SaveFile } from './save.ts';
 import type { Settings } from '../core/settings.ts';
 
 export const TITLE = {
-  kicker: 'A BASEBALL PINBALL ROGUELITE',
-  line1: 'BASEBALL',
-  line2: 'PINBALL',
+  kicker: BRAND.kicker,
+  line1: BRAND.logo[0],
+  line2: BRAND.logo[1],
   tagline: 'Swing, launch, and build a ridiculous scoring machine.',
   unreadable: 'Your last saved run couldn’t be read, so it was kept aside. Start a new run.',
   newer: 'Your saved run is from a newer version of the game, so it was kept aside. Start a new run.',
@@ -65,7 +66,7 @@ export class TitleScreen {
     this.el.id = 'title';
     this.el.hidden = true;
     this.el.setAttribute('role', 'dialog');
-    this.el.setAttribute('aria-label', 'Baseball Pinball main menu');
+    this.el.setAttribute('aria-label', `${BRAND.name} main menu`);
     stage.appendChild(this.el);
     this.el.addEventListener('click', e => this.onClick(e));
   }

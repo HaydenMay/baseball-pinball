@@ -2,6 +2,7 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800-italic.css';
 import './style.css';
+import { BRAND } from './core/brand.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
@@ -65,7 +66,7 @@ const view = new GameView(canvas, theme, sim.layout);
 const v2 = isV2Route(location.pathname, location.search);
 $('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? (v2 ? 'PLAY BALL' : 'LEGACY') : 'BASELINE';
 // The run route is what playtesters see: no "prototype/test" wording there (the legacy and map routes keep theirs).
-document.title = buildMode ? (v2 ? 'Baseball Pinball' : 'Baseball Pinball · Legacy run') : `Baseball Pinball · ${preset.name}`;
+document.title = buildMode ? (v2 ? BRAND.name : `${BRAND.name} · Legacy run`) : `${BRAND.name} · ${preset.name}`;
 if (buildMode) $('aside .badge').textContent = v2 ? 'EARLY ACCESS PLAYTEST' : 'LEGACY RUN';
 const modCount = Object.values(preset.modifiers ?? {}).reduce((n, l) => n + l.length, 0);
 $('#machineInfo').textContent = preset.route
