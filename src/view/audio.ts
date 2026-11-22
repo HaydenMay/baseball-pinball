@@ -5,6 +5,7 @@
  */
 import type { SimEvent } from '../physics/sim.ts';
 import type { MomentKind } from './juice.ts';
+import { SOUND_SET, type SampleId } from './sound-set.ts';
 
 type Voice = { t: number };
 
@@ -14,6 +15,12 @@ export class Sfx {
   muted = false;
   private last = new Map<string, number>();
   private voices: Voice[] = [];
+  /** Player route: recorded samples (sound-set.ts) replace the synth where one is loaded. */
+  useSamples = false;
+  /** Base URL of public/ (the app root), set by main.ts. */
+  sampleRoot = './';
+  private samples = new Map<SampleId, AudioBuffer>();
+  private loading = false;
 
   constructor() {
     try {
@@ -35,6 +42,44 @@ export class Sfx {
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.32;
     this.master.connect(this.ctx.destination);
+    this.loadSamples();
+  }
+
+  private loadSamples() {
+    if (!this.useSamples || this.loading || !this.ctx) return;
+    this.loading = true;
+    for (const [id, def] of Object.entries(SOUND_SET) as [SampleId, (typeof SOUND_SET)[SampleId]][]) {
+      fetch(this.sampleRoot + 'sounds/' + def.file)
+        .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+        .then(b => this.ctx!.decodeAudioData(b))
+        .then(buf => this.samples.set(id, buf))
+        .catch(() => {
+          /* missing or undecodable: that event keeps its synth sound */
+        });
+    }
+  }
+
+  /** Play a recorded sample; false when it isn't loaded (caller falls back to synth) or is rate-limited. */
+  play(id: SampleId, rate = 1): boolean {
+    const buf = this.samples.get(id);
+    if (!buf || !this.ctx) return false;
+    const def = SOUND_SET[id];
+    if (!this.ok('s-' + id, def.gap)) return true;
+    const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * def.vary);
+    // samples are mastered loud (-14 LUFS); the synth master is 0.32, so scale to sit with it
+    g.gain.value = def.vol * 1.6;
+    src.connect(g).connect(this.master!);
+    src.start();
+    this.voices.push({ t: this.ctx.currentTime + buf.duration });
+    return true;
+  }
+
+  /** Shop purchase etc. (no sim event). */
+  ui(id: 'buy') {
+    if (!this.ctx || this.muted) return;
+    if (!this.play(id) && this.ok('buy', 0.15)) [1319, 1760].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.25, i * 0.08));
   }
 
   setMuted(m: boolean) {
@@ -91,6 +136,7 @@ export class Sfx {
     if (!this.ctx) return;
     switch (e.type) {
       case 'bat':
+        if (this.play('bat', e.sweet ? 1.12 : 1)) break;
         if (this.ok('bat', 0.05)) {
           // sweet spot: brighter, longer crack (the sound teaches the timing)
           this.noise(e.sweet ? 0.09 : 0.06, e.sweet ? 1 : 0.9, e.sweet ? 2600 : 1500);
@@ -99,6 +145,7 @@ export class Sfx {
         break;
       case 'swing':
         // short whoosh: a swing is never silent
+        if (this.play('swing')) break;
         if (this.ok('swing', 0.1)) this.noise(0.09, 0.22, 2200);
         break;
       case 'serve':
@@ -112,6 +159,10 @@ export class Sfx {
         }
         break;
       case 'machine':
+        if (e.kind === 'bumper' && this.play('bumper')) break;
+        if (e.kind === 'sling' && this.play('sling')) break;
+        if ((e.kind === 'target' || e.kind === 'splitter') && this.play('target')) break;
+        if (e.kind === 'jackpot' && this.play('jackpot')) break;
         if (e.kind === 'bumper' && this.ok('bumper', 0.06)) this.tone(220, 0.09, 'square', 0.18, 0, 140);
         else if ((e.kind === 'target' || e.kind === 'splitter') && this.ok('target', 0.06)) this.tone(660, 0.07, 'triangle', 0.25);
         else if (e.kind === 'jackpot' && this.ok('jackpot', 0.2)) [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.16, 'triangle', 0.3, i * 0.06));
@@ -132,6 +183,7 @@ export class Sfx {
         if (this.ok('rampGate', 0.15)) [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.32, i * 0.055));
         break;
       case 'ramp':
+        if (e.phase === 'enter' && this.play('ramp')) break;
         if (e.phase === 'enter' && this.ok('rampIn', 0.2)) this.tone(200, 0.35, 'sawtooth', 0.08, 0, 600);
         else if (e.phase === 'complete' && this.ok('rampDone', 0.2)) this.tone(440, 0.25, 'triangle', 0.25, 0, 880);
         else if (e.phase === 'land' && this.ok('land', 0.1)) {
@@ -146,6 +198,7 @@ export class Sfx {
         } else if (e.phase === 'eject' && this.ok('eject', 0.2)) this.tone(260, 0.18, 'sawtooth', 0.15, 0, 900);
         break;
       case 'bank':
+        if (this.play('bank')) break;
         if (this.ok('bank', 0.2)) [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.18, 'square', 0.12, i * 0.07));
         break;
       case 'multiball':
@@ -160,6 +213,7 @@ export class Sfx {
         break;
       }
       case 'drain':
+        if (e.strike && this.play('strike')) break;
         if (e.strike && this.ok('drain', 0.3)) this.tone(220, 0.5, 'triangle', 0.3, 0, 70);
         break;
     }
@@ -171,6 +225,7 @@ export class Sfx {
     const arp = (notes: number[], step: number, type: OscillatorType, vol: number, dur = 0.2) => notes.forEach((f, i) => this.tone(f, dur, type, vol, i * step));
     switch (kind) {
       case 'homeRun':
+        if (this.play('homeRun')) break;
         // ballpark-organ "charge!" run
         if (this.ok('m-hr', 0.5)) {
           arp([392, 523, 659, 784], 0.11, 'square', 0.12, 0.14);
@@ -180,6 +235,7 @@ export class Sfx {
         break;
       case 'cleared':
       case 'runComplete':
+        if (this.play('cleared')) break;
         if (this.ok('m-clear', 0.5)) {
           arp([523, 659, 784, 1046], 0.09, 'triangle', 0.3, 0.22);
           [523, 659, 784, 1046].forEach(f => this.tone(f, 0.7, 'triangle', 0.16, 0.42));
@@ -189,6 +245,7 @@ export class Sfx {
         if (this.ok('m-foul', 0.4)) this.tone(600, 0.18, 'sine', 0.25, 0, 900);
         break;
       case 'gameOver':
+        if (this.play('gameOver')) break;
         if (this.ok('m-over', 0.5)) arp([392, 370, 349, 262], 0.22, 'triangle', 0.28, 0.3);
         break;
       case 'sweet':

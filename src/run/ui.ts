@@ -37,6 +37,8 @@ export type BuildHost = {
   toTitle?: () => void;
   /** First-time tips (player route only). */
   tips?: TipBook | null;
+  /** A shop purchase went through (cha-ching). */
+  onPurchase?: () => void;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -558,6 +560,7 @@ export class BuildUI {
         } else rec.purchase(this.run, offer, moneyBefore, placed);
       }
       if (res.ok) {
+        if (!wasDraft) this.host.onPurchase?.();
         this.sel = null;
         // show the new machine on the board right away
         this.host.loadMachine(this.run.preset(), this.run.target);

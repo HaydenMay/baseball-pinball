@@ -16,7 +16,7 @@ import { renderReport, reportFilename } from './telemetry/report-html.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
-import { setupInstall } from './core/install.ts';
+import { appRootFor, setupInstall } from './core/install.ts';
 import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
 import { TitleScreen } from './run/title.ts';
 import { effectsIntensity, loadSettings, saveSettings, type Settings } from './core/settings.ts';
@@ -98,6 +98,8 @@ const coach: Coach | null = v2 && buildMode ? new Coach(stage, new TipBook(brows
 // Player-route batting rules (whiff lockout, sweet spot, foul ball) and big-moment presentation.
 const player = v2 && buildMode;
 PLAY.enabled = player;
+sfx.useSamples = player;
+sfx.sampleRoot = appRootFor(location.pathname);
 const juice: Juice | null = player ? new Juice(stage, canvas) : null;
 view.bigMoments = !!juice;
 /** A moment's beat is playing before its card (READY is held until the card shows). */
@@ -581,6 +583,7 @@ const build: BuildUI | null = buildMode
         setTag: t => ($('.strip .tag').textContent = t),
         startPitch: () => onReady(),
         tips: coach?.book ?? null,
+        onPurchase: () => sfx.ui('buy'),
         recorder,
         theme: theme.id,
         saveRun: (run, pitch) => writeSave(saveStore, { route: saveRoute, build: BUILD_INFO.commit.slice(0, 7), run: run.toSave(), ...(pitch ? { pitch } : {}) }),

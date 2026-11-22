@@ -23,3 +23,10 @@ Home Run, Jackpot, Multiball, Bank, Cleared, Strike, Foul, Game Over, Run Comple
 - Status strip says RUN COMPLETE / GAME OVER on end cards. Draft preview label stays on screen. Credits version centred.
 
 Screenshots: `docs/screenshots/critic_fixes/`.
+
+## Sound set v1 (Nov 22, Hayden's picks)
+Player route plays recorded samples from `public/sounds/` (map and levels in `src/view/sound-set.ts`); the synth stays as fallback and on the frozen routes. No crowd sounds and no booing (Hayden: pinball, not a stadium; don't mock players).
+- Bat: built in earshot from a wood crack + leather + soft thump. Swing: whoosh/fast. Bumper: hit/punch. Sling: click/snap. Targets: pen/click. Ramp: swoosh/in. Bank: success/triad. Strike: thump/door.
+- Home Run: level_up/chip. Cleared: win/fanfare. Jackpot: cash register cut to its ring. Shop purchase: cha-ching (coins + desk bell).
+- Game over: "wah wah wah waaah", synthesized for this game.
+- Audition board with alternatives: private artifact "Moonshot Sound Board". All renders are ours to use (earshot: CC0/public-domain sources, MIT code).
