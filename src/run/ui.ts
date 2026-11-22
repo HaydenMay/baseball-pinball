@@ -88,7 +88,7 @@ export class BuildUI {
         : `Your machine: ${this.machineLine()}.`,
       'PLAY BALL',
       () => this.host.startPitch(),
-      `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
+      `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
     );
     // Developer analytics: a new Run object = a new recorded run (the previous one stays archived).
     const rec = this.host.recorder;
@@ -126,7 +126,7 @@ export class BuildUI {
           (window as any).buildRun = this.run;
           this.start();
         },
-        `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
+        `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
       );
       if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
       return;
@@ -144,7 +144,7 @@ export class BuildUI {
         this.host.hideOverlay();
         this.openPanel();
       },
-      `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money} · test values`,
+      `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
     );
   }
 
@@ -159,7 +159,7 @@ export class BuildUI {
       'THREE STRIKES',
       'CHALLENGE FAILED',
       `${fmt(sim.rules.score)} of ${fmt(this.run.target)} on challenge ${this.run.challenge}. Machine: ${this.machineLine()}.`,
-      'RESTART TEST RUN',
+      'NEW RUN',
       () => {
         this.runSeed = (Math.random() * 2 ** 32) >>> 0;
         this.run = new Run(this.runSeed);

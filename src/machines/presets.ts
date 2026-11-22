@@ -245,7 +245,19 @@ export function presetForPath(pathname: string): Preset {
   return PRESETS.find(p => p.route !== '' && p.route === seg) ?? PRESETS[0];
 }
 
-/** The roguelite build-loop experiment lives at /build-test/ (shares everything with the map routes). */
+const lastSeg = (pathname: string) => pathname.replace(/\/+$/, '').split('/').pop() ?? '';
+
+/**
+ * The roguelite run lives at /build-test/ (the game as players see it: V2 Upper Deck + zoom camera on), and
+ * /build-test-legacy/ keeps the pre-V2 roguelite loop for comparison. Both share everything with the map routes.
+ */
 export function isBuildRoute(pathname: string) {
-  return (pathname.replace(/\/+$/, '').split('/').pop() ?? '') === 'build-test';
+  const s = lastSeg(pathname);
+  return s === 'build-test' || s === 'build-test-legacy';
+}
+
+/** V2 Expandable Machine: on by default at /build-test/; the legacy route can still opt in with ?v2=1. */
+export function isV2Route(pathname: string, search = '') {
+  if (lastSeg(pathname) === 'build-test') return true;
+  return isBuildRoute(pathname) && new URLSearchParams(search).get('v2') === '1';
 }

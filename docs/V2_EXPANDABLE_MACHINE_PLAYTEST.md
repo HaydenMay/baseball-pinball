@@ -1,6 +1,6 @@
 # V2 Expandable Machine — playtest notes
 
-Everything V2 lives behind **`/build-test/?v2=1`**. Without `?v2=1`, `/build-test/` is unchanged, and `/`, `/1`, `/2`, `/3` and `stable` are untouched (golden replay tests pass).
+**Nov 21, 2026: V2 is now the default `/build-test/` (no flag); the pre-V2 run moved to `/build-test-legacy/`.** Originally everything V2 lived behind **`/build-test/?v2=1`** (still accepted). Without `?v2=1`, `/build-test/` is unchanged, and `/`, `/1`, `/2`, `/3` and `stable` are untouched (golden replay tests pass).
 Plan once approved: V2 becomes `/build-test/`, and the current version moves to `/build-test-legacy/`.
 
 ## Decided by the designer vs experimental

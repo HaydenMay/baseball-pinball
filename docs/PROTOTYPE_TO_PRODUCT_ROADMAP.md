@@ -583,6 +583,19 @@ For 3D art, preserve original mesh decomposition, Blender object names, pivots, 
 
 ## 15. Decision register and authoritative state
 
+> **Revision, November 21, 2026 (creator approved: “I trust you. Go ahead.”).** These supersede the matching rows below and in §17. The one-page working scope is [`docs/product/1.0_SCOPE.md`](product/1.0_SCOPE.md).
+>
+> - **D-16 → DECIDED: browser-first, phones included.** The complete game is playable in the browser. Paid-download-plus-demo stays the model for *Bloodline*, not this game. Reason: Baseball Pinball is built for portrait phones, and a $0.99 desktop download would cut out the players it was designed for. The itch page uses itch's browser-game pricing (free to play, with a suggested $0.99 donation). That is honest support, **not** a lock, and the copy will say so.
+> - **D-18 → DECIDED: public source and builds are fine.** Nothing is paywalled, so nothing needs hiding.
+> - **D-17 / D-19 / D-20 → SUPERSEDED.** No separate demo build, no demo-to-full save transfer and no download wrapper for 1.0. §17's demo/paywall funnel is DEFERRED; revisit only if the model changes.
+> - **D-21 → AMENDED:** $0.99 is the *suggested* support amount, not a minimum price.
+> - **D-07 → DEFERRED: C9 Side Chamber is out of 1.0.** It's more camera, art, boss and save work, and it makes the game bigger rather than more fun. The Upper Deck stays the single expansion.
+> - **D-06 → RECOMMENDED: save only at safe points.** That means between challenges and on the draft and shop screens, never mid-pitch. Reloading during a pitch restarts that pitch (score and strikes as they were at the pitch's start).
+> - **D-10 → RECOMMENDED:** refine one of the two existing looks (Broadcast Classic / Toxic Thunder) into the final style. No three-new-directions contact sheet.
+> - **D-22 (new) → OPEN: player analytics.** The browser makes this possible (as with *Draftbound*). Mirror Draftbound's approach once it's reviewed. Keep it privacy-respecting and disclosed, and never let it change gameplay.
+> - **Routes:** `/build-test/` is now the player-facing run, with the Upper Deck and zoom camera on by default and no `?v2=1` needed. `/build-test-legacy/` keeps the pre-V2 run. `/`, `/1`–`/3` are unchanged.
+> - **First gate:** the first-minute stranger playtest ([`docs/product/PLAYTEST_FIRST_MINUTE.md`](product/PLAYTEST_FIRST_MINUTE.md)) happens **before** art direction or boss production.
+
 **The entries below are proposals unless marked DECIDED. Don't turn them into code or expensive assets without creator choice.**
 
 | Decision | Current state | Recommendation / deadline |
@@ -669,7 +682,7 @@ Multiple whole-run playtests, device/iframe verification, build-family balance, 
 
 Update this roadmap when milestones are approved, not just when prompts are written. A work package becomes **IMPLEMENTED** only after the actual repository change exists; **TESTED** only after tests and the relevant visual/user observation have been performed. Each update should link commit(s), regression/test results, short mobile clips, open issues and decisions/supersessions. Do not create multiple conflicting “master” plans.
 
-**Next recommended action:** Run Assignment 1. Choose a visual direction and shop presentation on cheap concept sheets, design the first Closer, settle C9 expansion and saving, then build one complete polished first inning. **Do not start by implementing all of 1.0 at once.**
+**Next recommended action (revised Nov 21):** Run the first-minute stranger playtest on `/build-test/`, then work from `docs/product/1.0_SCOPE.md`. Superseded text: Run Assignment 1. Choose a visual direction and shop presentation on cheap concept sheets, design the first Closer, settle C9 expansion and saving, then build one complete polished first inning. **Do not start by implementing all of 1.0 at once.**
 ---
 
 ## 17. Final product milestone — free browser demo + paid $0.99 complete game

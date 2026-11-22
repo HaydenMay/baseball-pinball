@@ -9,7 +9,8 @@ import { Run, type Offer } from '../src/run/run.ts';
 import { MACHINES, placementsOf, MOUNTS } from '../src/run/catalog.ts';
 import { ECONOMY } from '../src/run/economy.ts';
 import { OUTER_WALL } from '../src/physics/board.ts';
-import { presetForPath, isBuildRoute } from '../src/machines/presets.ts';
+import { presetForPath, isBuildRoute, isV2Route } from '../src/machines/presets.ts';
+import { appRootFor } from '../src/core/install.ts';
 import { dropLanding } from '../src/machines/mechanisms.ts';
 
 const DT = 1 / config.physicsHz;
@@ -422,4 +423,20 @@ test('build-test starter table drops the two front pegs; / keeps them', () => {
   const s = new Simulation({ preset: new Run(1).preset() });
   assert.ok(!s.layout.posts.some(p => p.id === 'post-l' || p.id === 'post-r'));
   assert.ok(new Simulation().layout.posts.some(p => p.id === 'post-l'), 'original table unchanged');
+});
+
+test('routes (Nov 21): /build-test/ is the V2 run by default; /build-test-legacy/ is the pre-V2 run (opt-in ?v2=1)', () => {
+  assert.ok(isBuildRoute('/baseball-pinball/build-test-legacy/'));
+  assert.ok(isV2Route('/baseball-pinball/build-test/'));
+  assert.ok(isV2Route('/baseball-pinball/build-test'));
+  assert.ok(isV2Route('/baseball-pinball/build-test/', '?v2=1'), 'old links keep working');
+  assert.ok(!isV2Route('/baseball-pinball/build-test-legacy/'));
+  assert.ok(isV2Route('/baseball-pinball/build-test-legacy/', '?v2=1'));
+  for (const p of ['/baseball-pinball/', '/baseball-pinball/1/', '/baseball-pinball/2/', '/baseball-pinball/3/']) {
+    assert.ok(!isBuildRoute(p) && !isV2Route(p, '?v2=1'), p);
+  }
+  assert.equal(appRootFor('/baseball-pinball/build-test/'), '../');
+  assert.equal(appRootFor('/baseball-pinball/build-test-legacy/'), '../');
+  assert.equal(appRootFor('/baseball-pinball/1/'), '../');
+  assert.equal(appRootFor('/baseball-pinball/'), './');
 });

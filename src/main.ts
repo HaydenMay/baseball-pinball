@@ -11,10 +11,11 @@ import { renderReport, reportFilename } from './telemetry/report-html.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
+import { setupInstall } from './core/install.ts';
 import { GameView, VIEW } from './view/game.ts';
 import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
-import { PRESETS, isBuildRoute, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
+import { PRESETS, isBuildRoute, isV2Route, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
 import { Sfx } from './view/audio.ts';
 import { BuildUI } from './run/ui.ts';
 
@@ -58,8 +59,11 @@ function makeSim(p: Preset, target: number | null) {
 }
 let sim: Simulation = makeSim(preset, null);
 const view = new GameView(canvas, theme, sim.layout);
-$('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? 'BUILD TEST' : 'BASELINE';
-document.title = `Baseball Pinball · ${buildMode ? 'Build Test' : preset.name}`;
+const v2 = isV2Route(location.pathname, location.search);
+$('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? (v2 ? 'PLAY BALL' : 'LEGACY') : 'BASELINE';
+// The run route is what playtesters see: no "prototype/test" wording there (the legacy and map routes keep theirs).
+document.title = buildMode ? (v2 ? 'Baseball Pinball' : 'Baseball Pinball · Legacy run') : `Baseball Pinball · ${preset.name}`;
+if (buildMode) $('aside .badge').textContent = v2 ? 'EARLY ACCESS PLAYTEST' : 'LEGACY RUN';
 const modCount = Object.values(preset.modifiers ?? {}).reduce((n, l) => n + l.length, 0);
 $('#machineInfo').textContent = preset.route
   ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}${modCount ? ` · ${modCount} TEST MODS` : ''}`
@@ -340,7 +344,6 @@ w.playtest = {
 };
 
 // ─── V2 fixed-anchor zoom camera (build test, ?v2=1 while it's being proven) ───
-const v2 = buildMode && new URLSearchParams(location.search).get('v2') === '1';
 if (v2) {
   V2.enabled = true;
   view.enableCamera(new Camera(VIEW));
@@ -412,6 +415,8 @@ devHint.className = 'hint dev-hint';
 devHint.hidden = true;
 devHint.textContent = 'iPhone: if a preview opens, use Share → Save to Files.';
 readyBtn.after(devBtn, devHint);
+// Home Screen install: manifest/icons on every route; the tip only on the player-facing run route
+setupInstall({ showTip: v2, anchor: $('#machineInfo') });
 let devGet: () => RunRecord | null = () => null;
 devBtn.addEventListener('click', () => downloadReport(devGet()));
 
