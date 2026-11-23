@@ -16,9 +16,9 @@ import type { Controls } from '../core/input.ts';
 import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type Bumper } from './board.ts';
 import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
-import { DECK_RALLY, UPPER_DECK } from '../machines/sections.ts';
+import { DECK_RALLY, HOME_RUN_RAMP, UPPER_DECK } from '../machines/sections.ts';
 import { PLAY, isSweetSpot, jackpotPoints } from '../core/play-rules.ts';
-import { HOT_CORNER, type BossId } from '../core/bosses.ts';
+import { CALLED_SHOT, HOT_CORNER, RUNNERS, SMALL_BALL, type BossId } from '../core/bosses.ts';
 
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
@@ -31,6 +31,10 @@ export type SimEvent =
   | { type: 'whiff' }
   /** Closer rule Hot Corner: the ×3 spot moved (or was first placed). */
   | { type: 'hot'; key: string; label: string; x: number; y: number; first: boolean }
+  /** Closer rule Called Shot: a part was called for this pitch, then hit first ('hit') or not ('miss'). */
+  | { type: 'called'; phase: 'call' | 'hit' | 'miss'; key: string; label: string; x: number; y: number }
+  /** Closer rule Runners on Base: points went on base ('add'), were driven in, or stranded. */
+  | { type: 'runners'; phase: 'add' | 'in' | 'stranded'; onBase: number; banked: number; x: number; y: number }
   | { type: 'swing' }
   | { type: 'serve' }
   | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback' | 'land'; x: number; y: number; points: number; ball: number }
@@ -221,10 +225,16 @@ export class Simulation {
   /** Hot Corner: the ×3 spot right now (the view draws markers at `spots`). */
   hot: (HotSpot & { left: number }) | null = null;
   private hotRng = 1;
+  /** Called Shot: this pitch's call and whether the first contact after the bat matched it. */
+  called: (HotSpot & { status: 'pending' | 'hit' | 'missed' }) | null = null;
+  /** Runners on Base: points waiting on base this pitch (already multiplied by the global multiplier). */
+  onBase = 0;
 
   setBoss(id: BossId | null) {
     this.boss = id;
     this.hot = null;
+    this.called = null;
+    this.onBase = 0;
     this.hotRng = (this.seed ^ 0x9e3779b9) >>> 0 || 1;
     if (id === 'hotCorner') this.moveHot(true);
   }
@@ -263,8 +273,54 @@ export class Simulation {
     return hit ? HOT_CORNER.hot : HOT_CORNER.cold;
   }
 
+  /** Called Shot: call a part for the pitch that is starting (slings and lanes are too random to call). */
+  private callShot() {
+    const pool = this.hotSpots().filter(h => h.key !== 'kind:sling' && h.key !== 'kind:lane' && h.key !== this.called?.key);
+    if (!pool.length) return;
+    this.hotRng = (Math.imul(this.hotRng, 1664525) + 1013904223) >>> 0;
+    const pick = pool[this.hotRng % pool.length];
+    this.called = { ...pick, status: 'pending' };
+    this.emit({ type: 'called', phase: 'call', key: pick.key, label: pick.label, x: pick.spots[0].x, y: pick.spots[0].y });
+  }
+
+  /** Called Shot: resolve on the first non-bat contact after the bat, then ×factor for the rest of the pitch. */
+  private calledFactor(kind: string, id: string) {
+    const c = this.called;
+    if (!c) return 1;
+    if (c.status === 'pending' && this.pitchTouched && kind !== 'bat') {
+      const anchor = id.replace(/-(gate|cp)$/, '');
+      const hit = c.key === `id:${anchor}` || c.key === `kind:${kind}`;
+      c.status = hit ? 'hit' : 'missed';
+      this.emit({ type: 'called', phase: hit ? 'hit' : 'miss', key: c.key, label: c.label, x: c.spots[0].x, y: c.spots[0].y });
+    }
+    return c.status === 'hit' ? CALLED_SHOT.factor : 1;
+  }
+
+  /** Runners on Base: bank what's on base at `factor` (drive-in or stranded). */
+  private bankRunners(phase: 'in' | 'stranded', ball: Ball, x: number, y: number) {
+    if (this.boss !== 'runnersOnBase' || this.onBase <= 0) return;
+    const onBase = this.onBase;
+    const banked = Math.round(onBase * (phase === 'in' ? RUNNERS.driveIn : RUNNERS.stranded));
+    this.onBase = 0;
+    const before = this.rules.score;
+    this.rules.addScore(banked);
+    const got = this.rules.score - before;
+    if (got > 0) this.emit({ type: 'score', kind: 'runners', id: phase === 'in' ? 'drive-in' : 'stranded', base: onBase, modified: banked, multTenths: 10, awarded: got, ball: ball.id });
+    this.emit({ type: 'runners', phase, onBase, banked: got, x, y });
+  }
+
   private award(kind: string, id: string, base: number, modified: number, ball: Ball, part?: string, deckRally?: number) {
     if (this.hot) modified = Math.round(modified * this.hotFactor(kind, id));
+    if (this.called) modified = Math.round(modified * this.calledFactor(kind, id));
+    if (this.boss === 'runnersOnBase' && this.rules.phase === 'live') {
+      // nothing banks directly: it waits on base (at today's multiplier) until a bat contact or a drain
+      const value = this.rules.preview(modified);
+      if (value <= 0) return 0;
+      this.onBase += value;
+      const at = ball.pos;
+      this.emit({ type: 'runners', phase: 'add', onBase: this.onBase, banked: 0, x: at.x, y: at.y });
+      return value;
+    }
     const before = this.rules.score;
     // what this contact would have banked without the Rally factor (same rounding as rules.award)
     const plain = deckRally ? this.rules.preview(modified / deckRally) : 0;
@@ -328,7 +384,7 @@ export class Simulation {
 
   /** Apply a multiplier gain and announce it (no points of its own). */
   private boost(source: 'gate' | 'bumper' | 'ramp' | 'bank' | 'bat', id: string, x: number, y: number, tenths: number, ball: Ball) {
-    if (!tenths || !this.rules.gainMult(tenths)) return;
+    if (!tenths || this.boss === 'smallBall' || !this.rules.gainMult(tenths)) return;
     this.emit({ type: 'mult', source, id, x, y, gain: tenths, total: this.rules.multTenths, ball: ball.id });
   }
 
@@ -377,6 +433,8 @@ export class Simulation {
     this.swingHit = true;
     this.swingQueuedUntil = -1;
     this.pitchTouched = false;
+    this.onBase = 0;
+    if (this.boss === 'calledShot') this.callShot();
     // Mechanism progress (multiball charge, bank lamps) carries over between strikes; it only
     // resets when a new game or challenge starts (first pitch).
     if (this.rules.pitchNumber === 1) {
@@ -648,12 +706,14 @@ export class Simulation {
       body.setLinearVelocity(P.Vec2(contact.velocity.x, contact.velocity.y));
       this.rules.batHit();
       // Bat hits are ordinary scoring: they follow the global multiplier like everything else.
+      this.bankRunners('in', ball, p.x, p.y);
       this.award('bat', 'bat', config.batHitPoints, config.batHitPoints, ball);
       this.swingHit = true;
       this.pitchTouched = true;
       const sweet = PLAY.enabled && isSweetSpot(contact.angle, config.swing.centerAngle);
       if (sweet) {
-        this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, PLAY.sweetSpot.points, ball);
+        const sweetPts = PLAY.sweetSpot.points * (this.boss === 'smallBall' ? SMALL_BALL.sweet : 1);
+        this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, sweetPts, ball);
         // sweet-spot generators (Barrel Up / Squared Up): every N sweet spots raise the multiplier
         this.boost('bat', 'sweet-spot', p.x, p.y, this.generate('sweet-spot', 'sweet'), ball);
       }
@@ -663,6 +723,7 @@ export class Simulation {
     // Ramp mouths: crossing into the mouth while moving up the ramp starts the ride.
     for (const r of this.layout.ramps) {
       if ((ball.ignore[r.def.id] ?? 0) > this.time) continue;
+      if (this.boss === 'rainDelay' && r.def.id === HOME_RUN_RAMP.id) continue; // rained out
       if (crossedLine(ball.prev, p, r.mouth, r.entryDir, r.def.mouthWidth / 2 - 0.12)) {
         const v = body.getLinearVelocity();
         const along = v.x * r.entryDir.x + v.y * r.entryDir.y;
@@ -939,6 +1000,8 @@ export class Simulation {
     const i = this.balls.indexOf(ball);
     if (i < 0) return;
     const x = ball.body.getPosition().x;
+    // Runners on Base: the last ball leaving strands whatever is on base (banked at the reduced rate)
+    if (this.balls.length === 1 && this.rules.phase === 'live') this.bankRunners('stranded', ball, x, config.drainY - 1);
     this.endDeckRally(ball, 'drain');
     this.balls.splice(i, 1);
     this.bodyToBall.delete(ball.body);

@@ -5,7 +5,7 @@
  */
 import { config } from '../config.ts';
 import { MOUND, OUTER_WALL, lowerWallX, targetPoly, wallChains, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
-import { UPPER_DECK, deckFloorPolygon } from '../machines/sections.ts';
+import { HOME_RUN_RAMP, UPPER_DECK, deckFloorPolygon } from '../machines/sections.ts';
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
 import { drawGlow, readableSize, underlay, Vfx } from './vfx.ts';
@@ -19,6 +19,8 @@ import { HOT_CORNER } from '../core/bosses.ts';
 export const VIEW = { x0: -0.9, y0: -1.7, w: 21.8, h: 34.1 };
 
 const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
+/** Rain Delay look: drops, fall speed (deck heights per second), streak length. */
+const RAIN = { drops: 90, speed: 0.9, len: 0.6 };
 const LANE_TOP = config.batter.handsY - 1.7;
 const BAT_LINE = config.batter.handsY + config.swing.battingLine;
 const HOME = { x: 10, y: 28.0 };
@@ -910,7 +912,9 @@ export class GameView {
   /** Big-moment bulb chase set by the main loop from Juice (null = normal attract chase). */
   bulbChase: { color: string; left: number } | null = null;
   /** Closer rule Hot Corner: where the ×3 is (set each frame by main.ts; null = no rule). */
-  hot: { spots: { x: number; y: number; r: number }[]; left: number } | null = null;
+  hot: { spots: { x: number; y: number; r: number }[]; left: number; tag?: string; role?: 'hot' | 'called' } | null = null;
+  /** Closer rule Rain Delay: the Upper Deck is rained out (rain over the deck, CLOSED on the Home Run ramp). */
+  rain = false;
   /** Player route: big moments get a DOM banner (juice.ts), so in-world headlines are skipped. */
   bigMoments = false;
   /** Where the WHIFF tag appears (updated each frame from the batter's hands). */
@@ -983,6 +987,7 @@ export class GameView {
     this.drawBulbs(ctx);
     this.drawMachinesDynamic(ctx);
     this.drawHotCorner(ctx);
+    this.drawRain(ctx);
     drawMachinesFloorDynamic(ctx, this, sim);
     this.drawBatter(ctx, sim);
     this.drawBalls(ctx, sim, dt, 'floor');
@@ -1120,6 +1125,8 @@ export class GameView {
     const h = this.hot;
     if (!h) return;
     const th = this.theme;
+    const color = h.role === 'called' ? th.energyPrimary : th.jackpotAccent;
+    const tag = h.tag ?? `×${HOT_CORNER.hot}`;
     const warn = h.left <= HOT_CORNER.warnSeconds;
     const blink = warn ? (Math.sin(this.time * 18) > 0 ? 1 : 0.25) : 1;
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
@@ -1128,8 +1135,8 @@ export class GameView {
     for (const sp of h.spots) {
       const R = sp.r + 0.35 + pulse * 0.15;
       ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, th.jackpotAccent, sp.x, sp.y, R * 1.4, 0.35 * blink);
-      ctx.strokeStyle = th.jackpotAccent;
+      drawGlow(ctx, color, sp.x, sp.y, R * 1.4, 0.35 * blink);
+      ctx.strokeStyle = color;
       ctx.lineWidth = 0.16;
       ctx.globalAlpha = 0.9 * blink;
       ctx.setLineDash([0.45, 0.3]);
@@ -1149,12 +1156,45 @@ export class GameView {
       // one tag per cluster (a bank of three targets gets one ×3, not three)
       if (!labelled.some(l => Math.hypot(l.x - sp.x, l.y - sp.y) < 2.2)) {
         labelled.push(sp);
-        ctx.strokeText(`×${HOT_CORNER.hot}`, sp.x, ty);
-        ctx.fillStyle = th.jackpotAccent;
-        ctx.fillText(`×${HOT_CORNER.hot}`, sp.x, ty);
+        ctx.strokeText(tag, sp.x, ty);
+        ctx.fillStyle = color;
+        ctx.fillText(tag, sp.x, ty);
       }
       ctx.globalAlpha = 1;
     }
+  }
+
+  /** Rain Delay: dark wash and falling rain over the Upper Deck, CLOSED sign on the Home Run ramp mouth. */
+  private drawRain(ctx: CanvasRenderingContext2D) {
+    if (!this.rain || !this.layout.sections.includes('upperDeck')) return;
+    const D = UPPER_DECK, x0 = D.wallX0, x1 = D.wallX1, y0 = D.roofY, y1 = D.sideFloorY;
+    ctx.fillStyle = 'rgba(8,14,30,0.45)';
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = 'rgba(170,210,255,0.45)';
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    const t = this.time;
+    for (let i = 0; i < RAIN.drops; i++) {
+      const fx = (i * 0.6180339) % 1, fy = (i * 0.4142135 + t * RAIN.speed) % 1;
+      const x = x0 + fx * (x1 - x0), y = y0 + fy * (y1 - y0);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 0.15, y + RAIN.len);
+    }
+    ctx.stroke();
+    // CLOSED plate just below the Home Run mouth (its name plate sits right on the mouth)
+    const m = { x: HOME_RUN_RAMP.path[0].x, y: HOME_RUN_RAMP.path[0].y + 1.3 };
+    const fs = readableSize(ctx, 0.55, 13);
+    ctx.font = `italic 900 ${fs.toFixed(3)}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText('CLOSED').width + 0.5;
+    ctx.fillStyle = '#c0283a';
+    ctx.fillRect(m.x - w / 2, m.y - fs * 0.75, w, fs * 1.5);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('CLOSED', m.x, m.y);
+    ctx.font = `italic 900 ${readableSize(ctx, 0.7, 16).toFixed(3)}px ${FONT}`;
+    ctx.fillStyle = 'rgba(200,225,255,0.85)';
+    ctx.fillText('RAIN DELAY', (x0 + x1) / 2, (y0 + y1) / 2);
   }
 
   private drawMachinesDynamic(ctx: CanvasRenderingContext2D) {

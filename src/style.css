@@ -594,3 +594,6 @@ body.fx-reduced .res-best { animation: none; }
 .share-btn[hidden] { display: none; }
 /* Status strip: long states (Closer rule status) stay on one line */
 #state { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Small Ball (Closer): the multiplier is frozen */
+#multwrap.locked { filter: saturate(0.4); }
+#multwrap.locked::after { content: 'LOCKED'; position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); padding: 0 6px; border-radius: 4px; font: 800 10px var(--font); letter-spacing: 0.12em; color: #1a0418; background: var(--m-btn-b); }

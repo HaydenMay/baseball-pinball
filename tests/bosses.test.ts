@@ -9,10 +9,9 @@ import { Run } from '../src/run/run.ts';
 
 const DT = 1 / config.physicsHz;
 
-test('Closer slots: Hot Corner is Inning 1’s Closer (C3); other challenges have no rule yet', () => {
-  assert.equal(closerFor(3), 'hotCorner');
-  for (const n of [1, 2, 4, 5, 7]) assert.equal(closerFor(n), null);
-  assert.equal(closerFor(6), null, 'later Closers not designed yet');
+test('Closer slots: Hot Corner, Small Ball, Called Shot, Rain Delay, Runners on Base; non-Closers have none', () => {
+  assert.deepEqual([3, 6, 9, 12, 15].map(n => closerFor(n)), ['hotCorner', 'smallBall', 'calledShot', 'rainDelay', 'runnersOnBase']);
+  for (const n of [1, 2, 4, 5, 7, 14]) assert.equal(closerFor(n), null);
 });
 
 test('Hot Corner: ×3 on the hot part, ×0.8 everywhere else, before the global multiplier', () => {
@@ -77,4 +76,79 @@ test('every spot is somewhere on the table and matches real scoring ids', () => 
   assert.ok(spots.length >= 6, `${spots.length} spots`);
   for (const h of spots) for (const p of h.spots) assert.ok(p.x > 0 && p.x < 20 && p.y > -10 && p.y < 32, `${h.key} on table`);
   assert.equal(new Set(spots.map(h => h.key)).size, spots.length);
+});
+
+const withBoss = (boss: Parameters<Simulation['setBoss']>[0], deck = false) => {
+  const ev: SimEvent[] = [];
+  const preset = new Run(1).preset();
+  if (deck) preset.sections = ['upperDeck'];
+  const s = new Simulation({ preset, onEvent: e => ev.push(e) });
+  s.setBoss(boss);
+  return { s, ev, award: (s as any).award.bind(s) as (k: string, id: string, b: number, m: number, ball: unknown) => number };
+};
+
+test('Small Ball: the multiplier never grows', () => {
+  const { s } = withBoss('smallBall');
+  s.ready();
+  (s as any).boost('gate', 'g', 0, 0, 5, s.balls[0]);
+  assert.equal(s.rules.multTenths, 10);
+});
+
+test('Called Shot: a part is called each pitch; hitting it first after the bat doubles the rest of the pitch; anything else misses', () => {
+  const { s, ev, award } = withBoss('calledShot');
+  s.ready();
+  const c = s.called!;
+  assert.ok(c && c.status === 'pending');
+  assert.ok(!['kind:sling', 'kind:lane'].includes(c.key), 'never calls slings or lanes');
+  const ball = s.balls[0];
+  const [kind, id] = c.key.startsWith('kind:') ? [c.key.slice(5), 'x'] : ['bumper', c.key.slice(3)];
+  award(kind, id, 100, 100, ball); // before any bat contact: doesn't resolve
+  assert.equal(s.called!.status, 'pending');
+  (s as any).pitchTouched = true;
+  award(kind, id, 100, 100, ball);
+  assert.equal(s.called!.status, 'hit');
+  const last = ev.filter(e => e.type === 'score').at(-1) as Extract<SimEvent, { type: 'score' }>;
+  assert.equal(last.modified, 200);
+  assert.ok(ev.some(e => e.type === 'called' && e.phase === 'hit'));
+  // next pitch: new call, a different first contact misses
+  s.rules.phase = 'ready';
+  s.ready();
+  (s as any).pitchTouched = true;
+  award('bat', 'bat', 10, 10, s.balls[0]); // bat contact never resolves the call
+  assert.equal(s.called!.status, 'pending');
+  award('sling', 'sling-l', 10, 10, s.balls[0]);
+  assert.equal(s.called!.status, 'missed');
+});
+
+test('Rain Delay: the Home Run ramp cannot be entered', () => {
+  const { s, ev } = withBoss('rainDelay', true);
+  s.ready();
+  const r = s.layout.ramps.find(r => r.def.id === 'hr-ramp')!;
+  assert.ok(r, 'deck board has the Home Run ramp');
+  const ball = s.balls[0];
+  const m = r.mouth, d = r.entryDir;
+  (s as any).put?.(ball, m.x - d.x * 0.6, m.y - d.y * 0.6);
+  ball.body.setPosition({ x: m.x - d.x * 0.6, y: m.y - d.y * 0.6 } as any);
+  ball.body.setLinearVelocity({ x: d.x * 20, y: d.y * 20 } as any);
+  for (let i = 0; i < 0.3 / DT; i++) s.step(DT);
+  assert.ok(!ev.some(e => e.type === 'ramp' && e.id === 'hr-ramp' && e.phase === 'enter'));
+});
+
+test('Runners on Base: points wait on base; a bat contact drives them in ×1.5; the last drain strands them ×0.5', () => {
+  const { s, ev, award } = withBoss('runnersOnBase');
+  s.ready();
+  const ball = s.balls[0];
+  s.rules.multTenths = 20;
+  award('bumper', 'bumper-left', 100, 100, ball);
+  award('bumper', 'bumper-left', 100, 100, ball);
+  assert.equal(s.rules.score, 0, 'nothing banked yet');
+  assert.equal(s.onBase, 400, 'multiplier applied when they reach base');
+  (s as any).bankRunners('in', ball, 0, 0);
+  assert.equal(s.rules.score, 600);
+  assert.equal(s.onBase, 0);
+  award('bumper', 'bumper-left', 100, 100, ball);
+  (s as any).drainBall(ball);
+  assert.equal(s.rules.score, 700, '200 on base stranded at ×0.5');
+  const total = ev.filter(e => e.type === 'score').reduce((n, e) => n + (e as any).awarded, 0);
+  assert.equal(total, s.rules.score, 'score events reconcile');
 });

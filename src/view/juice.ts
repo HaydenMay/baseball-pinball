@@ -7,7 +7,7 @@ import { rallyLabel } from '../machines/sections.ts';
  * Banners are DOM text at a fixed CSS size, so they stay readable however far the camera has zoomed out.
  */
 
-export type MomentKind = 'hotMove' | 'homeRun' | 'jackpot' | 'multiball' | 'bank' | 'cleared' | 'strike' | 'foul' | 'sweet' | 'gameOver' | 'runComplete';
+export type MomentKind = 'hotMove' | 'calledHit' | 'calledMiss' | 'driveIn' | 'homeRun' | 'jackpot' | 'multiball' | 'bank' | 'cleared' | 'strike' | 'foul' | 'sweet' | 'gameOver' | 'runComplete';
 
 type MomentDef = {
   /** Banner text (empty = no banner). */
@@ -46,6 +46,9 @@ export const JUICE = {
   reducedFlash: 0.4,
   moments: {
     hotMove: { text: 'HOT CORNER', sub: '{label} ×3', color: '#ff4fd8', size: 'mid', stop: 0, flash: 0, chase: 0.7, hold: 0.7, top: 20 },
+    calledHit: { text: 'CALLED SHOT!', sub: '×2 THIS PITCH', color: '#5cf6ff', size: 'big', stop: 0.08, shake: [3, 0.16], flash: 0.2, chase: 1.2, hold: 0.7 },
+    calledMiss: { text: 'MISSED THE CALL', color: '#9aa7b8', size: 'mid', stop: 0, flash: 0, chase: 0, hold: 0.5, top: 20 },
+    driveIn: { text: 'DRIVEN IN!', sub: '+{n}', color: '#9fe870', size: 'mid', stop: 0.05, flash: 0.1, chase: 0.6, hold: 0.45, top: 66 },
     homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9 },
     jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7 },
     multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8 },

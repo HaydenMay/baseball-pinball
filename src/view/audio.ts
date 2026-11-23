@@ -241,6 +241,17 @@ export class Sfx {
           [523, 659, 784, 1046].forEach(f => this.tone(f, 0.7, 'triangle', 0.16, 0.42));
         }
         break;
+      case 'calledHit':
+        if (this.play('jackpot')) break;
+        if (this.ok('m-called', 0.4)) [784, 988, 1319].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.25, i * 0.07));
+        break;
+      case 'calledMiss':
+        if (this.ok('m-miss', 0.4)) this.tone(330, 0.2, 'triangle', 0.18, 0, 220);
+        break;
+      case 'driveIn':
+        if (this.play('bank')) break;
+        if (this.ok('m-drive', 0.3)) [523, 784].forEach((f, i) => this.tone(f, 0.12, 'square', 0.14, i * 0.06));
+        break;
       case 'hotMove':
         // the hot spot jumped: two quick rising pings
         if (this.ok('m-hot', 0.5)) [988, 1319].forEach((f, i) => this.tone(f, 0.12, 'square', 0.14, i * 0.08));

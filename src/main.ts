@@ -6,7 +6,7 @@ import { BRAND } from './core/brand.ts';
 import { Coach, TipBook } from './run/coach.ts';
 import { Juice, JUICE, type MomentKind } from './view/juice.ts';
 import { PLAY } from './core/play-rules.ts';
-import { HOT_CORNER } from './core/bosses.ts';
+import { CALLED_SHOT, HOT_CORNER, SMALL_BALL } from './core/bosses.ts';
 import { ECONOMY } from './run/economy.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
@@ -84,6 +84,14 @@ function onSimEvent(e: SimEvent) {
     } else if (e.type === 'hot' && !e.first && sim.rules.phase === 'live') {
       juice.play('hotMove', undefined, e.label);
       sfx.moment('hotMove');
+    } else if (e.type === 'called' && e.phase !== 'call') {
+      juice.play(e.phase === 'hit' ? 'calledHit' : 'calledMiss');
+      sfx.moment(e.phase === 'hit' ? 'calledHit' : 'calledMiss');
+    } else if (e.type === 'runners' && e.phase === 'in' && e.banked > 0) {
+      juice.play('driveIn', e.banked);
+      sfx.moment('driveIn');
+    } else if (e.type === 'runners' && e.phase === 'stranded' && e.banked > 0) {
+      view.vfx.flicker(e.x, e.y, `STRANDED +${e.banked.toLocaleString("en-US")}`, undefined, 1.2);
     } else if (e.type === 'machine' && e.kind === 'jackpot') juice.play('jackpot', e.points);
     else if (e.type === 'multiball') juice.play('multiball');
     else if (e.type === 'bank') juice.play('bank', e.points);
@@ -163,6 +171,26 @@ function procMult() {
 hud.multWrap.addEventListener('animationend', e => {
   if ((e.target as HTMLElement).classList.contains('mult')) hud.multWrap.classList.remove('proc');
 });
+/** Closer rule status for the strip during a live pitch ('' = none). */
+function closerState() {
+  switch (sim.boss) {
+    case 'hotCorner':
+      return sim.hot ? `×${HOT_CORNER.hot} ${sim.hot.label} ${Math.ceil(sim.hot.left)}s` : '';
+    case 'smallBall':
+      return `SMALL BALL · SWEET ×${SMALL_BALL.sweet}`;
+    case 'calledShot': {
+      const c = sim.called;
+      if (!c) return '';
+      return c.status === 'hit' ? `CALLED SHOT ×${CALLED_SHOT.factor}` : c.status === 'missed' ? 'CALL MISSED' : `CALLED: ${c.label}`;
+    }
+    case 'rainDelay':
+      return 'RAIN DELAY';
+    case 'runnersOnBase':
+      return `ON BASE ${Math.round(sim.onBase).toLocaleString('en-US')}`;
+    default:
+      return '';
+  }
+}
 function updateHud() {
   const r = sim.rules;
   // Always the actual global multiplier (persists across strikes, resets per challenge; shared in multiball).
@@ -194,7 +222,8 @@ function updateHud() {
   const n = sim.balls.length;
   const runEnd = build?.run.phase === 'won' ? 'RUN COMPLETE' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
   // Closer rule status: where the ×3 is and when it moves
-  const hotState = sim.hot && r.phase === 'live' ? `×${HOT_CORNER.hot} ${sim.hot.label} ${Math.ceil(sim.hot.left)}s` : '';
+  const hotState = r.phase === 'live' ? closerState() : '';
+  hud.multWrap.classList.toggle('locked', sim.boss === 'smallBall');
   const state = paused ? 'PAUSED' : runEnd ? runEnd : hotState ? hotState : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
   // Pause only means something during a live pitch (it used to sit there on the game-over card).
   const canPause = paused || r.phase === 'live';
@@ -410,7 +439,10 @@ function tick(ms: number) {
     if (juice) {
       juice.update(delta);
       view.bulbChase = juice.chase ?? attractChase();
-      view.hot = sim.hot && sim.rules.phase !== 'over' ? sim.hot : null;
+      // Closer markers: Hot Corner ×3 ring, Called Shot ring (until it resolves), Rain Delay wash
+      const live = sim.rules.phase !== 'over';
+      view.hot = !live ? null : sim.hot ? { ...sim.hot, role: 'hot' } : sim.called?.status === 'pending' ? { spots: sim.called.spots, left: 99, tag: 'CALLED', role: 'called' } : null;
+      view.rain = sim.boss === 'rainDelay';
     }
     acc += delta * (juice ? juice.timeScale() : 1);
     while (acc >= STEP) {
