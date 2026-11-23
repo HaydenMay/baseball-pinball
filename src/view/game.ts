@@ -40,9 +40,14 @@ export const MINIMAP = {
 export const BATTER_ART = {
   /** How far the torso turns toward the pitcher by the end of the swing (radians). */
   torsoTurn: 1.15,
-  /** Where the head looks: up-right at the pitch in the stance, straight up the table at the finish. */
+  /** Where the head looks with no ball in play: up-right in the stance, straight up the table at the finish. */
   lookRest: -1.0,
   lookSwing: -1.5,
+  /** Eye on the ball: the head turns to the nearest ball within a neck's reach (radians; 0 = facing the plate). */
+  neckMin: -2.0,
+  neckMax: 1.1,
+  /** How quickly the head catches up with the ball (1/s; higher = snappier). */
+  headTrack: 9,
   leadFoot: { x: 0.14, y: -0.66 },
   backFoot: { x: -0.1, y: 0.6 },
   jersey: '#ffffff',
@@ -953,6 +958,9 @@ export class GameView {
   rain = false;
   /** Player route: big moments get a DOM banner (juice.ts), so in-world headlines are skipped. */
   bigMoments = false;
+  /** Batter's current head angle (eased toward the ball) and when it was last updated. */
+  private headLook = BATTER_ART.lookRest;
+  private headT = 0;
   /**
    * Player route: the factory table's catcher's-mitt bumper is drawn as a baseball bumper like every other
    * pop bumper (it was the only non-baseball one). Same body and physics; frozen routes keep the mitt.
@@ -1510,8 +1518,22 @@ export class GameView {
       ctx.stroke();
     }
     // helmet: head turned toward the pitcher, bill pointing where he looks, ear flap on the pitcher side
-    const look = A.lookRest + (A.lookSwing - A.lookRest) * p;
     const head = rp(0.03, -0.04);
+    // keep an eye on the ball: the closest one to the head, eased so the head turns instead of snapping
+    let want = A.lookRest + (A.lookSwing - A.lookRest) * p;
+    const hw = { x: bx + head.x * S, y: by + head.y * S };
+    let best = Infinity;
+    for (const b of sim.balls) {
+      const d = Math.hypot(b.pos.x - hw.x, b.pos.y - hw.y);
+      if (d < best) {
+        best = d;
+        want = Math.max(A.neckMin, Math.min(A.neckMax, Math.atan2(b.pos.y - hw.y, b.pos.x - hw.x)));
+      }
+    }
+    const dt = Math.min(0.1, Math.max(0, this.time - this.headT));
+    this.headT = this.time;
+    this.headLook += (want - this.headLook) * (1 - Math.exp(-A.headTrack * dt));
+    const look = this.headLook;
     const dx = Math.cos(look), dy = Math.sin(look);
     ctx.fillStyle = A.bill;
     ctx.beginPath();
