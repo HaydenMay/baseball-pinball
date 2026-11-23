@@ -3,6 +3,7 @@
  * spends money in the shop, and records time-to-clear and failure rate per challenge.
  *
  *   node scripts/bot-run.ts [runs=40] [timingErrorMs=70] [seed=1] [maxChallenge=6] [strategy=any]
+ *   BOT_PLAYER=1 adds the player-route rules + Closer rules; BOT_PLAYER=noboss = player rules only.
  *
  * Env switches: BOT_GROWTH=1.6, BOT_POWER=flat5, BOT_RAMPS=legacy (old values, for comparisons).
  * Strategies (Upgrade System 2.0 playtests): any | gate | nogate | bumper | objective
@@ -22,6 +23,13 @@ import { ECONOMY } from '../src/run/economy.ts';
 import { MACHINES } from '../src/run/catalog.ts';
 import { writeFileSync } from 'node:fs';
 import { RunRecorder } from '../src/telemetry/run-recorder.ts';
+import { PLAY } from '../src/core/play-rules.ts';
+import { closerFor } from '../src/core/bosses.ts';
+
+// BOT_PLAYER=1: player-route rules (whiff lockout, sweet spot, foul, jackpot scaling) + Closer rules.
+// BOT_PLAYER=noboss: player rules without Closer rules (for comparison).
+const PLAYER = process.env.BOT_PLAYER;
+if (PLAYER) PLAY.enabled = true;
 import { renderReport } from '../src/telemetry/report-html.ts';
 
 // BOT_REPORT=path.html: record the FIRST bot run with the developer run recorder and write its HTML report
@@ -77,6 +85,7 @@ function playChallenge(run: Run, simSeed: number) {
       }
     },
   });
+  if (PLAYER === '1') sim.setBoss(closerFor(run.challenge));
   sim.rules.target = run.target;
   const c = makeControls();
   let plan: { at: number } | null = null, downSince = -1;
