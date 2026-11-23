@@ -2,7 +2,7 @@
 
 **Goal:** find out whether the core is fun before we spend on art, bosses or store polish. This is a cheap smoke test, not a study. **Three or more people** who have never seen the game.
 
-**Link:** https://haydenmay.github.io/baseball-pinball/build-test/
+**Link:** https://haydenmay.github.io/baseball-pinball/play/
 - No flags needed.
 - The Upper Deck unlocks after challenge 3.
 - On an iPhone, a small tip offers "Add to Home Screen". Let them choose; don't push it.
@@ -46,7 +46,7 @@ If you can, send the recordings or notes back. Seconds-to-first-swing and the "a
 ## Playtest mode: getting data back without analytics (Nov 22)
 Draftbound turned out to have no analytics (its README and privacy page say so), so this game doesn't either. Instead:
 
-1. Send each tester a personal link: `https://haydenmay.github.io/baseball-pinball/build-test/?playtest=<their name>` (e.g. `?playtest=sam`). The name is remembered on their phone; they can add it to the Home Screen from that link.
+1. Send each tester a personal link: `https://haydenmay.github.io/baseball-pinball/play/?playtest=<their name>` (e.g. `?playtest=sam`). The name is remembered on their phone; they can add it to the Home Screen from that link.
 2. They play normally. The game already records every run locally (nothing is sent anywhere).
 3. On the game-over / run-complete card, and in the pause menu, they tap **SEND PLAYTEST REPORT** and pick Messages or email. They get a short readable summary of every run on that phone (newest first: where it ended, swings/hits/sweet spots/fouls/strikes, where points came from, free picks and buys, frame time) and, on phones that can share files, the full HTML developer report. If sharing isn't available it copies the text instead.
 4. The summary ends with "Anything else? Type it here:" so they can add a comment in the same message.

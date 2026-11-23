@@ -9,6 +9,8 @@ export type Settings = {
   tips: boolean;
   /** Table look on the player route: neon Night Game or classic Day game. */
   look: 'night' | 'day';
+  /** Vibration on bat contact and big moments (Android; iOS browsers can't vibrate). */
+  haptics: boolean;
 };
 
 export const SETTINGS = {
@@ -26,12 +28,12 @@ function osPrefersReduced() {
 }
 
 export function loadSettings(): Settings {
-  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full', tips: true, look: 'night' };
+  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full', tips: true, look: 'night', haptics: true };
   try {
     const raw = localStorage.getItem(SETTINGS.key);
     if (!raw) return def;
     const s = JSON.parse(raw);
-    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects, tips: s.tips !== false, look: s.look === 'day' ? 'day' : 'night' };
+    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects, tips: s.tips !== false, look: s.look === 'day' ? 'day' : 'night', haptics: s.haptics !== false };
   } catch {
     return def;
   }

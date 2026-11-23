@@ -248,16 +248,24 @@ export function presetForPath(pathname: string): Preset {
 const lastSeg = (pathname: string) => pathname.replace(/\/+$/, '').split('/').pop() ?? '';
 
 /**
+ * The release URL for the game is /play/ (Nov 23). /build-test/ is the same game under its playtest-era URL,
+ * kept working for old links and home-screen icons (they share one save, see `saveRouteFor`).
  * The roguelite run lives at /build-test/ (the game as players see it: V2 Upper Deck + zoom camera on), and
  * /build-test-legacy/ keeps the pre-V2 roguelite loop for comparison. Both share everything with the map routes.
  */
 export function isBuildRoute(pathname: string) {
   const s = lastSeg(pathname);
-  return s === 'build-test' || s === 'build-test-legacy';
+  return s === 'play' || s === 'build-test' || s === 'build-test-legacy';
+}
+
+/** Save slot for a route: /play/ and /build-test/ are one game, so they share the 'build-test' save and nobody loses a run. */
+export function saveRouteFor(pathname: string) {
+  const s = lastSeg(pathname);
+  return s === 'play' || s === '' ? 'build-test' : s;
 }
 
 /** V2 Expandable Machine: on by default at /build-test/; the legacy route can still opt in with ?v2=1. */
 export function isV2Route(pathname: string, search = '') {
-  if (lastSeg(pathname) === 'build-test') return true;
+  if (lastSeg(pathname) === 'build-test' || lastSeg(pathname) === 'play') return true;
   return isBuildRoute(pathname) && new URLSearchParams(search).get('v2') === '1';
 }

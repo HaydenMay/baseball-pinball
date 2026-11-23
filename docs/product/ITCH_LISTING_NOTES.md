@@ -26,7 +26,7 @@ What the game already does:
   1. Tell phone players to tap itch's **fullscreen** button, then install. Check whether iOS/Android install the game page in that state.
   2. Add a "Play full screen / install" link to the game's own direct URL (GitHub Pages now, or a custom domain later), where installing works fully.
   3. Both.
-- For the itch zip, the manifest's `start_url` must point at the zip's `index.html` (`./`). Today it points at `./build-test/` for GitHub Pages. Set this per build when we package for itch (M6).
+- For the itch zip, the manifest's `start_url` must point at the zip's `index.html` (`./`). Today it points at `./play/` for GitHub Pages (the release URL since Nov 23; `/build-test/` still works and shares the save). Set this per build when we package for itch (M6).
 
 ## Other listing checklist items
 - Screenshots and GIFs at phone portrait size.

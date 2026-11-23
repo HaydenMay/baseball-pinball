@@ -4,8 +4,9 @@
  * Policy (docs/PROTOTYPE_TO_PRODUCT_ROADMAP.md D-06, docs/product/1.0_SCOPE.md):
  *   - Saved only at safe points: a challenge's start card, between pitches (after a drain), the free pick,
  *     the shop (after every pick / buy / sale / reroll).
- *   - Reloading during a live pitch resumes from the last safe point, i.e. that pitch restarts with the score,
- *     strikes and multiplier it started with. No mid-pitch physics restore.
+ *   - Player route (Nov 23): pausing, switching apps or closing the page during a live pitch also saves,
+ *     keeping that pitch's points so far; Continue picks up at READY on the next pitch, no strike
+ *     (no mid-pitch physics restore). A plain reload without pause/hide still falls back to the last save.
  *   - A finished run (won or failed) clears the save.
  *   - Local to this device and browser (localStorage); no cloud.
  *

@@ -21,11 +21,12 @@ import { V2 } from './machines/sections.ts';
 import { appRootFor, setupInstall } from './core/install.ts';
 import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
 import { TitleScreen } from './run/title.ts';
+import { Haptics, type HapticKind } from './core/haptics.ts';
 import { effectsIntensity, loadSettings, saveSettings, type Settings } from './core/settings.ts';
 import { GameView, VIEW } from './view/game.ts';
 import { BROADCAST_CLASSIC, NIGHT_GAME, THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
-import { PRESETS, isBuildRoute, isV2Route, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
+import { PRESETS, isBuildRoute, isV2Route, saveRouteFor, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
 import { Sfx } from './view/audio.ts';
 import { BuildUI } from './run/ui.ts';
 
@@ -70,6 +71,7 @@ function onSimEvent(e: SimEvent) {
     else if ((e.type === 'drain' && (e.strike || e.foul)) || e.type === 'clear') coach.pause();
   }
   // Extra multiball balls drain silently; only the last ball's drain ends the pitch.
+  if (player) buzzFor(e);
   if (juice) {
     // Big moments (presentation only); end-of-pitch moments hold their card for a short beat.
     if (e.type === 'bat') {
@@ -105,6 +107,18 @@ function onSimEvent(e: SimEvent) {
   }
   if (e.type === 'drain' && e.strike) onDrain();
   if (e.type === 'clear') build?.onClear();
+}
+/** Vibration for the events worth feeling (player route, Settings → Vibration). */
+const haptics = new Haptics();
+function buzzFor(e: SimEvent) {
+  let k: HapticKind | null = null;
+  if (e.type === 'bat') k = e.sweet ? 'sweet' : 'bat';
+  else if (e.type === 'deckRally' && e.phase === 'start') k = 'homeRun';
+  else if (e.type === 'machine' && e.kind === 'jackpot') k = 'jackpot';
+  else if (e.type === 'called' && e.phase === 'hit') k = 'calledHit';
+  else if (e.type === 'clear') k = build && build.run.challenge >= ECONOMY.lastChallenge ? 'runComplete' : 'cleared';
+  else if (e.type === 'drain' && e.strike && !e.foul) k = sim.rules.phase === 'over' ? 'gameOver' : 'strike';
+  if (k) haptics.buzz(k);
 }
 function makeSim(p: Preset, target: number | null) {
   const s = new Simulation({ preset: p, seed: (Math.random() * 2 ** 32) >>> 0, onEvent: onSimEvent });
@@ -147,7 +161,12 @@ function beat(kind: MomentKind, then: () => void, n?: number) {
 $('.strip .tag').textContent = preset.route ? `MAP ${preset.route} · ${preset.name.toUpperCase()}` : buildMode ? (v2 ? 'PLAY BALL' : 'LEGACY') : 'BASELINE';
 // The run route is what playtesters see: no "prototype/test" wording there (the legacy and map routes keep theirs).
 document.title = buildMode ? (v2 ? BRAND.name : `${BRAND.name} · Legacy run`) : `${BRAND.name} · ${preset.name}`;
-if (buildMode) $('aside .badge').textContent = v2 ? 'EARLY ACCESS PLAYTEST' : 'LEGACY RUN';
+// The player route shows no badge (release); the legacy run keeps its label.
+if (buildMode) {
+  const badge = $('aside .badge');
+  badge.textContent = v2 ? '' : 'LEGACY RUN';
+  badge.hidden = v2;
+}
 const modCount = Object.values(preset.modifiers ?? {}).reduce((n, l) => n + l.length, 0);
 $('#machineInfo').textContent = preset.route
   ? `${preset.name.toUpperCase()} · ${preset.tagline} · POWER ${power.installed}/${power.max}${modCount ? ` · ${modCount} TEST MODS` : ''}`
@@ -325,6 +344,13 @@ function onDrain() {
   if (r.phase === 'over') showOverlay('THREE STRIKES', 'GAME OVER', `Final score ${r.score.toLocaleString()}. Run it back?`, 'PLAY AGAIN');
   else showOverlay(`STRIKE ${r.strikes}`, 'BALL DRAINED', r.ballScore > 0 ? `+${r.ballScore.toLocaleString()} banked. Batter re-centers for the next pitch.` : 'No points that ball. Batter re-centers for the next pitch.', 'READY');
 }
+/**
+ * Save during a live pitch (pause, app switch, page close). The pitch's points so far are kept and the run
+ * resumes at READY on the next pitch, with no strike: an interruption should never cost a phone player.
+ */
+function saveMidPitch() {
+  if (player && build && sim.rules.phase === 'live') build.savePitch(sim.carryState());
+}
 function onFoul() {
   const r = sim.rules;
   if (build && r.phase === 'ready') build.savePitch(sim.carryState());
@@ -340,7 +366,9 @@ function togglePause() {
   if (paused) {
     coach?.pause();
     const menu = !!(window as any).title;
-    showOverlay('TIMEOUT', 'PAUSED', menu ? 'Take a breath. Your run is saved: from the main menu, Continue restarts this pitch.' : 'Take a breath.', 'RESUME', undefined, undefined, menu ? { label: 'MAIN MENU', action: () => toTitle() } : undefined);
+    // Mid-pitch save (player route): the points this pitch already earned are kept if you quit from here
+    saveMidPitch();
+    showOverlay('TIMEOUT', 'PAUSED', menu ? (player ? 'Take a breath. Your run is saved, including this pitch’s points: from the main menu, Continue picks up at the next pitch.' : 'Take a breath. Your run is saved: from the main menu, Continue restarts this pitch.') : 'Take a breath.', 'RESUME', undefined, undefined, menu ? { label: 'MAIN MENU', action: () => toTitle() } : undefined);
     offerShare();
   }
   else {
@@ -349,6 +377,18 @@ function togglePause() {
   }
 }
 readyBtn.addEventListener('click', () => overlayAction());
+// Menu sounds (player route): a soft tap on buttons, a card shuffle on reroll. Buy/take buttons have their own.
+if (player)
+  document.addEventListener(
+    'click',
+    e => {
+      const b = (e.target as HTMLElement | null)?.closest?.('button');
+      if (!b || b.classList.contains('obuy') || b.disabled) return;
+      sfx.unlock();
+      sfx.ui(b.dataset.act === 'reroll' ? 'reroll' : 'ui');
+    },
+    true,
+  );
 // Phone interruptions: switching apps/tabs or turning the phone sideways pauses a live pitch.
 const pauseIfLive = () => {
   if (!paused && sim.rules.phase === 'live') togglePause();
@@ -356,6 +396,7 @@ const pauseIfLive = () => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pauseIfLive();
 });
+addEventListener('pagehide', () => saveMidPitch());
 matchMedia('(orientation: landscape) and (max-height: 500px)').addEventListener('change', e => {
   if (e.matches) pauseIfLive();
 });
@@ -659,7 +700,7 @@ w.playtest.downloadHtml = (which: 'current' | 'last' | number = 'current') =>
 // ─── Build-test roguelite loop (/build-test/) ───
 // Save & continue (player-facing, local to this browser; one save per run route)
 const saveStore = browserStore();
-const saveRoute = location.pathname.replace(/\/+$/, '').split('/').pop() || 'build-test';
+const saveRoute = saveRouteFor(location.pathname);
 const build: BuildUI | null = buildMode
   ? new BuildUI(
       {
@@ -709,6 +750,7 @@ const applySettings = () => {
   view.vfx.intensity = effectsIntensity(settings);
   document.body.classList.toggle('fx-reduced', settings.effects === 'reduced');
   if (juice) juice.reduced = settings.effects === 'reduced';
+  haptics.enabled = player && settings.haptics;
   const t = themeFor(settings.look);
   if (t !== theme) {
     theme = t;
@@ -738,6 +780,7 @@ const title: TitleScreen | null =
             sfx.setMuted(!on);
             showMute();
           },
+          canVibrate: typeof navigator.vibrate === 'function',
           getSettings: () => settings,
           setSettings: s => {
             settings = s;

@@ -2,7 +2,7 @@
   "name": "Moonshot Pinball",
   "short_name": "Moonshot",
   "description": "Swing, launch and build a ridiculous scoring machine across five innings.",
-  "start_url": "./build-test/",
+  "start_url": "./play/",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

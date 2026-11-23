@@ -2,7 +2,7 @@
  * Playtest reports without analytics (Nov 22). Nothing leaves the phone unless the tester taps
  * SEND PLAYTEST REPORT and picks where to send it (Messages, email, …) from the share sheet.
  *
- * Playtest mode: open the game with `?playtest=<name>` (e.g. /build-test/?playtest=sam). The name is
+ * Playtest mode: open the game with `?playtest=<name>` (e.g. /play/?playtest=sam). The name is
  * remembered on that device (`bp-playtest`); `?playtest=off` turns it off. While on, end-of-run cards
  * and the pause menu offer SEND PLAYTEST REPORT, which shares a short text summary of every run played
  * on this device (newest first) plus, where the phone supports it, the full HTML developer report.

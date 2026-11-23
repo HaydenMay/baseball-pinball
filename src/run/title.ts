@@ -53,6 +53,8 @@ export type TitleHost = {
   getSettings: () => Settings;
   setSettings: (s: Settings) => void;
   version: string;
+  /** The browser has a vibration API (hide the toggle where it would do nothing, e.g. iOS). */
+  canVibrate?: boolean;
   /** Forget which first-time tips were seen. */
   resetTips?: () => void;
 };
@@ -127,12 +129,13 @@ export class TitleScreen {
     } else if (this.view === 'settings') {
       const st = this.host.getSettings();
       const sound = this.host.getSound();
-      body = `${back}<h2 class="title-h">SETTINGS</h2>
+      body = `${back}<h2 class="title-h">SETTINGS</h2><div class="title-scroll title-settings">
         <div class="title-setting"><span>Sound</span><div class="seg"><button data-t="sound-on" class="${sound ? 'on' : ''}">ON</button><button data-t="sound-off" class="${sound ? '' : 'on'}">OFF</button></div></div>
         <div class="title-setting"><span>Effects<small>Reduced = fewer sparks and flashes, no bouncing UI</small></span><div class="seg"><button data-t="fx-full" class="${st.effects === 'full' ? 'on' : ''}">FULL</button><button data-t="fx-reduced" class="${st.effects === 'reduced' ? 'on' : ''}">REDUCED</button></div></div>
         <div class="title-setting"><span>Look<small>Neon night game or classic day game</small></span><div class="seg"><button data-t="look-night" class="${st.look === 'night' ? 'on' : ''}">NIGHT</button><button data-t="look-day" class="${st.look === 'day' ? 'on' : ''}">DAY</button></div></div>
+        ${this.host.canVibrate ? `<div class="title-setting"><span>Vibration<small>A buzz on bat contact and big moments</small></span><div class="seg"><button data-t="buzz-on" class="${st.haptics ? 'on' : ''}">ON</button><button data-t="buzz-off" class="${st.haptics ? '' : 'on'}">OFF</button></div></div>` : ''}
         <div class="title-setting"><span>Tips<small>Short hints the first time something new shows up</small></span><div class="seg"><button data-t="tips-on" class="${st.tips ? 'on' : ''}">ON</button><button data-t="tips-off" class="${st.tips ? '' : 'on'}">OFF</button></div></div>
-        <div class="title-setting"><span>${this.tipsReset ? 'Tips will show again' : 'Seen all the tips?'}</span><button class="title-mini" data-t="tips-reset" ${this.tipsReset ? 'disabled' : ''}>SHOW TIPS AGAIN</button></div>`;
+        <div class="title-setting"><span>${this.tipsReset ? 'Tips will show again' : 'Seen all the tips?'}</span><button class="title-mini" data-t="tips-reset" ${this.tipsReset ? 'disabled' : ''}>SHOW TIPS AGAIN</button></div></div>`;
     } else {
       body = `${back}<h2 class="title-h">CREDITS</h2><div class="title-scroll"><dl class="title-credits">${TITLE.credits.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl><p class="title-version">Version ${this.host.version}</p></div>`;
     }
@@ -163,6 +166,10 @@ export class TitleScreen {
       case 'look-night':
       case 'look-day':
         this.host.setSettings({ ...this.host.getSettings(), look: t === 'look-night' ? 'night' : 'day' });
+        break;
+      case 'buzz-on':
+      case 'buzz-off':
+        this.host.setSettings({ ...this.host.getSettings(), haptics: t === 'buzz-on' });
         break;
       case 'tips-on':
       case 'tips-off':

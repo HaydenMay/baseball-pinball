@@ -19,12 +19,12 @@ export const INSTALL_UI = {
 
 type BeforeInstallPromptEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> };
 
-/** Folder of the app root relative to the current page ('./' on /, '../' on /1/, /build-test/, …). */
+/** Folder of the app root relative to the current page ('./' on /, '../' on /1/, /play/, /build-test/, …). */
 export function appRootFor(pathname: string) {
   const segs = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
   const last = segs.at(-1) ?? '';
   // GitHub Pages serves the repo under /baseball-pinball/; a route is any known sub-folder below it
-  return /^(1|2|3|build-test|build-test-legacy)$/.test(last) ? '../' : './';
+  return /^(1|2|3|play|build-test|build-test-legacy)$/.test(last) ? '../' : './';
 }
 
 export function isStandalone() {

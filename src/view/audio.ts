@@ -76,10 +76,11 @@ export class Sfx {
     return true;
   }
 
-  /** Shop purchase etc. (no sim event). */
-  ui(id: 'buy') {
+  /** Shop purchase, menu taps, reroll (no sim event). Menu taps and reroll stay silent without samples. */
+  ui(id: 'buy' | 'ui' | 'reroll') {
     if (!this.ctx || this.muted) return;
-    if (!this.play(id) && this.ok('buy', 0.15)) [1319, 1760].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.25, i * 0.08));
+    if (this.play(id)) return;
+    if (id === 'buy' && this.ok('buy', 0.15)) [1319, 1760].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.25, i * 0.08));
   }
 
   setMuted(m: boolean) {
@@ -153,16 +154,25 @@ export class Sfx {
         if (this.ok('serve', 0.3)) this.tone(320, 0.06, 'sine', 0.2, 0, 180);
         break;
       case 'deckRally':
+        if (e.phase === 'end' && (e.gained ?? 0) > 0 && this.play('rallyEnd')) break;
         if (e.phase === 'end' && (e.gained ?? 0) > 0 && this.ok('rallyEnd', 0.3)) {
           const dings = Math.min(6, Math.max(1, Math.round((e.gained ?? 0) / 1000)));
           for (let i = 0; i < dings; i++) this.tone(1319, 0.08, 'triangle', 0.2, i * 0.07);
         }
         break;
       case 'machine':
-        if (e.kind === 'bumper' && this.play('bumper')) break;
+        // Upper Deck parts sit above y 0: their bumpers get the higher-pitched punch
+        if (e.kind === 'bumper' && this.play(e.y < 0 ? 'deckBumper' : 'bumper')) break;
         if (e.kind === 'sling' && this.play('sling')) break;
-        if ((e.kind === 'target' || e.kind === 'splitter') && this.play('target')) break;
+        if (e.kind === 'splitter' && this.play('splitter')) break;
+        if (e.kind === 'target' && this.play('target')) break;
         if (e.kind === 'jackpot' && this.play('jackpot')) break;
+        if (e.kind === 'gate' && this.play('gate')) break;
+        if (e.kind === 'lane' && this.play('lane')) break;
+        if (e.kind === 'spinner' && this.samples.has('spinner')) {
+          for (let i = 0; i < Math.min(6, e.spins ?? 1); i++) setTimeout(() => this.play('spinner'), i * 40);
+          break;
+        }
         if (e.kind === 'bumper' && this.ok('bumper', 0.06)) this.tone(220, 0.09, 'square', 0.18, 0, 140);
         else if ((e.kind === 'target' || e.kind === 'splitter') && this.ok('target', 0.06)) this.tone(660, 0.07, 'triangle', 0.25);
         else if (e.kind === 'jackpot' && this.ok('jackpot', 0.2)) [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.16, 'triangle', 0.3, i * 0.06));
@@ -172,6 +182,8 @@ export class Sfx {
         else if (e.kind === 'lane' && this.ok('lane', 0.1)) this.tone(988, 0.08, 'sine', 0.18);
         break;
       case 'rampCheckpoint': {
+        // sample: the blip climbs a semitone per checkpoint; the finish plays the full-ride flourish
+        if (e.index === e.count - 1 ? this.play('ride') : this.play('checkpoint', Math.pow(2, e.index / 12))) break;
         // ascending scale up the ride: each checkpoint one step higher, the finish a full chord
         const f = 523 * Math.pow(2, (e.index * 2) / 12);
         if (e.index === e.count - 1) [f, f * 1.25, f * 1.5, f * 2].forEach((x, i) => this.tone(x, 0.2, 'triangle', 0.3, i * 0.05));
@@ -184,6 +196,7 @@ export class Sfx {
         break;
       case 'ramp':
         if (e.phase === 'enter' && this.play('ramp')) break;
+        if (e.phase === 'complete' && this.play('ride')) break;
         if (e.phase === 'enter' && this.ok('rampIn', 0.2)) this.tone(200, 0.35, 'sawtooth', 0.08, 0, 600);
         else if (e.phase === 'complete' && this.ok('rampDone', 0.2)) this.tone(440, 0.25, 'triangle', 0.25, 0, 880);
         else if (e.phase === 'land' && this.ok('land', 0.1)) {
@@ -192,6 +205,7 @@ export class Sfx {
         }
         break;
       case 'scoop':
+        if (e.phase === 'catch' && this.play('scoop')) break;
         if (e.phase === 'catch' && this.ok('catch', 0.2)) {
           this.tone(140, 0.14, 'sine', 0.6, 0, 90);
           [523, 784].forEach((f, i) => this.tone(f, 0.15, 'triangle', 0.22, 0.08 + i * 0.07));
@@ -202,16 +216,22 @@ export class Sfx {
         if (this.ok('bank', 0.2)) [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.18, 'square', 0.12, i * 0.07));
         break;
       case 'multiball':
+        if (this.play('multiball')) break;
         if (this.ok('multi', 0.3)) [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.22, 'sawtooth', 0.14, i * 0.08));
         break;
       case 'mult': {
         // "level up" blip that climbs with the multiplier, so stacking it sounds like progress
+        // sample: the power-up rises with the multiplier (×1.1 → ×3.0 climbs about an octave)
+        if (this.play('mult', Math.min(2, Math.pow(2, (e.total - 10) / 20)))) break;
         if (!this.ok('mult', 0.08)) break;
         const f = Math.min(1600, 520 * Math.pow(1.06, e.total - 10));
         this.tone(f, 0.09, 'square', 0.1, 0, f * 1.5);
         this.tone(f * 2, 0.14, 'triangle', 0.18, 0.06);
         break;
       }
+      case 'runners':
+        if (e.phase === 'stranded' && e.onBase > 0) this.play('stranded');
+        break;
       case 'drain':
         if (e.strike && this.play('strike')) break;
         if (e.strike && this.ok('drain', 0.3)) this.tone(220, 0.5, 'triangle', 0.3, 0, 70);
@@ -233,8 +253,15 @@ export class Sfx {
           this.tone(784, 0.4, 'square', 0.14, 0.66);
         }
         break;
-      case 'cleared':
       case 'runComplete':
+        if (this.play('runComplete')) break;
+        if (this.play('cleared')) break;
+        if (this.ok('m-clear', 0.5)) {
+          [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.3, i * 0.09));
+          [523, 659, 784, 1046].forEach(f => this.tone(f, 0.7, 'triangle', 0.16, 0.42));
+        }
+        break;
+      case 'cleared':
         if (this.play('cleared')) break;
         if (this.ok('m-clear', 0.5)) {
           arp([523, 659, 784, 1046], 0.09, 'triangle', 0.3, 0.22);
@@ -242,17 +269,19 @@ export class Sfx {
         }
         break;
       case 'calledHit':
-        if (this.play('jackpot')) break;
+        if (this.play('calledHit')) break;
         if (this.ok('m-called', 0.4)) [784, 988, 1319].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.25, i * 0.07));
         break;
       case 'calledMiss':
+        if (this.play('calledMiss')) break;
         if (this.ok('m-miss', 0.4)) this.tone(330, 0.2, 'triangle', 0.18, 0, 220);
         break;
       case 'driveIn':
-        if (this.play('bank')) break;
+        if (this.play('driveIn')) break;
         if (this.ok('m-drive', 0.3)) [523, 784].forEach((f, i) => this.tone(f, 0.12, 'square', 0.14, i * 0.06));
         break;
       case 'hotMove':
+        if (this.play('hotMove')) break;
         // the hot spot jumped: two quick rising pings
         if (this.ok('m-hot', 0.5)) [988, 1319].forEach((f, i) => this.tone(f, 0.12, 'square', 0.14, i * 0.08));
         break;
@@ -264,6 +293,7 @@ export class Sfx {
         if (this.ok('m-over', 0.5)) arp([392, 370, 349, 262], 0.22, 'triangle', 0.28, 0.3);
         break;
       case 'sweet':
+        if (this.play('sweet')) break;
         if (this.ok('m-sweet', 0.2)) this.tone(1568, 0.16, 'sine', 0.2, 0.03);
         break;
       default:

@@ -99,7 +99,7 @@ test('presentation never enters gameplay: physics, rules, scoring, machines and 
 
 test('routes are path-based and unaffected by ?theme=', () => {
   const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
-  assert.match(vite, /MAP_ROUTES = \['1', '2', '3', 'build-test', 'build-test-legacy'\]/);
+  assert.match(vite, /MAP_ROUTES = \['1', '2', '3', 'play', 'build-test', 'build-test-legacy'\]/);
   for (const [path, id] of [['/baseball-pinball/', 'baseline'], ['/baseball-pinball/1/', 'sidewinder'], ['/baseball-pinball/2/', 'overpass'], ['/baseball-pinball/3/', 'powerhouse']] as const) {
     assert.equal(presetForPath(path).id, id);
   }

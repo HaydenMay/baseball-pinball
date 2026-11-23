@@ -298,3 +298,14 @@ test('every map: no soft-locks, traps or tunneling under random play', () => {
     assert.equal(escapes, 0, `${p.id} tunneling`);
   }
 });
+
+test('/play/ is the release URL: same game and same save as /build-test/', async () => {
+  const { isBuildRoute, isV2Route, saveRouteFor } = await import('../src/machines/presets.ts');
+  for (const p of ['/baseball-pinball/play/', '/baseball-pinball/play']) {
+    assert.ok(isBuildRoute(p) && isV2Route(p), p);
+    assert.equal(saveRouteFor(p), 'build-test');
+  }
+  assert.equal(saveRouteFor('/baseball-pinball/build-test/'), 'build-test');
+  assert.equal(saveRouteFor('/baseball-pinball/build-test-legacy/'), 'build-test-legacy');
+  assert.ok(!isV2Route('/baseball-pinball/build-test-legacy/'));
+});

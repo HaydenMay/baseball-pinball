@@ -52,3 +52,11 @@ Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking
 - The big table banner is only for moments with no ball in play: Cleared, Strike, Foul, Game Over, Run Complete (`at: 'table'`).
 - Sweet spot has no banner: freeze + ring + "SWEET +N" popup at the bat.
 - All table effects and score text now draw **under** the batter and balls.
+
+## Nov 23 follow-up: sound pass 2, mid-pitch save, release cleanup
+
+- **Sound Board 2 picks wired** (20 new samples in `public/sounds`, mapped in `src/view/sound-set.ts`): run complete, called-shot hit/miss, drive-in, stranded, Upper Deck bumpers (punch pitched up), multiplier (rate climbs with the multiplier), multiball, lanes, gates, spinner ticks, ramp checkpoints (a semitone up per step) and full ride, scoop glove-grab, splitter, rally end, hot-corner move, sweet-spot flourish, menu taps and reroll shuffle. Synth stays as fallback on every event.
+- **Mid-pitch save** (player route): pause, app switch or closing the page during a live pitch saves that pitch's points; Continue resumes at READY on the next pitch, no strike.
+- **Release URL `/play/`**: same game and same save slot as `/build-test/` (kept for old links/icons). Manifest `start_url` is `./play/`.
+- **"EARLY ACCESS PLAYTEST" badge removed** from the player route.
+- **Vibration** (Settings → Vibration, on by default; shown only where the browser can vibrate, so not on iOS): bat contact, sweet spot, home run, jackpot, called-shot hit, strike, clear, game over. Patterns in `src/core/haptics.ts`.

@@ -25,6 +25,7 @@ The same game at four URL paths. Only the machine layout changes. See `docs/MAPS
 - `/2`: Overpass (aimable bridge gate, drop toward the glove, glove relaunch into the upper cluster)
 - `/3`: Turbo (Turbo ramp into the cluster, multiball, twin bonus bumpers, spinners, banks, stacked modifiers)
 
+- `/play/`: **the game** (Moonshot Pinball, release URL). Same build and same save as `/build-test/`, which stays working for old links and home-screen icons.
 - `/build-test/`: first roguelite slice. Factory table, score target, free pick of 3, shop, install into fixed mount spots within a Power budget, next challenge. See `docs/BUILD_LOOP_PLAYTEST.md`.
 
 Layouts are data in `src/machines/presets.ts`. Mechanism types are in `src/machines/mechanisms.ts`.
