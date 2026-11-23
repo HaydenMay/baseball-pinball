@@ -5,6 +5,7 @@ import { config } from '../src/config.ts';
 import { Simulation } from '../src/physics/sim.ts';
 import { makeControls } from '../src/core/input.ts';
 import { PLAY } from '../src/core/play-rules.ts';
+import { Run } from '../src/run/run.ts';
 
 const DT = 1 / config.physicsHz;
 const s0 = config.swing;
@@ -108,4 +109,17 @@ test('foul ball: a pitch that touched the bat is a normal strike', () =>
     }
     assert.ok(s.events.some(e => e.type === 'bat'), 'connected');
     if (s.rules.phase === 'ready') assert.equal(s.rules.strikes, 1);
+  }));
+
+test('Barrel Up: every 5 sweet spots raise the multiplier (+0.1×), Squared Up +0.2×', () =>
+  withPlay(true, () => {
+    for (const [tenths, label] of [[1, 'barrel'], [2, 'squared']] as const) {
+      const preset = new Run(1).preset();
+      preset.modifiers = { ...(preset.modifiers ?? {}), 'sweet:*': [{ note: label, gen: { every: 5, tenths } }] };
+      const s = new Simulation({ preset });
+      const gen = (s as any).generate.bind(s);
+      let gain = 0;
+      for (let i = 0; i < 10; i++) gain += gen('sweet-spot', 'sweet');
+      assert.equal(gain, 2 * tenths, `${label}: two payouts in 10 sweet spots`);
+    }
   }));

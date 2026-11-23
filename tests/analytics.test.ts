@@ -274,7 +274,7 @@ test('two machines of one type on different mounts stay separate; duplicate modi
   S.startChallenge(1e9);
   const snap = S.rec.challenge!.startBuild.mods.find(x => x.target === 'bumper-left')!;
   assert.equal(snap.copies, 2);
-  assert.equal(snap.byName['Sweet Spot'], 2);
+  assert.equal(snap.byName['Hot Hand'], 2);
 });
 
 // ───────── build / economy ledger ─────────

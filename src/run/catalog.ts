@@ -3,6 +3,7 @@
  * the existing mechanism types and the geometry already proven on /2 and /3), and modifiers.
  * Prices and costs are experimental test values (see economy.ts).
  */
+import { PLAY } from '../core/play-rules.ts';
 import { RALLY_CHARGES, type MechanismDef, type Pt } from '../machines/mechanisms.ts';
 import { UPPER_DECK, type SectionId } from '../machines/sections.ts';
 
@@ -76,7 +77,7 @@ export const MOUNTS: Mount[] = [
 ];
 
 /** Gameplay family for weighting and group effects. */
-export type Family = 'bumper' | 'ramp' | 'gate' | 'bank' | 'jackpot' | 'lane' | 'scoop' | 'multiball' | 'target' | 'sling';
+export type Family = 'bumper' | 'ramp' | 'gate' | 'bank' | 'jackpot' | 'lane' | 'scoop' | 'multiball' | 'target' | 'sling' | 'bat';
 
 /**
  * One way to place a machine: the mounts it occupies and its physical parts (each on one of those mounts).
@@ -415,16 +416,24 @@ export const BUMPER_GEN_EVERY = 5;
 /** Experimental: hits on ANY bumper per payout for the ALL-bumpers generator. */
 export const CROWD_GEN_EVERY = 20;
 export { RALLY_CHARGES };
+/** Sweet spots per multiplier payout for the batting boosts (Barrel Up / Squared Up). */
+export const SWEET_GEN_EVERY = 5;
+/** Batting boosts exist only where the sweet spot does (player route, src/core/play-rules.ts). */
+const sweetTargets = () => (PLAY.enabled ? [{ key: 'sweet:*', label: 'Sweet spot hits' }] : []);
 
 export const MODS: ModTemplate[] = [
   // ── Global-multiplier generators on ONE part (a copy raises payout, never frequency) ──
   { key: 'express-lane', name: 'Express Lane', effect: '+0.1× more per pass through THIS gate', gen: { every: 1, tenths: 1 }, tier: 'both', price: 5, family: 'gate', scope: 'this', targets: gateTargets },
-  { key: 'sweet-spot', name: 'Sweet Spot', effect: `Every ${BUMPER_GEN_EVERY} hits on THIS bumper: +0.1×`, gen: { every: BUMPER_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 5, family: 'bumper', scope: 'this', targets: bumperTargets },
+  // key kept for saves; renamed so it isn't confused with the batting Sweet Spot
+  { key: 'sweet-spot', name: 'Hot Hand', effect: `Every ${BUMPER_GEN_EVERY} hits on THIS bumper: +0.1×`, gen: { every: BUMPER_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 5, family: 'bumper', scope: 'this', targets: bumperTargets },
   { key: 'hall-of-fame', name: 'Hall of Fame', effect: `Every ${BUMPER_GEN_EVERY} hits on THIS bumper: +0.2×`, gen: { every: BUMPER_GEN_EVERY, tenths: 2 }, tier: 'draft', price: 0, family: 'bumper', scope: 'this', targets: bumperTargets },
   { key: 'victory-lap', name: 'Victory Lap', effect: 'Each full ride on THIS ramp: +0.1×', gen: { every: 1, tenths: 1 }, tier: 'shop', price: 5, family: 'ramp', scope: 'this', targets: rampTargets },
   { key: 'victory-parade', name: 'Victory Parade', effect: 'Each full ride on THIS ramp: +0.2×', gen: { every: 1, tenths: 2 }, tier: 'draft', price: 0, family: 'ramp', scope: 'this', targets: rampTargets },
   { key: 'pennant', name: 'Pennant', effect: 'Each completion of THIS bank: +0.2×', gen: { every: 1, tenths: 2 }, tier: 'shop', price: 5, family: 'bank', scope: 'this', targets: bankTargets },
   { key: 'pennant-race', name: 'Pennant Race', effect: 'Each completion of THIS bank: +0.4×', gen: { every: 1, tenths: 4 }, tier: 'draft', price: 0, family: 'bank', scope: 'this', targets: bankTargets },
+  // ── Batting: sweet-spot hits feed the multiplier ──
+  { key: 'barrel-up', name: 'Barrel Up', effect: `Every ${SWEET_GEN_EVERY} sweet spots: +0.1×`, gen: { every: SWEET_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 5, family: 'bat', scope: 'all', targets: sweetTargets },
+  { key: 'squared-up', name: 'Squared Up', effect: `Every ${SWEET_GEN_EVERY} sweet spots: +0.2×`, gen: { every: SWEET_GEN_EVERY, tenths: 2 }, tier: 'draft', price: 0, family: 'bat', scope: 'all', targets: sweetTargets },
   // ── Group (ALL) effects: every compatible part, including ones installed later ──
   { key: 'bumper-crew', name: 'Bumper Crew', effect: 'ALL bumpers: +100 points per hit', add: 100, tier: 'draft', price: 0, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (factory, installed, bundles, future)' }] },
   { key: 'crowd-noise', name: 'Crowd Noise', effect: `Every ${CROWD_GEN_EVERY} bumper hits: +0.1×`, gen: { every: CROWD_GEN_EVERY, tenths: 1 }, tier: 'shop', price: 6, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (counted together)' }] },
@@ -459,7 +468,7 @@ export const MODS: ModTemplate[] = [
 export function familyOfKey(key: string, board: BoardView): Family | null {
   if (key.startsWith('cross:')) return 'ramp';
   const g = key.match(/^(\w+):\*$/);
-  if (g) return ({ bumper: 'bumper', multgate: 'gate', ramps: 'ramp', ramp: 'ramp', target: 'target', sling: 'sling', lane: 'lane' } as Record<string, Family>)[g[1]] ?? null;
+  if (g) return ({ bumper: 'bumper', multgate: 'gate', ramps: 'ramp', ramp: 'ramp', target: 'target', sling: 'sling', lane: 'lane', sweet: 'bat' } as Record<string, Family>)[g[1]] ?? null;
   const base = key.replace(/-(gate|cp)$/, '');
   const part = board.parts.find(p => p.id === base);
   if (part) return part.family;

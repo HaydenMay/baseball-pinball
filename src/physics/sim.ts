@@ -61,7 +61,7 @@ export type SimEvent =
   /** V2.2 Upper Deck Rally for one ball: starts on a completed Home Run, ends when that ball is back downstairs. */
   | { type: 'deckRally'; phase: 'start' | 'end'; ball: number; x: number; y: number; reason?: 'returned' | 'drain' | 'removed'; hits?: number; gained?: number }
   /** Global strike multiplier rose: `gain` and `total` in tenths (total 13 = ×1.3). */
-  | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank'; id: string; x: number; y: number; gain: number; total: number; ball: number }
+  | { type: 'mult'; source: 'gate' | 'bumper' | 'ramp' | 'bank' | 'bat'; id: string; x: number; y: number; gain: number; total: number; ball: number }
   | { type: 'drain'; x: number; strike: boolean; side: 'left' | 'center' | 'right'; ball: number; ballsLeft: number; foul?: boolean };
 
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
@@ -270,7 +270,7 @@ export class Simulation {
   }
 
   /** Apply a multiplier gain and announce it (no points of its own). */
-  private boost(source: 'gate' | 'bumper' | 'ramp' | 'bank', id: string, x: number, y: number, tenths: number, ball: Ball) {
+  private boost(source: 'gate' | 'bumper' | 'ramp' | 'bank' | 'bat', id: string, x: number, y: number, tenths: number, ball: Ball) {
     if (!tenths || !this.rules.gainMult(tenths)) return;
     this.emit({ type: 'mult', source, id, x, y, gain: tenths, total: this.rules.multTenths, ball: ball.id });
   }
@@ -588,7 +588,11 @@ export class Simulation {
       this.swingHit = true;
       this.pitchTouched = true;
       const sweet = PLAY.enabled && isSweetSpot(contact.angle, config.swing.centerAngle);
-      if (sweet) this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, PLAY.sweetSpot.points, ball);
+      if (sweet) {
+        this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, PLAY.sweetSpot.points, ball);
+        // sweet-spot generators (Barrel Up / Squared Up): every N sweet spots raise the multiplier
+        this.boost('bat', 'sweet-spot', p.x, p.y, this.generate('sweet-spot', 'sweet'), ball);
+      }
       this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id, ...(sweet ? { sweet } : {}) });
     }
 
