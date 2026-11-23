@@ -108,7 +108,7 @@ export class BuildUI {
     const r = this.run;
     const mods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
     const parts = r.installed.length ? r.installed.map(i => i.name).join(', ') : 'factory table';
-    return `${parts}${mods ? ` · ${mods} mod${mods > 1 ? 's' : ''}` : ''}`;
+    return `${parts}${mods ? ` · ${mods} boost${mods > 1 ? 's' : ''}` : ''}`;
   }
 
   tag() {

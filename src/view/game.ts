@@ -989,12 +989,13 @@ export class GameView {
     this.drawHotCorner(ctx);
     this.drawRain(ctx);
     drawMachinesFloorDynamic(ctx, this, sim);
+    // effects and score text go UNDER the batter and balls: nothing celebratory may ever hide the ball
+    this.vfx.draw(ctx);
     this.drawBatter(ctx, sim);
     this.drawBalls(ctx, sim, dt, 'floor');
     // raised mechanisms sit above floor balls, so a ball passing under a ramp stays visible through the glass
     drawMachinesRaised(ctx, this, sim);
     this.drawBalls(ctx, sim, dt, 'raised');
-    this.vfx.draw(ctx);
     if (this.highlights.length) this.drawHighlights(ctx);
     if (this.camera) this.drawCameraAids(ctx);
     if (this.debug) this.drawDebug(ctx, sim);

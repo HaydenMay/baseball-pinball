@@ -603,3 +603,13 @@ body.fx-reduced .res-best { animation: none; }
 .closer-line[hidden] { display: none; }
 /* Small Ball LOCKED badge sits above the plaque art */
 #multwrap.locked::after { z-index: 3; }
+
+/* Scoreboard "video board" (juice.ts boardFlash): live-play moments show here so the table stays clear */
+.scoreboard { position: relative; }
+.board-flash { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 10px; pointer-events: none; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--moment-color, #fff) 28%, #07021a) 0%, #07021af2 75%); border: 2px solid var(--moment-color, var(--gold)); box-shadow: 0 0 22px color-mix(in srgb, var(--moment-color, #fff) 60%, transparent), inset 0 0 18px color-mix(in srgb, var(--moment-color, #fff) 35%, transparent); opacity: 0; transform: scale(0.94); transition: opacity 0.2s, transform 0.2s; }
+.board-flash[hidden] { display: none; }
+.board-flash.show { opacity: 1; transform: scale(1); animation: board-pulse 0.5s ease-in-out 2; }
+.board-flash b { font: italic 900 clamp(24px, 8vw, 38px)/1 var(--font); letter-spacing: 0.05em; color: var(--moment-color, var(--gold-hi)); text-shadow: 0 0 12px color-mix(in srgb, var(--moment-color, #fff) 70%, transparent), 0 2px 0 #000; white-space: nowrap; }
+.board-flash small { font: 800 14px/1 var(--font); letter-spacing: 0.14em; color: #f4f8ff; }
+@keyframes board-pulse { 50% { filter: brightness(1.35); } }
+body.fx-reduced .board-flash.show { animation: none; }

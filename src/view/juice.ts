@@ -30,8 +30,14 @@ type MomentDef = {
   chase: number;
   /** Banner hold in seconds (pop-in and fade are extra). */
   hold: number;
-  /** Banner vertical position on the stage (CSS %, default --moment-top). Frequent moments sit low, near the bat. */
+  /** Banner vertical position on the stage (CSS %, default --moment-top). */
   top?: number;
+  /**
+   * Where the text goes. 'board' (default; anything that happens while the ball is in play): the
+   * scoreboard turns into the message for a moment, like a stadium video board, so the table stays clear.
+   * 'table': the big banner over the table, only for moments when no ball is in play (clear, strike…).
+   */
+  at?: 'board' | 'table';
 };
 
 export const JUICE = {
@@ -45,20 +51,21 @@ export const JUICE = {
   /** Reduced Effects: shake off, flash and slow-mo toned down. */
   reducedFlash: 0.4,
   moments: {
-    hotMove: { text: 'HOT CORNER', sub: '{label} ×3', color: '#ff4fd8', size: 'mid', stop: 0, flash: 0, chase: 0.7, hold: 0.7, top: 20 },
-    calledHit: { text: 'CALLED SHOT!', sub: '×2 THIS PITCH', color: '#5cf6ff', size: 'big', stop: 0.08, shake: [3, 0.16], flash: 0.2, chase: 1.2, hold: 0.7 },
-    calledMiss: { text: 'MISSED THE CALL', color: '#9aa7b8', size: 'mid', stop: 0, flash: 0, chase: 0, hold: 0.5, top: 20 },
-    driveIn: { text: 'DRIVEN IN!', sub: '+{n}', color: '#9fe870', size: 'mid', stop: 0.05, flash: 0.1, chase: 0.6, hold: 0.45, top: 66 },
-    homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9 },
-    jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7 },
-    multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8 },
-    bank: { text: 'BANK COMPLETE', sub: '+{n}', color: '#ff7ad9', size: 'mid', stop: 0.07, shake: [2, 0.14], flash: 0.16, chase: 1.0, hold: 0.6 },
-    cleared: { text: 'CLEARED!', color: '#ffd36b', size: 'big', stop: 0.12, slow: [0.3, 0.5], shake: [3, 0.2], flash: 0.3, chase: 1.8, hold: 0.8 },
-    strike: { text: 'STRIKE {n}', color: '#ff5a5a', size: 'big', stop: 0, flash: 0.18, chase: 0, hold: 0.5 },
-    foul: { text: 'FOUL BALL', sub: 'NO STRIKE · RE-PITCH', color: '#9fe870', size: 'big', stop: 0, flash: 0.12, chase: 0, hold: 0.55 },
-    sweet: { text: 'SWEET SPOT!', sub: '+{n}', color: '#5fe3ff', size: 'mid', stop: 0.07, shake: [2, 0.12], flash: 0, chase: 0, hold: 0.35, top: 66 },
-    gameOver: { text: 'STRIKE THREE', color: '#ff5a5a', size: 'big', stop: 0, shake: [3, 0.2], flash: 0.22, chase: 0, hold: 0.7 },
-    runComplete: { text: 'RUN COMPLETE!', color: '#ffd36b', size: 'big', stop: 0.12, slow: [0.3, 0.6], shake: [4, 0.25], flash: 0.32, chase: 2.4, hold: 1.0 },
+    hotMove: { text: 'HOT CORNER', sub: '{label} ×3', color: '#ff4fd8', size: 'mid', stop: 0, flash: 0, chase: 0.7, hold: 0.7, at: 'board' },
+    calledHit: { text: 'CALLED SHOT!', sub: '×2 THIS PITCH', color: '#5cf6ff', size: 'big', stop: 0.08, shake: [3, 0.16], flash: 0.2, chase: 1.2, hold: 0.7, at: 'board' },
+    calledMiss: { text: 'MISSED THE CALL', color: '#9aa7b8', size: 'mid', stop: 0, flash: 0, chase: 0, hold: 0.5, at: 'board' },
+    driveIn: { text: 'DRIVEN IN!', sub: '+{n}', color: '#9fe870', size: 'mid', stop: 0.05, flash: 0.1, chase: 0.6, hold: 0.45, at: 'board' },
+    homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9, at: 'board' },
+    jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7, at: 'board' },
+    multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8, at: 'board' },
+    bank: { text: 'BANK COMPLETE', sub: '+{n}', color: '#ff7ad9', size: 'mid', stop: 0.07, shake: [2, 0.14], flash: 0.16, chase: 1.0, hold: 0.6, at: 'board' },
+    cleared: { text: 'CLEARED!', color: '#ffd36b', size: 'big', stop: 0.12, slow: [0.3, 0.5], shake: [3, 0.2], flash: 0.3, chase: 1.8, hold: 0.8, at: 'table' },
+    strike: { text: 'STRIKE {n}', color: '#ff5a5a', size: 'big', stop: 0, flash: 0.18, chase: 0, hold: 0.5, at: 'table' },
+    foul: { text: 'FOUL BALL', sub: 'NO STRIKE · RE-PITCH', color: '#9fe870', size: 'big', stop: 0, flash: 0.12, chase: 0, hold: 0.55, at: 'table' },
+    // sweet spots are frequent: no banner at all (ring + popup at the bat, brighter crack)
+    sweet: { text: '', color: '#5fe3ff', size: 'mid', stop: 0.07, shake: [2, 0.12], flash: 0, chase: 0, hold: 0 },
+    gameOver: { text: 'STRIKE THREE', color: '#ff5a5a', size: 'big', stop: 0, shake: [3, 0.2], flash: 0.22, chase: 0, hold: 0.7, at: 'table' },
+    runComplete: { text: 'RUN COMPLETE!', color: '#ffd36b', size: 'big', stop: 0.12, slow: [0.3, 0.6], shake: [4, 0.25], flash: 0.32, chase: 2.4, hold: 1.0, at: 'table' },
   } satisfies Record<MomentKind, MomentDef>,
 };
 
@@ -74,9 +81,18 @@ export class Juice {
   private bannerEl: HTMLDivElement;
   private shakeEl: HTMLElement;
   private bannerTimer = 0;
+  private boardEl: HTMLDivElement | null = null;
+  private boardTimer = 0;
 
-  constructor(stage: HTMLElement, shakeTarget: HTMLElement) {
+  constructor(stage: HTMLElement, shakeTarget: HTMLElement, board?: HTMLElement | null) {
     this.shakeEl = shakeTarget;
+    if (board) {
+      this.boardEl = document.createElement('div');
+      this.boardEl.className = 'board-flash';
+      this.boardEl.hidden = true;
+      this.boardEl.setAttribute('aria-live', 'polite');
+      board.appendChild(this.boardEl);
+    }
     this.flashEl = document.createElement('div');
     this.flashEl.className = 'table-flash';
     this.bannerEl = document.createElement('div');
@@ -105,7 +121,9 @@ export class Juice {
     if (d.shake && !this.reduced) this.shake = { amp: d.shake[0], left: d.shake[1], max: d.shake[1] };
     if (d.flash) this.flash(d.color, d.flash * (this.reduced ? JUICE.reducedFlash : 1));
     if (d.chase) this.chase = { color: d.color, left: d.chase };
-    if (d.text) this.banner(fill(d.text), d.sub ? fill(d.sub) : '', d.color, d.size, d.hold, d.top);
+    if (!d.text) return;
+    if ((d.at ?? 'board') === 'board' && this.boardEl) this.boardFlash(fill(d.text), d.sub ? fill(d.sub) : '', d.color, d.hold);
+    else this.banner(fill(d.text), d.sub ? fill(d.sub) : '', d.color, d.size, d.hold, d.top);
   }
 
   /** Advance with real (unscaled) frame time. */
@@ -127,6 +145,8 @@ export class Juice {
 
   /** A card is opening: take any banner down at once so it never overlaps the card. */
   hideBanner() {
+    clearTimeout(this.boardTimer);
+    if (this.boardEl) this.boardEl.hidden = true;
     clearTimeout(this.bannerTimer);
     this.bannerEl.hidden = true;
     this.bannerEl.classList.remove('show', 'out');
@@ -141,6 +161,24 @@ export class Juice {
     this.shakeEl.style.transform = '';
     this.bannerEl.hidden = true;
     clearTimeout(this.bannerTimer);
+  }
+
+  /** Scoreboard "video board" message: covers the three score panels for a moment; the table stays clear. */
+  private boardFlash(text: string, sub: string, color: string, hold: number) {
+    const el = this.boardEl!;
+    clearTimeout(this.boardTimer);
+    el.style.setProperty('--moment-color', color);
+    el.innerHTML = '<b></b>' + (sub ? '<small></small>' : '');
+    el.querySelector('b')!.textContent = text;
+    if (sub) el.querySelector('small')!.textContent = sub;
+    el.classList.remove('show');
+    el.hidden = false;
+    void el.offsetWidth;
+    el.classList.add('show');
+    this.boardTimer = window.setTimeout(() => {
+      el.classList.remove('show');
+      this.boardTimer = window.setTimeout(() => (el.hidden = true), 250);
+    }, (Math.max(hold, 0.6) + 0.3) * 1000);
   }
 
   private flash(color: string, alpha: number) {

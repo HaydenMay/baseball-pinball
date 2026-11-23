@@ -46,3 +46,9 @@ Player route plays recorded samples from `public/sounds/` (map and levels in `sr
 
 ## Rally ×1.5 (Nov 22, Hayden)
 Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking with the run multiplier, no step-down. The Rally's extra is halved (+100% → +50% on deck hits). All player-facing copy ("RALLY ×1.5", tips, How to Play) reads from the factor.
+
+## Nothing may hide the ball (Nov 23, Hayden: popups cost him strikes)
+- Live-play moments (Home Run, Jackpot, Multiball, Bank, Called Shot hit/miss, Driven In, Hot Corner moves) show on the **scoreboard** as a "video board" flash instead of over the table (`at: 'board'` in `JUICE.moments`).
+- The big table banner is only for moments with no ball in play: Cleared, Strike, Foul, Game Over, Run Complete (`at: 'table'`).
+- Sweet spot has no banner: freeze + ring + "SWEET +N" popup at the bat.
+- All table effects and score text now draw **under** the batter and balls.

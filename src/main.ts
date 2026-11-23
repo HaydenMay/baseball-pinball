@@ -75,7 +75,9 @@ function onSimEvent(e: SimEvent) {
     if (e.type === 'bat') {
       juice.hitStop();
       if (e.sweet) {
-        juice.play('sweet', e.sweetPoints ?? PLAY.sweetSpot.points);
+        juice.play('sweet');
+        // sweet spot: a popup at the bat (drawn under the ball), no banner
+        view.vfx.flicker(e.x, e.y - 1.2, `SWEET +${(e.sweetPoints ?? PLAY.sweetSpot.points).toLocaleString('en-US')}`, theme.energyPrimary, 1.0);
         sfx.moment('sweet');
       }
     } else if (e.type === 'deckRally' && e.phase === 'start') {
@@ -120,7 +122,7 @@ const player = v2 && buildMode;
 PLAY.enabled = player;
 sfx.useSamples = player;
 sfx.sampleRoot = appRootFor(location.pathname);
-const juice: Juice | null = player ? new Juice(stage, canvas) : null;
+const juice: Juice | null = player ? new Juice(stage, canvas, document.querySelector<HTMLElement>('.scoreboard')) : null;
 view.bigMoments = !!juice;
 /** A moment's beat is playing before its card (READY is held until the card shows). */
 let beatTimer = 0;
