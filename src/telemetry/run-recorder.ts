@@ -149,6 +149,10 @@ export type PitchRecord = {
   batHits: number;
   /** Swings with no bat contact during that swing. */
   swingsMissed: number;
+  /** Player route: centered contacts (sweet spot) this pitch. */
+  sweetSpots?: number;
+  /** Player route: this pitch drained untouched and was forgiven as a foul (no strike). */
+  foul?: boolean;
   drainSide?: 'left' | 'center' | 'right';
   extraBallDrains: number;
   multiballs: number;
@@ -586,6 +590,7 @@ export class RunRecorder {
       case 'bat':
         if (p) {
           p.batHits++;
+          if (e.sweet) p.sweetSpots = (p.sweetSpots ?? 0) + 1;
           this.swingOpen = false;
         }
         break;
@@ -668,6 +673,14 @@ export class RunRecorder {
       }
       case 'drain':
         if (!p) break;
+        if (e.foul) {
+          // forgiven untouched pitch: it ends here like a drain, without a strike
+          p.foul = true;
+          p.drainSide = e.side;
+          this.closePitch(sim, 'drain');
+          this.save();
+          break;
+        }
         if (!e.strike) {
           p.extraBallDrains++;
           break;

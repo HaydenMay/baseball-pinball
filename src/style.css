@@ -589,3 +589,6 @@ body.fx-reduced .res-best { animation: none; }
   .res-grid div { padding: 4px 3px; }
   .res-grid b { font-size: 16px; }
 }
+/* Playtest mode (src/telemetry/playtest.ts): send-report button on end cards and the pause menu. */
+.share-btn { display: block; margin: 10px auto 0; min-height: 40px; padding: 6px 14px; border-radius: 8px; border: 1px dashed var(--ui-accent); background: transparent; color: var(--ui-accent); font: 800 13px var(--font); letter-spacing: 0.08em; cursor: pointer; }
+.share-btn[hidden] { display: none; }

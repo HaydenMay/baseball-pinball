@@ -13,6 +13,7 @@ import { Simulation, type SimEvent } from './physics/sim.ts';
 import { Telemetry } from './telemetry/session.ts';
 import { RunRecorder, type RunRecord, type Store } from './telemetry/run-recorder.ts';
 import { renderReport, reportFilename } from './telemetry/report-html.ts';
+import { playtestName, reportText, shareReport } from './telemetry/playtest.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
@@ -209,10 +210,21 @@ altBtn.hidden = true;
 let altAction: () => void = () => {};
 altBtn.addEventListener('click', () => altAction());
 readyBtn.after(altBtn);
+/** Playtest mode (?playtest=<name>): a SEND PLAYTEST REPORT button on end cards and the pause menu. */
+const shareBtn = document.createElement('button');
+shareBtn.type = 'button';
+shareBtn.className = 'share-btn';
+shareBtn.hidden = true;
+shareBtn.textContent = 'SEND PLAYTEST REPORT';
+altBtn.after(shareBtn);
+function offerShare() {
+  if (tester && recorder) shareBtn.hidden = false;
+}
 /** Has this session thrown a pitch yet (controls hints retire after it). */
 let pitchedOnce = false;
 function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string, alt?: { label: string; action: () => void }) {
   altBtn.hidden = !alt;
+  shareBtn.hidden = true;
   if (alt) {
     altBtn.textContent = alt.label;
     altAction = alt.action;
@@ -279,6 +291,7 @@ function togglePause() {
     coach?.pause();
     const menu = !!(window as any).title;
     showOverlay('TIMEOUT', 'PAUSED', menu ? 'Take a breath. Your run is saved: from the main menu, Continue restarts this pitch.' : 'Take a breath.', 'RESUME', undefined, undefined, menu ? { label: 'MAIN MENU', action: () => toTitle() } : undefined);
+    offerShare();
   }
   else {
     overlay.hidden = true;
@@ -564,6 +577,20 @@ function downloadReport(r: RunRecord | null) {
 }
 // Leaving or reloading: save what we have (an unfinished pitch is later marked "interrupted", never finished).
 addEventListener('pagehide', () => recorder?.save());
+// Playtest mode: tester name from ?playtest=<name> (remembered on this device; ?playtest=off clears it).
+const tester = player ? playtestName(location.search, localStore) : null;
+shareBtn.addEventListener('click', async () => {
+  if (!recorder) return;
+  recorder.save();
+  const seen = new Set<string>();
+  const runs = [recorder.snapshot(), recorder.lastRun(), ...recorder.archivedRuns()].filter((r): r is RunRecord => !!r && !seen.has(r.runId) && !!seen.add(r.runId));
+  runs.sort((a, b) => b.startedAt - a.startedAt);
+  const text = reportText(tester ?? 'tester', `${BUILD_INFO.version} ${BUILD_INFO.commit.slice(0, 7)}`, runs);
+  const html = runs[0] ? { name: reportFilename(runs[0]), body: renderReport(runs[0]) } : null;
+  const res = await shareReport(text, html);
+  shareBtn.textContent = res === 'shared' ? 'SENT ✓' : res === 'copied' ? 'COPIED: PASTE IT IN A MESSAGE' : res === 'downloaded' ? 'SAVED THE REPORT FILE' : 'SEND PLAYTEST REPORT';
+  setTimeout(() => (shareBtn.textContent = 'SEND PLAYTEST REPORT'), 3500);
+});
 w.playtest.run = () => recorder?.snapshot() ?? null;
 w.playtest.lastRun = () => recorder?.lastRun() ?? null;
 /** `playtest.downloadHtml()` = current run; `playtest.downloadHtml('last')` = archived previous/interrupted run. */
@@ -603,6 +630,7 @@ const build: BuildUI | null = buildMode
           const el = $('#overlayStats');
           el.innerHTML = html;
           el.hidden = false;
+          offerShare();
         },
         bestStore: player ? browserStore() : null,
         recorder,
