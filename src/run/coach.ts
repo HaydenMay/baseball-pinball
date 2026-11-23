@@ -11,6 +11,7 @@
  * In the build panel (a dismissible banner): draft (Power), shop (money, tap to preview).
  */
 import type { Store } from './save.ts';
+import { rallyLabel } from '../machines/sections.ts';
 
 export type TipId = 'controls' | 'aim' | 'deck' | 'draft' | 'shop';
 
@@ -32,7 +33,7 @@ export const TIPS = {
     keys: '<b>A / D</b> or <b>← →</b> to move · <b>SPACE</b> to swing',
   },
   aim: '<b>AIMING:</b> swing <b>early</b> to pull the ball left, <b>late</b> to push it right. Nail the middle for a <b>SWEET SPOT</b> bonus.',
-  deck: '<b>NEW: THE UPPER DECK.</b> Send the ball into the <b>HOME RUN</b> ramp on the right for 3,000 points and <b>×2</b> on everything upstairs.',
+  deck: `<b>NEW: THE UPPER DECK.</b> Send the ball into the <b>HOME RUN</b> ramp on the right for 3,000 points and <b>${rallyLabel()}</b> on everything upstairs.`,
   draft: '<b>POWER ⚡</b> is your table’s budget: machines use it, boosts don’t. Tap a card to see where it goes.',
   shop: 'Spend <b>$</b> on boosts. Tap a card to see what it powers up on the table. Money you don’t spend carries over.',
 };

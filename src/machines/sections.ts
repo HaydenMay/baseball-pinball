@@ -118,14 +118,16 @@ export const HOME_RUN_RAMP: RampDef = {
 };
 
 /**
- * V2.2 Upper Deck Rally (designer-approved values): a ball that completes the Home Run Ramp scores ×`factor` on
+ * V2.2 Upper Deck Rally (factor lowered 2 → 1.5 by Hayden, Nov 22: it made ~58% of a strong run's points): a ball that completes the Home Run Ramp scores ×`factor` on
  * every upper-deck bumper and deck sling contact (structural ones and bought bumpers on the deck mounts) until
  * that ball crosses back down onto the main table, drains or is removed. Per ball; never global.
- * The ×2 applies to the contact's own (modified) points; the global multiplier is applied once, after.
+ * The factor applies to the contact's own (modified) points; the global multiplier is applied once, after.
  * `hysteresis`: the ball must be this far past the top rail line (y = railY) before it counts as having
  * changed level, so a ball skimming the gap edge doesn't flicker in and out.
  */
-export const DECK_RALLY = { factor: 2, hysteresis: 0.45 };
+export const DECK_RALLY = { factor: 1.5, hysteresis: 0.45 };
+/** Player-facing "×1.5" (copy everywhere reads from the factor). */
+export const rallyLabel = () => `×${DECK_RALLY.factor}`;
 
 /** Smallest rectangle holding the table plus the unlocked sections (camera bounds, escape check). */
 export function boundsFor(sections: readonly SectionId[]): Rect4 {

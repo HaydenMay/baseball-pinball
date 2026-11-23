@@ -1,3 +1,5 @@
+import { rallyLabel } from '../machines/sections.ts';
+
 /**
  * "Big moment" presentation layer (critic report, Nov 22): hit-stop, slow-mo, screen shake, a full-table
  * flash, a bulb-chase light show and a big readable banner. Presentation only: hit-stop and slow-mo scale
@@ -43,7 +45,7 @@ export const JUICE = {
   /** Reduced Effects: shake off, flash and slow-mo toned down. */
   reducedFlash: 0.4,
   moments: {
-    homeRun: { text: 'HOME RUN!', sub: 'RALLY ×2 UPSTAIRS', color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9 },
+    homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9 },
     jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7 },
     multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8 },
     bank: { text: 'BANK COMPLETE', sub: '+{n}', color: '#ff7ad9', size: 'mid', stop: 0.07, shake: [2, 0.14], flash: 0.16, chase: 1.0, hold: 0.6 },

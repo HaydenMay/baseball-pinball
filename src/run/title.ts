@@ -6,6 +6,7 @@
  * theme's CSS variables (style.css `.title-*`), so a theme or art pass restyles it for free.
  */
 import { ECONOMY } from './economy.ts';
+import { rallyLabel } from '../machines/sections.ts';
 import { BRAND } from '../core/brand.ts';
 import type { LoadResult, SaveFile } from './save.ts';
 import type { Settings } from '../core/settings.ts';
@@ -24,7 +25,7 @@ export const TITLE = {
     ['THE GOAL', 'Each challenge has a <b>target score</b>. Points bank the moment you hit something. A ball that drains is a <b>strike</b>; three strikes ends the run.'],
     ['BUILD YOUR MACHINE', 'Clear a challenge for a <b>free pick</b> (1 of 3), then visit the <b>shop</b>. Machines are real parts on the table and use <b>Power ⚡</b>. <b>Boosts</b> cost no Power and make parts score more; tap a card to see what it boosts. Sell parts any time between challenges in <b>Manage Machine</b>.'],
     ['MULTIPLIER', 'Gates and some boosts raise the <b>multiplier</b>. It applies to every point for the rest of the challenge.'],
-    ['THE RUN', `${ECONOMY.lastChallenge / ECONOMY.challengesPerInning} innings × Starter, Reliever and Closer = ${ECONOMY.lastChallenge} challenges. After Inning 1 the machine grows an <b>Upper Deck</b>: ride the <b>HOME RUN</b> ramp for 3,000 and <b>×2</b> on Upper Deck hits until that ball comes back down.`],
+    ['THE RUN', `${ECONOMY.lastChallenge / ECONOMY.challengesPerInning} innings × Starter, Reliever and Closer = ${ECONOMY.lastChallenge} challenges. After Inning 1 the machine grows an <b>Upper Deck</b>: ride the <b>HOME RUN</b> ramp for 3,000 and <b>${rallyLabel()}</b> on Upper Deck hits until that ball comes back down.`],
     ['SAVING', 'Your run saves automatically between pitches and challenges. Close the game anytime and continue later on this device.'],
   ] as [string, string][],
   credits: [

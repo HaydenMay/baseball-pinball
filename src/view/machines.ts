@@ -1,4 +1,4 @@
-import { UPPER_DECK } from '../machines/sections.ts';
+import { UPPER_DECK, rallyLabel } from '../machines/sections.ts';
 /**
  * Art for the special mechanisms (ramps, scoop, splitter, gate). Everything is drawn from the same
  * layout data the physics uses, and every VFX color comes from theme tokens.
@@ -701,7 +701,7 @@ export function onMechanismEvent(view: GameView, e: SimEvent) {
     if (e.phase === 'start') {
       v.flash(e.x, e.y, 2.2, th.jackpotAccent, 0.35);
       // the player route shows a big HOME RUN banner instead (juice.ts); this in-world headline is the fallback
-      if (!view.bigMoments) v.flicker(10, UPPER_DECK.roofY + 1.1, 'HOME RUN!  RALLY ×2', th.jackpotAccent, DECK_RALLY_UI.headline);
+      if (!view.bigMoments) v.flicker(10, UPPER_DECK.roofY + 1.1, `HOME RUN!  RALLY ${rallyLabel()}`, th.jackpotAccent, DECK_RALLY_UI.headline);
     } else if (e.reason === 'returned' && e.gained) {
       v.flicker(e.x, e.y + 0.9, `RALLY +${e.gained.toLocaleString()}`, th.energySecondary, DECK_RALLY_UI.tally);
     }

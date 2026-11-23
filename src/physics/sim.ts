@@ -467,7 +467,7 @@ export class Simulation {
     const rally = d.kind === 'bumper' && this.rallyCharges > 0 ? this.mods['cross:ride-bumpers'] : undefined;
     if (rally?.length) this.rallyCharges--;
     points = this.pts(d.id, d.kind, points, undefined, rally);
-    if (rallyX) points *= rallyX;
+    if (rallyX) points = Math.round(points * rallyX);
     if (points) points = this.award(d.kind, d.id, base, points, ball, undefined, rallyX);
     this.emit({ type: 'machine', kind: d.kind, id: d.id, x: pos.x, y: pos.y, points, nx, ny, ball: ball.id });
     if (d.kind === 'bumper') this.boost('bumper', d.id, pos.x, pos.y, this.generate(d.id, 'bumper'), ball);

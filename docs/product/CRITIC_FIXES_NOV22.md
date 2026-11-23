@@ -43,3 +43,6 @@ Player route plays recorded samples from `public/sounds/` (map and levels in `sr
 - **Jackpot** pays 5% of the challenge target, rounded to 50, never under the old 250 (C4 400, C5 800, …). `PLAY.jackpotShare`. Big Stage ×2 still applies.
 - **Rally ×2 unchanged** on purpose (approved in V2.2): wait for the playtest.
 - End cards scroll inside the card on short phones.
+
+## Rally ×1.5 (Nov 22, Hayden)
+Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking with the run multiplier, no step-down. The Rally's extra is halved (+100% → +50% on deck hits). All player-facing copy ("RALLY ×1.5", tips, How to Play) reads from the factor.

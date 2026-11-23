@@ -2,6 +2,7 @@
  * Developer run analytics: lifecycle, attribution, persistence/recovery, and the offline HTML report.
  */
 import { test } from 'node:test';
+import { DECK_RALLY } from '../src/machines/sections.ts';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { config } from '../src/config.ts';
@@ -473,7 +474,7 @@ test('analytics stay off the legacy routes and the download UI only appears with
   assert.ok(!/fetch\(|sendBeacon|XMLHttpRequest|WebSocket/.test(main + readFileSync(new URL('../src/telemetry/run-recorder.ts', import.meta.url), 'utf8')), 'no network calls');
 });
 
-test('V2.2: Home Run completion, normal upper-deck scoring and Rally ×2 gain are reported separately and reconcile', () => {
+test('V2.2: Home Run completion, normal upper-deck scoring and Rally gain are reported separately and reconcile', () => {
   const S = session();
   S.run.sections = ['upperDeck'];
   S.startChallenge(null);
@@ -509,7 +510,7 @@ test('V2.2: Home Run completion, normal upper-deck scoring and Rally ×2 gain ar
   assert.equal(dr.deckAwarded, deckEv.reduce((a, e) => a + e.awarded, 0));
   assert.equal(dr.rallyGain, ev.reduce((a, e) => a + (e.rallyGain ?? 0), 0));
   assert.ok(dr.rallyGain > 0 && dr.rallyGain < dr.deckAwarded, 'gain is only the extra part');
-  assert.ok(deckEv.some(e => !e.deckRally) && deckEv.some(e => e.deckRally === 2));
+  assert.ok(deckEv.some(e => !e.deckRally) && deckEv.some(e => e.deckRally === DECK_RALLY.factor));
   assert.equal(c.attributed, ev.reduce((a, e) => a + e.awarded, 0));
   assert.equal(c.attributed, s.rules.score, 'every banked point attributed');
   S.rec.endRun("completed");

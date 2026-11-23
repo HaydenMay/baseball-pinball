@@ -369,5 +369,5 @@ function deckRallyHtml(cs: { deckRally?: NonNullable<import('./run-recorder.ts')
   const sum = (k: keyof (typeof d)[number]) => d.reduce((a, x) => a + (x[k] as number), 0);
   if (!sum('starts') && !sum('hrCompletions') && !sum('deckHits')) return '';
   const n = (v: number) => v.toLocaleString();
-  return `<h4>Home Run / Upper Deck Rally</h4><p>Home Run completions ${n(sum('hrCompletions'))} paying ${n(sum('hrCompletion'))} · Rally started ${n(sum('starts'))} (ended: back downstairs ${n(sum('returned'))}, drained ${n(sum('drained'))}, removed ${n(sum('removed'))})<br>Upper-deck bumpers/slings banked ${n(sum('deckAwarded'))} over ${n(sum('deckHits'))} hits, of which Rally ×2 added ${n(sum('rallyGain'))} on ${n(sum('rallyHits'))} hits (normal upper-deck scoring ${n(sum('deckAwarded') - sum('rallyGain'))})</p>`;
+  return `<h4>Home Run / Upper Deck Rally</h4><p>Home Run completions ${n(sum('hrCompletions'))} paying ${n(sum('hrCompletion'))} · Rally started ${n(sum('starts'))} (ended: back downstairs ${n(sum('returned'))}, drained ${n(sum('drained'))}, removed ${n(sum('removed'))})<br>Upper-deck bumpers/slings banked ${n(sum('deckAwarded'))} over ${n(sum('deckHits'))} hits, of which the Rally bonus added ${n(sum('rallyGain'))} on ${n(sum('rallyHits'))} hits (normal upper-deck scoring ${n(sum('deckAwarded') - sum('rallyGain'))})</p>`;
 }
