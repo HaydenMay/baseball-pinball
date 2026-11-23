@@ -75,7 +75,7 @@ export type Materials = {
 };
 
 export type Theme = {
-  id: 'broadcastClassic' | 'toxicThunder';
+  id: 'broadcastClassic' | 'toxicThunder' | 'nightGame';
   name: string;
   /** Halo around activated machinery (bumper light ring, idle lane chevrons, post sparks). */
   machineGlow: string;
@@ -117,6 +117,11 @@ export type Theme = {
    * (needed when the energy color is itself green). null = no underlay.
    */
   energyOutline: string | null;
+  /**
+   * Neon outline strength (0 or absent = none): always-on glowing rings around bumpers and outlines on
+   * slingshots, so the table reads as lit neon even between hits.
+   */
+  neon?: number;
   /** Always-visible material set. */
   m: Materials;
 };
@@ -280,9 +285,93 @@ export const TOXIC_THUNDER: Theme = {
   },
 };
 
+/**
+ * Night Game (player-route default, Nov 22): neon arcade pinball after dark. Deep night-teal field,
+ * chrome hardware with hot-pink trim, electric cyan + magenta energy, neon-yellow jackpots, pink rail
+ * bulbs. Baseball materials (balls, bat, glove, batter) stay real. Cyan reads on the dark turf, so no
+ * underlay is needed.
+ */
+export const NIGHT_GAME: Theme = {
+  id: 'nightGame',
+  name: 'Night Game',
+  machineGlow: '#ff4fd8',
+  energyPrimary: '#29f0ff',
+  energySecondary: '#ff2bd6',
+  impactCore: '#ffffff',
+  jackpotAccent: '#ffe14a',
+  ballTrail: '#5cf6ff',
+  scoreboardAccent: '#ffe14a',
+  scoreboardValue: '#29f0ff',
+  scoreboardBar: '#fff3a0',
+  slingBody: '#3d7bff',
+  slingDeep: '#0b1f6e',
+  slingFace: '#a6e4ff',
+  slingGlow: '#29a8ff',
+  railLight: '#ff7ae0',
+  railBulb: '#ffe8fb',
+  cabinetGlow: '#c02bd6',
+  rampGlass: '#7fe8ff',
+  lampOff: '#24203f',
+  lampOffAccent: '#4f4420',
+  lampOffSecondary: '#4a1c4c',
+  uiAccent: '#29f0ff',
+  energyOutline: null,
+  neon: 1,
+  m: {
+    backdrop: ['#0d0626', '#070317', '#020109'],
+    crowd: ['#7a2a8c', '#1f4c8a', '#bcc4e0', '#1a1533', '#2a8a8f'],
+    floodlight: '#e6f0ff',
+    floodBulb: '#f4f8ff',
+    floodPanel: '#110d1e',
+    turf: ['#0b2b2c', '#0f3a39', '#0a2828'],
+    laneTurf: ['#12504a', '#0e413c'],
+    infield: '#4a3550',
+    mound: ['#6a4c70', '#523a58', '#3a2840'],
+    apron: ['#4e3856', '#3a2942', '#170e1c'],
+    railMetal: ['#2c2f3c', '#e8eef8', '#4c5266', '#ffffff', '#3c4254', '#cdd6e4', '#272b36', '#f4f7ff', '#474e62'],
+    railEdge: '#05030d',
+    trim: '#ff4fb4',
+    trimDeep: '#c42a86',
+    postMetal: ['#ffffff', '#b3bccb', '#3b4152'],
+    panelMetal: ['#3b4152', '#dbe2ee', '#464d60'],
+    bumperBody: ['#ff5a8a', '#d1144e', '#5a0622'],
+    bumperSkirt: ['#e8eef8', '#707a8c', '#22262f'],
+    bonusBody: ['#5cf6ff', '#109bb8', '#063a4c'],
+    bonusRim: ['#ffffff', '#b3bccb', '#3b4152'],
+    targetRing: '#ff2bd6',
+    jackpotBanner: ['#d11e9a', '#5a0646'],
+    jackpotBorder: '#ffe14a',
+    jackpotLaurel: '#ffd23a',
+    jackpotTextShadow: '#2a0322',
+    starPanel: '#160d33',
+    starFill: '#ffe14a',
+    splitterFace: ['#2a1a6a', '#0f0826'],
+    multGlow: '#ff4fd8',
+    multStitch: '#29f0ff',
+    ui: {
+      page: ['#140830', '#04020b'],
+      pageGlow: '#5a1f7aaa',
+      bezel: ['#1d1a2a', '#09070f'],
+      screen: ['#2a0f55', '#0d0420'],
+      screenBorder: '#ff4fb4',
+      strip: ['#151026', '#0a0712'],
+      label: '#b9c8f0',
+      frame: '#29f0ff',
+      frameHi: '#c9fbff',
+      button: ['#ffa6ec', '#ff2bd6'],
+      buttonText: '#1d0418',
+      buttonEdge: '#7a0d66',
+      card: ['#1d1038f2', '#0d0722f2'],
+      offer: ['#22133f', '#120a26'],
+      panel: ['#120a26f0', '#080414f8'],
+    },
+  },
+};
+
 export const THEMES: Record<Theme['id'], Theme> = {
   broadcastClassic: BROADCAST_CLASSIC,
   toxicThunder: TOXIC_THUNDER,
+  nightGame: NIGHT_GAME,
 };
 
 export const DEFAULT_THEME = BROADCAST_CLASSIC;

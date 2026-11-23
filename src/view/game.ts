@@ -1127,6 +1127,18 @@ export class GameView {
       const glowC = b.style === 'bonus' ? th.energySecondary : th.machineGlow;
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, glowC, b.x, b.y, b.r * (1.9 + lit * 0.8), idle * 0.35 + lit * 0.9);
+      if (th.neon) {
+        // neon tube ring: always on, breathes, flares on a hit
+        const ring = b.style === 'bonus' ? th.energyPrimary : th.energySecondary;
+        ctx.strokeStyle = ring;
+        ctx.globalAlpha = Math.min(1, (0.45 + 0.15 * Math.sin(this.time * 3 + b.y)) * th.neon + lit * 0.5);
+        ctx.lineWidth = 0.14 + lit * 0.08;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * 1.12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        drawGlow(ctx, ring, b.x, b.y, b.r * 1.5, 0.18 * th.neon);
+      }
       ctx.globalCompositeOperation = 'source-over';
       // light segments around the red body
       for (let i = 0; i < 10; i++) {
@@ -1174,6 +1186,19 @@ export class GameView {
       const lit = Math.min(1, (this.lit.get(s.id) ?? 0) / 0.2);
       const mx = (s.face[0].x + s.face[1].x) / 2, my = (s.face[0].y + s.face[1].y) / 2;
       drawGlow(ctx, th.slingGlow, mx, my, 1.6 + lit, 0.25 + 0.06 * Math.sin(this.time * 2.5) + lit * 0.85);
+      if (th.neon) {
+        // neon outline along the sling body
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = th.slingGlow;
+        ctx.lineWidth = 0.1;
+        ctx.globalAlpha = (0.45 + 0.12 * Math.sin(this.time * 2.5)) * th.neon + lit * 0.4;
+        ctx.beginPath();
+        s.poly.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
       if (lit > 0) {
         ctx.strokeStyle = th.energyPrimary;
         ctx.lineWidth = 0.12 + lit * 0.12;

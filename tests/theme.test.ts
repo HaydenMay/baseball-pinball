@@ -27,7 +27,8 @@ test('palettes are complete: every role present and a valid #rrggbb(aa) color', 
   const roles = leaves(BROADCAST_CLASSIC).map(([p]) => p);
   assert.ok(roles.length >= 60);
   for (const t of Object.values(THEMES)) {
-    const ls = leaves(t);
+    // `neon` is an optional strength (number), not a color role
+    const ls = leaves(t).filter(([p]) => p !== 'neon');
     // Same shape, including material arrays of the same length (crowd may differ in length).
     const norm = (p: string) => p.replace(/^m\.crowd\.\d+$/, 'm.crowd.#');
     assert.deepEqual([...new Set(ls.map(([p]) => norm(p)))].sort(), [...new Set(roles.map(norm))].sort(), `${t.name} has exactly the theme roles`);
@@ -41,6 +42,7 @@ test('palettes are complete: every role present and a valid #rrggbb(aa) color', 
     assert.equal(derived(t), derived(t));
   }
   assert.equal(THEMES[TOXIC_THUNDER.id], TOXIC_THUNDER);
+  for (const t of Object.values(THEMES)) assert.ok(t.neon === undefined || (t.neon >= 0 && t.neon <= 2), `${t.name}.neon`);
 });
 
 test('Broadcast Classic tokens are locked to the shipped default look', () => {

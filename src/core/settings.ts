@@ -7,6 +7,8 @@ export type Settings = {
   effects: 'full' | 'reduced';
   /** First-time tips (src/run/coach.ts). */
   tips: boolean;
+  /** Table look on the player route: neon Night Game or classic Day game. */
+  look: 'night' | 'day';
 };
 
 export const SETTINGS = {
@@ -24,12 +26,12 @@ function osPrefersReduced() {
 }
 
 export function loadSettings(): Settings {
-  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full', tips: true };
+  const def: Settings = { effects: osPrefersReduced() ? 'reduced' : 'full', tips: true, look: 'night' };
   try {
     const raw = localStorage.getItem(SETTINGS.key);
     if (!raw) return def;
     const s = JSON.parse(raw);
-    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects, tips: s.tips !== false };
+    return { effects: s.effects === 'reduced' || s.effects === 'full' ? s.effects : def.effects, tips: s.tips !== false, look: s.look === 'day' ? 'day' : 'night' };
   } catch {
     return def;
   }

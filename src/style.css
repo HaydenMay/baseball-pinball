@@ -446,9 +446,10 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 
 /* ───────── Title screen (src/run/title.ts) — colors from the theme variables so it restyles with the theme ───────── */
 #title {
-  --title-dim: #050b16d9;      /* veil over the live table */
+  --title-dim: #050b16b8;      /* veil over the live table (light enough to see the attract-mode bulb chase) */
   --title-logo-a: var(--gold-hi);
   --title-logo-b: var(--gold);
+  --title-logo-glow: 10px;     /* neon halo around PINBALL (uses the theme frame color) */
   position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 14px;
   background: radial-gradient(ellipse at 50% 40%, #06101e99, var(--title-dim));
 }
@@ -458,7 +459,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .title-kicker { font: 700 11px var(--font); letter-spacing: 0.24em; color: var(--m-label); }
 .title-logo { margin: 2px 0 0; line-height: 0.86; font: italic 900 54px var(--font); letter-spacing: 0.01em; color: #f4f6f9; text-shadow: 0 3px 0 #000a; }
 .title-logo span, .title-logo b { display: block; }
-.title-logo b { font-weight: 900; background: linear-gradient(var(--title-logo-a), var(--title-logo-b)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 3px 0 #000a); }
+.title-logo b { font-weight: 900; background: linear-gradient(var(--title-logo-a), var(--title-logo-b)); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; /* the parent's shadow showed through the clipped text and muddied it */ filter: drop-shadow(0 3px 0 #000a) drop-shadow(0 0 var(--title-logo-glow) var(--title-logo-b)); }
 .title-tag { margin: 2px 0 6px; font: 600 15px/1.25 var(--font); color: #d7e1ee; }
 .title-notice { margin: 0; padding: 7px 10px; border-radius: 8px; font: 600 13px/1.3 var(--font); color: #ffd9a6; background: #ffb34714; border: 1px solid #ffb34755; }
 .title-primary { width: 100%; max-width: 260px; min-height: 50px; font: italic 800 22px var(--font); letter-spacing: 0.08em; border: 0; border-radius: 9px;

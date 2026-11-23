@@ -21,7 +21,7 @@ import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
 import { TitleScreen } from './run/title.ts';
 import { effectsIntensity, loadSettings, saveSettings, type Settings } from './core/settings.ts';
 import { GameView, VIEW } from './view/game.ts';
-import { THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
+import { BROADCAST_CLASSIC, NIGHT_GAME, THEMES, applyThemeToCss, themeFromSearch } from './view/theme.ts';
 import { glowCacheSize } from './view/vfx.ts';
 import { PRESETS, isBuildRoute, isV2Route, presetForPath, validatePreset, type Preset } from './machines/presets.ts';
 import { Sfx } from './view/audio.ts';
@@ -29,8 +29,14 @@ import { BuildUI } from './run/ui.ts';
 
 // Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Turbo, /build-test/ roguelite loop.
 const buildMode = isBuildRoute(location.pathname);
-// Cosmetic palette: default Broadcast Classic; developer preview with ?theme=toxicThunder.
-const theme = themeFromSearch(location.search);
+// Cosmetic palette. Player route (/build-test/): Night Game (neon) by default, Day (Broadcast Classic)
+// in Settings → Look. Other routes: Broadcast Classic. ?theme=<id> always wins (developer preview).
+const isPlayerRoute = buildMode && isV2Route(location.pathname, location.search);
+function themeFor(look: 'night' | 'day') {
+  if (/[?&]theme=/.test(location.search)) return themeFromSearch(location.search);
+  return isPlayerRoute && look === 'night' ? NIGHT_GAME : BROADCAST_CLASSIC;
+}
+let theme = themeFor(loadSettings().look);
 applyThemeToCss(theme, document.documentElement);
 const preset = presetForPath(location.pathname);
 const power = validatePreset(preset);
@@ -105,6 +111,13 @@ view.bigMoments = !!juice;
 /** A moment's beat is playing before its card (READY is held until the card shows). */
 let beatTimer = 0;
 let beatPending = false;
+/** Title screen attract mode: the rail bulbs chase, cycling through the theme's neon colors. */
+const ATTRACT = { cycleSec: 1.4 };
+function attractChase() {
+  if (!title?.open) return null;
+  const colors = [theme.energySecondary, theme.energyPrimary, theme.jackpotAccent];
+  return { color: colors[Math.floor(performance.now() / 1000 / ATTRACT.cycleSec) % colors.length], left: 1 };
+}
 function beat(kind: MomentKind, then: () => void, n?: number) {
   juice!.play(kind, n);
   sfx.moment(kind);
@@ -375,7 +388,7 @@ function tick(ms: number) {
     if (coach && (controls.moveAxis || controls.dragDelta) && sim.rules.phase === 'live') coach.onMove();
     if (juice) {
       juice.update(delta);
-      view.bulbChase = juice.chase;
+      view.bulbChase = juice.chase ?? attractChase();
     }
     acc += delta * (juice ? juice.timeScale() : 1);
     while (acc >= STEP) {
@@ -604,6 +617,13 @@ const applySettings = () => {
   view.vfx.intensity = effectsIntensity(settings);
   document.body.classList.toggle('fx-reduced', settings.effects === 'reduced');
   if (juice) juice.reduced = settings.effects === 'reduced';
+  const t = themeFor(settings.look);
+  if (t !== theme) {
+    theme = t;
+    view.setTheme(t);
+    applyThemeToCss(t, document.documentElement);
+    (window as unknown as { theme: unknown }).theme = t;
+  }
   if (coach) {
     coach.book.enabled = settings.tips;
     coach.refresh();

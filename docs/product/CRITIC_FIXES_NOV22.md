@@ -30,3 +30,10 @@ Player route plays recorded samples from `public/sounds/` (map and levels in `sr
 - Home Run: level_up/chip. Cleared: win/fanfare. Jackpot: cash register cut to its ring. Shop purchase: cha-ching (coins + desk bell).
 - Game over: lose/chip (earshot 8-bit lose jingle). Hayden confirmed the full set Nov 22 ("perfect for now").
 - Audition board with alternatives: private artifact "Moonshot Sound Board". All renders are ours to use (earshot: CC0/public-domain sources, MIT code).
+
+## Step 4: Night Game neon look + batting boosts (Nov 22)
+- **Night Game** theme (`NIGHT_GAME` in `src/view/theme.ts`) is the player-route default: night-teal field, chrome rails with hot-pink trim, cyan/magenta energy, neon-yellow jackpots, pink rail bulbs, magenta buttons, cyan frame.
+- New theme option `neon` (strength): always-on glowing rings on bumpers and outlines on slingshots.
+- Settings → Look: NIGHT / DAY (Day = Broadcast Classic). `?theme=` still overrides for previews. Other routes unchanged.
+- Title attract mode: rail bulbs chase through the theme's neon colors while the title is up. PINBALL logo glows (and a CSS bug that muddied it is fixed).
+- Batting boosts (Hayden's idea): **Barrel Up** (shop, $5) every 5 sweet spots +0.1×; **Squared Up** (free pick) +0.2×. The old bumper boost "Sweet Spot" is renamed **Hot Hand**.
