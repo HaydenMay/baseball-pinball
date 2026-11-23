@@ -138,6 +138,7 @@ sfx.useSamples = player;
 sfx.sampleRoot = appRootFor(location.pathname);
 const juice: Juice | null = player ? new Juice(stage, canvas, document.querySelector<HTMLElement>('.scoreboard')) : null;
 view.bigMoments = !!juice;
+view.setGloveAsBall(player);
 /** A moment's beat is playing before its card (READY is held until the card shows). */
 let beatTimer = 0;
 let beatPending = false;

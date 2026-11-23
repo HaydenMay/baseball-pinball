@@ -16,6 +16,7 @@ import { panelTip, type TipBook } from './coach.ts';
 import { readBest, recordBest, statsHtml } from './stats.ts';
 import { BOSS_INFO, closerFor, type BossId } from '../core/bosses.ts';
 import { PLAY } from '../core/play-rules.ts';
+import { config } from '../config.ts';
 import type { Store } from './save.ts';
 import type { SimEvent } from '../physics/sim.ts';
 import type { LoadResult, SaveFile } from './save.ts';
@@ -61,7 +62,7 @@ const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 /** Player-facing name for a modifier card (internally "modifier"). */
 export const BOOST = 'BOOST';
 /**
- * One plain line per card: the effect with its target folded in ("×2 points on Glove bumper"), so a card
+ * One plain line per card: the effect with its target folded in ("×2 points on Low-left bumper"), so a card
  * never needs a separate "Applies to" line or THIS/ALL jargon. The board highlight shows where.
  */
 export function cardEffect(o: Offer): string {
@@ -70,6 +71,13 @@ export function cardEffect(o: Offer): string {
   if (o.scope === 'this') return (/THIS [a-z]+/.test(o.desc) ? o.desc.replace(/THIS [a-z]+/, where) : `${o.desc} on ${where}`).replace(/ Ramp ramp/g, ' Ramp');
   return o.desc.replace(/\bALL\b/g, 'All');
 }
+
+/** Shop presentation knobs (CSS has the timings: --shop-in, --shop-card-stagger). */
+export const SHOP_FX = {
+  /** Big minimap marker pulse speed. */
+  pulseHz: 1.2,
+  reduced: () => typeof document !== 'undefined' && document.body.classList.contains('fx-reduced'),
+};
 
 export class BuildUI {
   run: Run;
@@ -83,6 +91,13 @@ export class BuildUI {
   /** Manage Machine selection and whether the sale confirmation is showing. */
   private msel: string | null = null;
   private confirming = false;
+  /** Shop/free pick showing the real table (panel shrunk to a bottom bar) instead of the full-screen menu. */
+  private peeking = false;
+  /** Which full-screen view was drawn last, so entrance animations only play when the view changes. */
+  private lastView = '';
+  /** Spots for the big animated minimap (detail / manage), redrawn every frame while it's on screen. */
+  private mapSpots: { x: number; y: number; r: number }[] = [];
+  private mapRaf = 0;
   /** Short result line after a sale (shown on the manage screen). */
   private saleNote = '';
   /** The Run the recorder is currently recording (a new Run object starts a new recorded run). */
@@ -98,7 +113,9 @@ export class BuildUI {
     this.panel = document.createElement('div');
     this.panel.id = 'buildPanel';
     this.panel.hidden = true;
-    stage.appendChild(this.panel);
+    // On the cabinet (scoreboard + table) so the full-screen shop covers the whole game; peek mode docks
+    // it to the bottom of the table.
+    (stage.closest<HTMLElement>('.cabinet') ?? stage).appendChild(this.panel);
     this.panel.addEventListener('click', e => this.onClick(e));
     (window as any).buildRun = this.run;
   }
@@ -107,7 +124,10 @@ export class BuildUI {
   private machineLine() {
     const r = this.run;
     const mods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
-    const parts = r.installed.length ? r.installed.map(i => i.name).join(', ') : 'factory table';
+    // duplicates grouped: "Bonus Bumper ×3, Twin Bumpers" (first-installed order)
+    const counts = new Map<string, number>();
+    for (const i of r.installed) counts.set(i.name, (counts.get(i.name) ?? 0) + 1);
+    const parts = counts.size ? [...counts].map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(', ') : 'factory table';
     return `${parts}${mods ? ` · ${mods} boost${mods > 1 ? 's' : ''}` : ''}`;
   }
 
@@ -378,12 +398,19 @@ export class BuildUI {
     this.mode = 'offers';
     this.msel = null;
     this.confirming = false;
+    this.peeking = false;
+    this.lastView = '';
     this.panel.hidden = false;
+    this.panel.classList.remove('enter');
+    void this.panel.offsetWidth;
+    this.panel.classList.add('enter');
     this.render();
   }
 
   private closePanel() {
     this.panel.hidden = true;
+    cancelAnimationFrame(this.mapRaf);
+    this.mapRaf = 0;
     this.host.view.highlights = [];
     this.host.view.highlightLabel = '';
   }
@@ -392,41 +419,92 @@ export class BuildUI {
     return this.run.phase === 'draft' ? this.run.draft : this.run.shop;
   }
 
-  /** Highlight where the selected offer goes (mount) or what it boosts (target). */
+  /** Where an offer would go (machine mounts) or what it boosts (anchors), plus a one-line label. */
+  private offerSpots(o: Offer, mount?: string) {
+    if (o.kind === 'machine') {
+      const chk = this.run.check(o);
+      const places = mount ? [mount] : chk.ok ? chk.mounts : o.mounts;
+      const spots: { x: number; y: number; r: number }[] = [];
+      for (const pid of places) for (const id of pid.split('+')) {
+        const m = MOUNTS.find(m => m.id === id)!;
+        spots.push({ x: m.anchor.x, y: m.anchor.y, r: m.r });
+      }
+      const label = places.length === 1 ? places[0].split('+').map(mountName).join(' + ') : chk.ok ? 'Pick a spot' : 'Needs room: Manage Machine';
+      return { spots, label };
+    }
+    let spots = anchorsFor(this.host.getSim().layout, o.target.key);
+    // batting boosts (sweet spots etc.) have no part on the table: point at the batter's box instead
+    if (!spots.length) {
+      const b = this.host.getSim().layout.bounds;
+      spots = [{ x: (b.x0 + b.x1) / 2, y: config.batter.handsY, r: 2.2 }];
+    }
+    return { spots, label: `${o.name}: ${cardEffect(o)}` };
+  }
+
+  /** Where an installed item sits (Manage Machine). */
+  private itemSpots(it: Run['installed'][number]) {
+    const L = this.host.getSim().layout;
+    const spots: { x: number; y: number; r: number }[] = [];
+    for (const d of it.parts) spots.push(...anchorsFor(L, d.id));
+    for (const m of it.mounts) if (!spots.length) {
+      const mm = MOUNTS.find(x => x.id === m)!;
+      spots.push({ x: mm.anchor.x, y: mm.anchor.y, r: mm.r });
+    }
+    return { spots, label: `${it.name} · ${it.mounts.map(mountName).join(' + ')}` };
+  }
+
+  /** Highlight where the selected offer goes (mount) or what it boosts (target), on the table and the big minimap. */
   private preview() {
     const v = this.host.view;
     v.highlights = [];
     v.highlightLabel = '';
+    this.mapSpots = [];
+    let got: { spots: { x: number; y: number; r: number }[]; label: string } | null = null;
     if (this.mode === 'manage') {
       const it = this.run.installed.find(i => i.uid === this.msel);
-      if (!it) return;
-      const L = this.host.getSim().layout;
-      for (const d of it.parts) v.highlights.push(...anchorsFor(L, d.id));
-      for (const m of it.mounts) if (!v.highlights.length) {
-        const mm = MOUNTS.find(x => x.id === m)!;
-        v.highlights.push({ x: mm.anchor.x, y: mm.anchor.y, r: mm.r });
-      }
-      v.highlightLabel = `${it.name} · ${it.mounts.map(mountName).join(' + ')}`;
-      return;
-    }
-    const o = this.offers().find(o => o.uid === this.sel?.uid);
-    if (!o) return;
-    if (o.kind === 'machine') {
-      // every child site of every candidate placement (bundles show all their pieces' sites)
-      const chk = this.run.check(o);
-      const places = this.sel?.mount ? [this.sel.mount] : chk.ok ? chk.mounts : o.mounts;
-      for (const pid of places) for (const id of pid.split('+')) {
-        const m = MOUNTS.find(m => m.id === id)!;
-        v.highlights.push({ x: m.anchor.x, y: m.anchor.y, r: m.r });
-      }
-      v.highlightLabel = places.length === 1 ? places[0].split('+').map(mountName).join(' + ') : chk.ok ? 'Pick a spot' : 'Needs room: Manage Machine';
+      if (it) got = this.itemSpots(it);
     } else {
-      v.highlights = anchorsFor(this.host.getSim().layout, o.target.key);
-      v.highlightLabel = `${o.name}: ${cardEffect(o)}`;
+      const o = this.offers().find(o => o.uid === this.sel?.uid);
+      if (o) got = this.offerSpots(o, this.sel?.mount);
     }
+    if (!got) return;
+    v.highlights = got.spots;
+    v.highlightLabel = got.label;
+    this.mapSpots = got.spots;
   }
 
-  private card(o: Offer) {
+  /** Draw the card thumbnails once, and keep the big minimap pulsing while it's on screen. */
+  private drawMaps() {
+    const sim = this.host.getSim();
+    const fit = (c: HTMLCanvasElement) => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+      if (w && h && (c.width !== w || c.height !== h)) {
+        c.width = w;
+        c.height = h;
+      }
+    };
+    for (const c of this.panel.querySelectorAll<HTMLCanvasElement>('canvas.omap')) {
+      const o = this.offers().find(o => o.uid === Number(c.dataset.uid));
+      if (!o) continue;
+      fit(c);
+      this.host.view.renderMap(c, sim, this.offerSpots(o).spots, 0.6);
+    }
+    cancelAnimationFrame(this.mapRaf);
+    this.mapRaf = 0;
+    const big = this.panel.querySelector<HTMLCanvasElement>('canvas.dmap');
+    if (!big) return;
+    fit(big);
+    const tick = (t: number) => {
+      if (this.panel.hidden || !big.isConnected) return;
+      const pulse = SHOP_FX.reduced() ? 0.6 : 0.5 + 0.5 * Math.sin((t / 1000) * SHOP_FX.pulseHz * Math.PI * 2);
+      this.host.view.renderMap(big, this.host.getSim(), this.mapSpots, pulse);
+      this.mapRaf = requestAnimationFrame(tick);
+    };
+    this.mapRaf = requestAnimationFrame(tick);
+  }
+
+  private card(o: Offer, inList = false) {
     const r = this.run, isShop = r.phase === 'shop';
     const chk = r.check(o);
     const selected = this.sel?.uid === o.uid;
@@ -447,6 +525,21 @@ export class BuildUI {
     const action = isShop ? `BUY $${o.price}` : 'TAKE FREE';
     const tag = o.kind === 'machine' ? `MACHINE${o.pieces ? ` · ${o.pieces} PIECES` : ''} · ⚡${o.power}` : BOOST;
     const manage = o.kind === 'machine' && !chk.ok && chk.fixable ? `<button class="omanage" data-act="manage" data-uid="${o.uid}">MANAGE MACHINE</button>` : '';
+    if (inList) {
+      // Full-screen list: thumbnail map + the essentials; choosing a spot happens in the detail view.
+      const pick = needsMount && afford;
+      const btn = manage || (pick ? `<button class="obuy" data-act="open" data-uid="${o.uid}">CHOOSE SPOT ▸</button>` : `<button class="obuy" data-act="take" data-uid="${o.uid}" ${disabled ? 'disabled' : ''}>${reason || action}</button>`);
+      return `<div class="offer ${o.kind} ${!chk.ok ? 'locked' : ''}" data-uid="${o.uid}" style="--i:${this.offers().indexOf(o)}">
+        <canvas class="omap" data-uid="${o.uid}" aria-hidden="true"></canvas>
+        <div class="obody">
+          <div class="otag">${tag}</div>
+          <div class="oname">${o.name}</div>
+          <div class="odesc">${cardEffect(o)}</div>
+          ${where && !mountsHtml ? `<div class="owhere">${where}</div>` : ''}
+          <div class="orow"><span class="opeek">TAP TO PREVIEW</span>${btn}</div>
+        </div>
+      </div>`;
+    }
     return `<div class="offer ${o.kind} ${selected ? 'sel' : ''} ${!chk.ok ? 'locked' : ''}" data-uid="${o.uid}">
       <div class="otag">${tag}</div>
       <div class="oname">${o.name}</div>
@@ -462,10 +555,10 @@ export class BuildUI {
     // every pick / buy / sale / reroll re-renders: that's the safe point for the draft and shop
     this.save();
     if (this.mode === 'manage') return this.renderManage();
-    const manageBtn = `<button class="pmanage" data-act="manage">MANAGE MACHINE</button>`;
-    const head = draft
-      ? `<div class="phead"><b>FREE PICK</b><span>Choose 1 of ${r.draft.length} · ⚡${r.powerUsed}/${r.maxPower} used · tap a card to preview it</span>${manageBtn}</div>`
-      : `<div class="phead"><b>SHOP</b><span>$${r.money} · ⚡${r.powerUsed}/${r.maxPower} used · buy as many as you can afford</span>${manageBtn}</div>`;
+    const manageBtn = `<button class="pmanage" data-act="manage">MANAGE</button>`;
+    const chips = `<div class="pchips"><span class="chip money">$${r.money}</span><span class="chip power">⚡${r.powerUsed}/${r.maxPower}</span></div>`;
+    const head = `<div class="shead"><div class="stitle"><small>${draft ? `CHALLENGE ${r.challenge} CLEARED` : `BEFORE CHALLENGE ${r.challenge + 1}`}</small><b>${draft ? 'FREE PICK' : 'SHOP'}</b></div>${chips}${manageBtn}</div>
+      <div class="ssub">${draft ? `Choose 1 of ${r.draft.length}. Tap a card to see where it goes.` : 'Buy as many as you can afford. Tap a card to see where it goes.'}</div>`;
     // Small, non-blocking reward line when this clear finished an inning.
     const grant =
       (r.powerGrant ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>` : '') +
@@ -484,18 +577,46 @@ export class BuildUI {
           })(),
         )} ▶</button></div>`;
     const selected = this.offers().find(o => o.uid === this.sel?.uid);
-    if (selected) {
-      // Focus mode: only the chosen card, so the whole board shows where it goes.
-      this.panel.classList.add('focus');
-      this.panel.innerHTML = `<div class="phead"><button class="back" data-act="back">◀ ALL ${draft ? 'PICKS' : 'OFFERS'}</button><span>${draft ? 'Free pick' : `$${r.money} · ⚡${r.powerUsed}/${r.maxPower}`}</span></div>
+    if (!selected) this.peeking = false;
+    let view: string;
+    if (selected && this.peeking) {
+      // Peek: the menu shrinks to a bar so the real table shows where the card goes.
+      view = 'peek';
+      this.panel.innerHTML = `<div class="phead"><button class="back" data-act="unpeek">◀ BACK TO ${draft ? 'FREE PICK' : 'SHOP'}</button><span>${draft ? 'Free pick' : `$${r.money} · ⚡${r.powerUsed}/${r.maxPower}`}</span></div>
         <div class="offers one">${this.card(selected)}</div>`;
+    } else if (selected) {
+      // Detail: big live minimap of the table with the spot pulsing, spot choice and buy.
+      view = `detail:${selected.uid}`;
+      this.panel.innerHTML = `<div class="shead"><button class="back" data-act="back">◀ ALL ${draft ? 'PICKS' : 'OFFERS'}</button>${chips}</div>
+        <div class="dmapwrap"><canvas class="dmap" aria-label="Map of the table showing where ${esc(selected.name)} goes"></canvas><span class="dmaplabel">${esc(this.offerSpots(selected, this.sel?.mount).label)}</span></div>
+        <div class="offers one">${this.card(selected)}</div>
+        <button class="speek" data-act="peek">SEE IT ON THE TABLE ▸</button>`;
     } else {
-      this.panel.classList.remove('focus');
-      this.panel.innerHTML = `${head}${grant}${tip}<div class="offers ${draft ? 'draft' : 'shop'}">${this.offers().map(o => this.card(o)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
+      view = 'list';
+      this.panel.innerHTML = `${head}${grant}${tip}<div class="offers list">${this.offers().map(o => this.card(o, true)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
       <div class="pmachine">Machine: ${this.machineLine()}</div>${foot}`;
     }
+    this.setView(view);
     this.preview();
+    this.drawMaps();
     this.tag();
+  }
+
+  /** Full-screen vs docked bar, and an entrance animation whenever the view changes. */
+  private setView(view: string) {
+    const full = view !== 'peek';
+    this.panel.classList.toggle('full', full);
+    this.panel.classList.toggle('focus', !full);
+    const kind = view.split(':')[0];
+    const changed = view !== this.lastView;
+    this.panel.dataset.view = kind;
+    if (changed) {
+      this.panel.classList.remove('v-anim');
+      void this.panel.offsetWidth;
+      this.panel.classList.add('v-anim');
+      this.panel.scrollTop = 0;
+    }
+    this.lastView = view;
   }
 
   /**
@@ -536,10 +657,13 @@ export class BuildUI {
     const dorm = dormant.length
       ? `<div class="mdorm">Waiting boosts (they wake up when a matching part returns to their spot): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))} @ ${esc(k)}`).join(' · ')}</div>`
       : '';
-    this.panel.innerHTML = `<div class="phead"><button class="back" data-act="mback">◀ BACK TO ${r.phase === 'draft' ? 'FREE PICK' : 'SHOP'}</button><b>MANAGE</b><span>⚡${r.powerUsed}/${r.maxPower} · $${r.money}</span></div>
+    this.panel.innerHTML = `<div class="shead"><button class="back" data-act="mback">◀ BACK TO ${r.phase === 'draft' ? 'FREE PICK' : 'SHOP'}</button><div class="stitle"><b>MANAGE</b></div><div class="pchips"><span class="chip power">⚡${r.powerUsed}/${r.maxPower}</span><span class="chip money">$${r.money}</span></div></div>
       ${this.saleNote ? `<div class="pgrant">${esc(this.saleNote)}</div>` : ''}
+      ${it ? `<div class="dmapwrap small"><canvas class="dmap" aria-hidden="true"></canvas></div>` : '<div class="ssub">Tap an installed part to see where it sits.</div>'}
       <div class="mlist">${rows || '<div class="empty">Factory table only: nothing installed to sell.</div>'}</div>${detail}${dorm}`;
+    this.setView('manage');
     this.preview();
+    this.drawMaps();
     this.tag();
   }
 
@@ -614,6 +738,12 @@ export class BuildUI {
       }
     } else if (el.dataset.act === 'back') {
       this.sel = null;
+    } else if (el.dataset.act === 'peek') {
+      this.peeking = true;
+    } else if (el.dataset.act === 'unpeek') {
+      this.peeking = false;
+    } else if (el.dataset.act === 'open') {
+      this.sel = { uid };
     } else if (el.dataset.act === 'reroll') {
       const price = this.run.rerollPrice, moneyBefore = this.run.money;
       if (this.run.reroll() && this.host.recorder) {
@@ -621,6 +751,7 @@ export class BuildUI {
         this.host.recorder.shopOffers(this.run, 'reroll');
       }
       this.sel = null;
+      this.lastView = '';
     } else if (el.dataset.act === 'next') {
       if (this.run.next()) this.host.recorder?.nextChallenge(this.run);
       this.closePanel();

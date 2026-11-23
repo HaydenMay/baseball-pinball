@@ -23,6 +23,41 @@ const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const RAIN = { drops: 90, speed: 0.9, len: 0.6 };
 const LANE_TOP = config.batter.handsY - 1.7;
 const BAT_LINE = config.batter.handsY + config.swing.battingLine;
+/** Shop minimap look (see GameView.renderMap). */
+export const MINIMAP = {
+  /** World units of margin around the table bounds. */
+  pad: 0.4,
+  /** Darkening over everything but the marked spots. */
+  dim: 'rgba(4,10,22,0.55)',
+  /** Smallest marker radius (world units) so tiny parts still show on a thumbnail. */
+  minR: 1.1,
+  /** Marker pulse growth (world units). */
+  grow: 0.35,
+  /** Marker ring width in canvas pixels. */
+  ring: 3,
+};
+/** Batter art (cosmetic only; collision comes from config.swing). Body-local units before the 1.45 scale. */
+export const BATTER_ART = {
+  /** How far the torso turns toward the pitcher by the end of the swing (radians). */
+  torsoTurn: 1.15,
+  /** Where the head looks: up-right at the pitch in the stance, straight up the table at the finish. */
+  lookRest: -1.0,
+  lookSwing: -1.5,
+  leadFoot: { x: 0.14, y: -0.66 },
+  backFoot: { x: -0.1, y: 0.6 },
+  jersey: '#ffffff',
+  jerseyShade: '#bfc5cf',
+  team: '#c4222b',
+  pants: '#d7dbe2',
+  cleat: '#16203a',
+  skin: '#eef0f4',
+  helmet: '#d0202b',
+  helmetHi: '#ff7b70',
+  helmetDark: '#7e0d15',
+  /** The bill is a darker shade so the look direction reads at phone size. */
+  bill: '#4a070c',
+  gloves: '#1d2b4a',
+};
 const HOME = { x: 10, y: 28.0 };
 
 function path(ctx: CanvasRenderingContext2D, pts: Pt[], close = true) {
@@ -249,8 +284,9 @@ export class GameView {
     for (const l of this.layout.lanes) this.drawLaneRail(ctx, l.rail);
     drawMachinesFloorStatic(ctx, this);
     for (const b of this.layout.bumpers) {
-      if (b.style === 'glove') this.drawGlove(ctx, b.x, b.y, b.r);
-      else if (b.style === 'bonus') this.drawBonusBase(ctx, b.x, b.y, b.r);
+      const style = this.bumperStyle(b.style);
+      if (style === 'glove') this.drawGlove(ctx, b.x, b.y, b.r);
+      else if (style === 'bonus') this.drawBonusBase(ctx, b.x, b.y, b.r);
       else this.drawBumperBase(ctx, b.x, b.y, b.r);
     }
   }
@@ -917,6 +953,19 @@ export class GameView {
   rain = false;
   /** Player route: big moments get a DOM banner (juice.ts), so in-world headlines are skipped. */
   bigMoments = false;
+  /**
+   * Player route: the factory table's catcher's-mitt bumper is drawn as a baseball bumper like every other
+   * pop bumper (it was the only non-baseball one). Same body and physics; frozen routes keep the mitt.
+   */
+  private gloveAsBall = false;
+  setGloveAsBall(on: boolean) {
+    if (on === this.gloveAsBall) return;
+    this.gloveAsBall = on;
+    if (this.staticLayer.width) this.drawStatic();
+  }
+  bumperStyle(style: 'ball' | 'glove' | 'bonus') {
+    return style === 'glove' && this.gloveAsBall ? 'ball' : style;
+  }
   /** Where the WHIFF tag appears (updated each frame from the batter's hands). */
   private whiffAt = { x: 10, y: 24 };
 
@@ -1050,6 +1099,51 @@ export class GameView {
     this.lit.clear();
     this.spin.clear();
     this.drawStatic();
+  }
+
+  /**
+   * Shop minimap: the current table drawn small into `target`, with `spots` marked where an offer would go
+   * (or what it boosts). `frame` 0..1 drives the marker pulse; pass a fixed value for still thumbnails.
+   * Cosmetic only; it reuses the cached table layers, so it is cheap enough to redraw every frame.
+   */
+  renderMap(target: HTMLCanvasElement, sim: Simulation, spots: { x: number; y: number; r: number }[], frame = 0.5) {
+    const ctx = target.getContext('2d');
+    if (!ctx || !this.staticLayer.width) return;
+    const M = MINIMAP;
+    const W = target.width, H = target.height;
+    const b = this.layout.bounds;
+    const bx0 = b.x0 - M.pad, by0 = b.y0 - M.pad, bw = b.x1 - b.x0 + M.pad * 2, bh = b.y1 - b.y0 + M.pad * 2;
+    const k = Math.min(W / bw, H / bh);
+    const ox = (W - bw * k) / 2 - bx0 * k, oy = (H - bh * k) / 2 - by0 * k;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.setTransform(k, 0, 0, k, ox, oy);
+    const lr = this.layerRect();
+    ctx.drawImage(this.staticLayer, lr.x0, lr.y0, lr.w, lr.h);
+    this.drawMachinesDynamic(ctx);
+    if (this.layout.ramps.length) ctx.drawImage(this.rampLayer, lr.x0, lr.y0, lr.w, lr.h);
+    // dim everything, then punch the marked spots back out so they read even on a 70px thumbnail
+    ctx.fillStyle = M.dim;
+    ctx.fillRect(bx0, by0, bw, bh);
+    const col = this.theme.energyPrimary;
+    for (const h of spots) {
+      const r = Math.max(M.minR, h.r) + M.grow * frame;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(this.staticLayer, lr.x0, lr.y0, lr.w, lr.h);
+      ctx.restore();
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, col, h.x, h.y, r * 2.2, 0.35 + 0.35 * frame);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = col;
+      ctx.lineWidth = M.ring / k * (W > 200 ? 1 : 0.8);
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   private drawHighlights(ctx: CanvasRenderingContext2D) {
@@ -1202,8 +1296,9 @@ export class GameView {
     const th = this.theme;
     // bumpers: amber light segments + baseball cap, lit on hit
     for (const b of this.layout.bumpers) {
+      const style = this.bumperStyle(b.style);
       const lit = Math.min(1, (this.lit.get(b.id) ?? 0) / 0.3);
-      if (b.style === 'glove') {
+      if (style === 'glove') {
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, th.machineGlow, b.x, b.y, b.r * (1.8 + lit), 0.2 + lit * 0.9);
         if (lit > 0) drawGlow(ctx, th.impactCore, b.x, b.y + 0.1, b.r * 0.8, lit * 0.6);
@@ -1211,12 +1306,12 @@ export class GameView {
         continue;
       }
       const idle = 0.35 + 0.1 * Math.sin(this.time * 2 + b.x);
-      const glowC = b.style === 'bonus' ? th.energySecondary : th.machineGlow;
+      const glowC = style === 'bonus' ? th.energySecondary : th.machineGlow;
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, glowC, b.x, b.y, b.r * (1.9 + lit * 0.8), idle * 0.35 + lit * 0.9);
       if (th.neon) {
         // neon tube ring: always on, breathes, flares on a hit
-        const ring = b.style === 'bonus' ? th.energyPrimary : th.energySecondary;
+        const ring = style === 'bonus' ? th.energyPrimary : th.energySecondary;
         ctx.strokeStyle = ring;
         ctx.globalAlpha = Math.min(1, (0.45 + 0.15 * Math.sin(this.time * 3 + b.y)) * th.neon + lit * 0.5);
         ctx.lineWidth = 0.14 + lit * 0.08;
@@ -1239,7 +1334,7 @@ export class GameView {
       ctx.globalAlpha = 1;
       const squash = 1 - lit * 0.08; // cap dips when it fires
       drawBaseball(ctx, b.x, b.y - 0.1 * squash, b.r * 0.7 * squash, 0.5 + b.x);
-      if (b.style === 'bonus') {
+      if (style === 'bonus') {
         ctx.fillStyle = th.jackpotAccent;
         star(ctx, b.x, b.y - 0.1 * squash, b.r * 0.32, b.r * 0.14);
         ctx.fill();
@@ -1363,78 +1458,86 @@ export class GameView {
     ctx.translate(bx, by);
     ctx.scale(S, S);
     const hx = (hands.x - bx) / S, hy = (hands.y - by) / S;
-    // cleats + legs
-    for (const s of [-1, 1]) {
-      ctx.fillStyle = '#d7dbe2';
+    // Top-down right-handed hitter in his stance: feet and shoulders lined up toward the pitcher (up the
+    // table), chest square to the plate (right), head turned to watch the pitch. The torso turns toward the
+    // pitcher as the bat comes through, so the swing reads as a real rotation. All cosmetic (see BATTER_ART).
+    const A = BATTER_ART;
+    const span = config.swing.restAngle - config.swing.endAngle;
+    const p = Math.max(0, Math.min(1, (config.swing.restAngle - angle) / span));
+    const rot = -p * A.torsoTurn;
+    const rp = (x: number, y: number) => ({ x: x * Math.cos(rot) - y * Math.sin(rot), y: x * Math.sin(rot) + y * Math.cos(rot) });
+    // legs + cleats (toes to the plate; the back foot pivots a little on the swing)
+    ctx.lineCap = 'round';
+    for (const [fx, fy, twist] of [[A.leadFoot.x, A.leadFoot.y, 0], [A.backFoot.x, A.backFoot.y, -p * 0.6]] as const) {
+      ctx.strokeStyle = A.pants;
+      ctx.lineWidth = 0.24;
       ctx.beginPath();
-      ctx.ellipse(s * 0.25, 0.32, 0.16, 0.22, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#16203a';
+      ctx.moveTo(fy < 0 ? 0.02 : -0.02, fy * 0.35);
+      ctx.lineTo(fx, fy);
+      ctx.stroke();
+      ctx.fillStyle = A.cleat;
       ctx.beginPath();
-      ctx.ellipse(s * 0.27, 0.52, 0.13, 0.09, 0, 0, Math.PI * 2);
+      ctx.ellipse(fx + 0.06, fy, 0.17, 0.1, twist, 0, Math.PI * 2);
       ctx.fill();
     }
-    // jersey, seen from behind
-    const j = ctx.createLinearGradient(-0.5, -0.4, 0.5, 0.4);
-    j.addColorStop(0, '#ffffff');
-    j.addColorStop(1, '#c3c8d2');
+    // torso: shoulders run up/down the table, chest faces the plate
+    ctx.save();
+    ctx.rotate(rot);
+    const j = ctx.createLinearGradient(-0.3, 0, 0.3, 0);
+    j.addColorStop(0, A.jerseyShade);
+    j.addColorStop(0.6, A.jersey);
+    j.addColorStop(1, A.jersey);
     ctx.fillStyle = j;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 0.5, 0.36, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 0.3, 0.48, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#c4222b';
-    ctx.lineWidth = 0.05;
-    ctx.beginPath();
-    ctx.moveTo(-0.46, 0.12);
-    ctx.quadraticCurveTo(0, 0.3, 0.46, 0.12);
-    ctx.stroke();
-    ctx.fillStyle = '#c4222b';
-    ctx.font = `italic 800 0.34px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('17', 0, 0.06);
-    // arms reaching to the hands
-    ctx.lineCap = 'round';
-    for (const s of [-1, 1]) {
-      const sx = s * 0.4, sy = -0.12;
-      ctx.strokeStyle = '#eef0f4';
-      ctx.lineWidth = 0.17;
+    // red sleeves
+    ctx.fillStyle = A.team;
+    for (const sy of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.quadraticCurveTo((sx + hx) / 2, sy - 0.12, hx - 0.03 * s, hy + 0.02);
-      ctx.stroke();
-      ctx.strokeStyle = '#c4222b';
-      ctx.lineWidth = 0.18;
+      ctx.ellipse(0.02, sy * 0.42, 0.13, 0.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    // arms: both shoulders to the hands in front of the chest
+    const sh = [rp(0.04, -0.42), rp(0.02, 0.42)];
+    for (const s0 of sh) {
+      ctx.strokeStyle = A.skin;
+      ctx.lineWidth = 0.15;
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + (hx - sx) * 0.16, sy + (hy - sy) * 0.16);
+      ctx.moveTo(s0.x, s0.y);
+      ctx.quadraticCurveTo((s0.x + hx) / 2 + 0.1, (s0.y + hy) / 2, hx, hy);
       ctx.stroke();
     }
-    // helmet
-    const hg = ctx.createRadialGradient(-0.1, -0.38, 0.03, 0, -0.28, 0.3);
-    hg.addColorStop(0, '#ff7b70');
-    hg.addColorStop(0.55, '#d0202b');
-    hg.addColorStop(1, '#740b12');
+    // helmet: head turned toward the pitcher, bill pointing where he looks, ear flap on the pitcher side
+    const look = A.lookRest + (A.lookSwing - A.lookRest) * p;
+    const head = rp(0.03, -0.04);
+    const dx = Math.cos(look), dy = Math.sin(look);
+    ctx.fillStyle = A.bill;
+    ctx.beginPath();
+    ctx.ellipse(head.x + dx * 0.27, head.y + dy * 0.27, 0.13, 0.19, look, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = A.helmetDark;
+    const flap = look - Math.PI / 2;
+    ctx.beginPath();
+    ctx.ellipse(head.x + Math.cos(flap) * 0.2, head.y + Math.sin(flap) * 0.2, 0.09, 0.13, flap, 0, Math.PI * 2);
+    ctx.fill();
+    const hg = ctx.createRadialGradient(head.x - 0.08, head.y - 0.1, 0.03, head.x, head.y, 0.27);
+    hg.addColorStop(0, A.helmetHi);
+    hg.addColorStop(0.55, A.helmet);
+    hg.addColorStop(1, A.helmetDark);
     ctx.fillStyle = hg;
     ctx.beginPath();
-    ctx.arc(0, -0.28, 0.27, 0, Math.PI * 2);
+    ctx.arc(head.x, head.y, 0.25, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#8c1118';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.beginPath();
-    ctx.ellipse(0.02, -0.52, 0.19, 0.07, 0, Math.PI, 0);
-    ctx.fill();
-    ctx.fillStyle = '#9e131b';
-    ctx.beginPath();
-    ctx.ellipse(-0.25, -0.24, 0.08, 0.12, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath();
-    ctx.ellipse(-0.1, -0.38, 0.08, 0.04, -0.6, 0, Math.PI * 2);
+    ctx.ellipse(head.x - 0.08, head.y - 0.1, 0.08, 0.04, -0.6, 0, Math.PI * 2);
     ctx.fill();
     // batting gloves
-    ctx.fillStyle = '#1d2b4a';
+    ctx.fillStyle = A.gloves;
     ctx.beginPath();
-    ctx.arc(hx, hy, 0.1, 0, Math.PI * 2);
+    ctx.arc(hx, hy, 0.11, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     if (batOnTop) this.drawBat(ctx, hands.x, hands.y, angle);

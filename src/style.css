@@ -380,7 +380,67 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   .offers.draft .obuy { grid-column: 2; grid-row: 1 / span 4; align-self: center; padding: 8px 10px; }
   .offers.draft .mounts { grid-column: 1; }
 }
-#buildPanel.focus { max-height: 34%; }
+#buildPanel.focus { max-height: 30%; }
+
+/* ── Full-screen shop / free pick / manage (src/run/ui.ts). Tune timings here. ── */
+:root {
+  --shop-in: 420ms;             /* popup entrance */
+  --shop-card-stagger: 70ms;    /* delay between cards sliding in */
+  --shop-map-w: 74px;           /* card thumbnail map */
+  --shop-base: #0a0d1c;         /* solid backing so nothing shows through the full-screen shop */
+}
+.cabinet { position: relative; }
+#buildPanel.full {
+  inset: 0; max-height: none; z-index: 20;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  border: 2px solid var(--gold); border-radius: 16px;
+  background:
+    radial-gradient(ellipse 90% 30% at 50% 0%, color-mix(in srgb, var(--energy) 22%, transparent), transparent 70%),
+    linear-gradient(var(--m-panel-a), var(--m-panel-b)),
+    var(--shop-base);
+  box-shadow: 0 0 0 1px #000, 0 0 30px color-mix(in srgb, var(--energy) 30%, transparent), inset 0 0 40px #000a;
+}
+#buildPanel.full.enter { animation: shop-in var(--shop-in) cubic-bezier(0.2, 1.25, 0.4, 1) both; }
+@keyframes shop-in { from { opacity: 0; transform: scale(0.9) translateY(30px); } to { opacity: 1; transform: none; } }
+@keyframes shop-card-in { from { opacity: 0; transform: translateY(22px) scale(0.95); } to { opacity: 1; transform: none; } }
+@keyframes shop-slide-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+#buildPanel.v-anim[data-view='list'] .offers.list .offer { animation: shop-card-in 0.42s cubic-bezier(0.2, 1.2, 0.4, 1) both; animation-delay: calc(var(--i, 0) * var(--shop-card-stagger) + 80ms); }
+#buildPanel.v-anim[data-view='detail'] > *, #buildPanel.v-anim[data-view='manage'] > * { animation: shop-slide-in 0.3s ease-out both; }
+#buildPanel.v-anim[data-view='detail'] > .dmapwrap { animation-delay: 40ms; }
+#buildPanel.v-anim[data-view='detail'] > .offers { animation-delay: 90ms; }
+#buildPanel.v-anim[data-view='peek'] { animation: shop-card-in 0.3s ease-out both; }
+body.fx-reduced #buildPanel, body.fx-reduced #buildPanel * { animation: none !important; }
+
+.shead { display: flex; align-items: center; gap: 8px; }
+.stitle { display: flex; flex-direction: column; line-height: 1; margin-right: auto; }
+.stitle small { font: 700 11px var(--font); letter-spacing: 0.2em; color: var(--gold); }
+.stitle b { font: italic 900 34px var(--font); letter-spacing: 0.03em; color: #fff; text-shadow: 0 0 14px color-mix(in srgb, var(--energy) 70%, transparent), 0 2px 0 #000; }
+.shead .back { margin-right: auto; font: italic 800 13px var(--font); padding: 8px 12px; border-radius: 8px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
+.pchips { display: flex; gap: 6px; }
+.chip { font: italic 800 16px var(--font); padding: 5px 10px; border-radius: 999px; background: #0a1426; border: 1px solid; white-space: nowrap; }
+.chip.money { color: var(--gold-hi); border-color: var(--gold); }
+.chip.power { color: color-mix(in srgb, var(--energy) 55%, white); border-color: var(--energy-soft); }
+.shead .pmanage { margin-left: 0; }
+.ssub { font: 500 13px/1.3 system-ui, sans-serif; color: #a9bad0; }
+#buildPanel.full .pfoot { margin-top: auto; position: sticky; bottom: calc(-12px - env(safe-area-inset-bottom)); padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); margin-bottom: calc(-12px - env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--shop-base) 30%); }
+#buildPanel.full .pmachine { margin: 0 2px; }
+
+.offers.list { grid-template-columns: 1fr; gap: 10px; }
+.offers.list .offer { display: grid; grid-template-columns: var(--shop-map-w) 1fr; gap: 10px; padding: 9px; border-radius: 12px; }
+.offers.list .offer:active { transform: scale(0.985); }
+.omap { width: var(--shop-map-w); height: calc(var(--shop-map-w) * 1.45); border-radius: 8px; background: #050b16; border: 1px solid #ffffff22; }
+.obody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.orow { margin-top: auto; padding-top: 4px; display: flex; align-items: center; gap: 8px; }
+.opeek { font: 700 10px var(--font); letter-spacing: 0.14em; color: var(--ui-accent); opacity: 0.85; }
+.orow .obuy, .orow .omanage { margin: 0 0 0 auto; padding: 8px 14px; min-width: 44%; }
+
+.dmapwrap { position: relative; flex: 1 1 auto; min-height: 240px; border-radius: 12px; overflow: hidden; background: #050b16; border: 1px solid var(--energy-soft); box-shadow: inset 0 0 30px #000; }
+.dmapwrap.small { flex: 0 0 auto; height: 30vh; min-height: 0; }
+.dmap { display: block; width: 100%; height: 100%; }
+.dmaplabel { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 12px; border-radius: 999px; background: #06101ee6; border: 1px solid var(--energy); color: #fff; font: italic 800 14px var(--font); }
+.speek { font: italic 800 15px var(--font); letter-spacing: 0.04em; padding: 11px; min-height: 44px; border-radius: 10px; border: 1px solid var(--energy-soft); background: transparent; color: color-mix(in srgb, var(--energy) 55%, white); cursor: pointer; }
+#buildPanel.full .mlist { max-height: none; }
 .offers.one { grid-template-columns: 1fr; }
 .phead .back { font: italic 800 13px var(--font); padding: 6px 10px; border-radius: 6px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
 
@@ -414,7 +474,7 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
 .dev-hint { font-size: 10px; opacity: 0.7; margin-top: 4px; }
 
 /* ── Manage Machine (optional, between challenges) ── */
-.phead .pmanage { margin-left: auto; font: italic 800 12px var(--font); letter-spacing: 0.04em; padding: 6px 9px; border-radius: 6px;
+.pmanage { margin-left: auto; font: italic 800 12px var(--font); letter-spacing: 0.04em; padding: 6px 9px; border-radius: 6px;
   border: 1px solid var(--gold); background: #1f2a3c; color: var(--gold-hi); cursor: pointer; white-space: nowrap; }
 .omanage { margin-top: auto; font: italic 800 13px var(--font); padding: 7px 4px; min-height: 34px; border-radius: 6px; cursor: pointer;
   border: 1px dashed var(--gold); background: #1a2333; color: var(--gold-hi); }

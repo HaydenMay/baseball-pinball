@@ -382,7 +382,8 @@ const FACTORY_BUMPERS = [
   { key: 'bumper-left', label: 'Left bumper' },
   { key: 'bumper-right', label: 'Right bumper' },
   { key: 'bumper-mid', label: 'Mid-right bumper' },
-  { key: 'glove', label: 'Glove bumper' },
+  // the old catcher's-mitt bumper: a plain baseball bumper on /play/, so it's named by where it sits
+  { key: 'glove', label: 'Low-left bumper' },
 ];
 export const mountName = (id: string) => MOUNTS.find(m => m.id === id)?.name ?? id;
 const partsOf = (b: BoardView, f: (p: BoardView['parts'][number]) => boolean) => b.parts.filter(f);

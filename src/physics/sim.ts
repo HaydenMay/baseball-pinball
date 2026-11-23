@@ -243,7 +243,7 @@ export class Simulation {
   hotSpots(): HotSpot[] {
     const L = this.layout, out: HotSpot[] = [];
     for (const b of L.bumpers)
-      out.push({ key: `id:${b.id}`, label: b.style === 'glove' ? 'GLOVE' : this.deckParts.has(b.id) ? 'DECK BUMPER' : 'BUMPER', spots: [{ x: b.x, y: b.y, r: b.r }] });
+      out.push({ key: `id:${b.id}`, label: b.style === 'glove' ? (PLAY.enabled ? 'LOW-LEFT BUMPER' : 'GLOVE') : this.deckParts.has(b.id) ? 'DECK BUMPER' : 'BUMPER', spots: [{ x: b.x, y: b.y, r: b.r }] });
     const tg = [...L.roundTargets.filter(t => t.kind === 'target').map(t => ({ x: t.x, y: t.y, r: t.r })), ...L.boxTargets.filter(t => t.kind === 'target').map(t => ({ x: t.x, y: t.y, r: Math.max(t.hw, t.hh) }))];
     if (tg.length) out.push({ key: 'kind:target', label: 'TARGETS', spots: tg });
     for (const t of L.boxTargets.filter(t => t.kind === 'jackpot')) out.push({ key: `id:${t.id}`, label: 'JACKPOT', spots: [{ x: t.x, y: t.y, r: Math.max(t.hw, t.hh) }] });

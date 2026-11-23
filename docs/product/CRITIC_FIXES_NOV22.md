@@ -60,3 +60,11 @@ Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking
 - **Release URL `/play/`**: same game and same save slot as `/build-test/` (kept for old links/icons). Manifest `start_url` is `./play/`.
 - **"EARLY ACCESS PLAYTEST" badge removed** from the player route.
 - **Vibration** (Settings → Vibration, on by default; shown only where the browser can vibrate, so not on iOS): bat contact, sweet spot, home run, jackpot, called-shot hit, strike, clear, game over. Patterns in `src/core/haptics.ts`.
+
+## Nov 23 (2): full-screen shop, batter stance, no more glove
+
+- **Shop, free pick and Manage are a full-screen popup** (was a bottom drawer). It pops in, cards slide in one after another, and money/Power sit as chips in the header. Reroll/Next stay pinned at the bottom.
+- **Minimap previews**: every card has a thumbnail of your actual table with the spot lit. Tap a card for the detail view: a big live minimap with the spot pulsing, the spot choice and Buy. **See it on the table** shrinks the menu to a bar so you can see the real board, with the highlight on it. Manage shows the selected part on the minimap too. Batting boosts (sweet spots) point at the batter's box. Knobs: `MINIMAP` (game.ts), `SHOP_FX` (ui.ts), `--shop-*` CSS variables.
+- **Batter faces the plate**: a top-down right-handed hitter in his stance (feet and shoulders toward the pitcher, chest to the plate, bill on the pitch). His torso turns through the swing. Cosmetic only: `BATTER_ART`.
+- **The catcher's-mitt bumper is a baseball bumper on /play/** (same spot, same physics; frozen routes keep the mitt). It's called the "Low-left bumper" in cards now.
+- Machine summaries group duplicates ("Bonus Bumper ×3").
