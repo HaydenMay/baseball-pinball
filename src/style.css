@@ -565,3 +565,27 @@ body.fx-reduced .rotate span { animation: none; }
 .card-tip { margin: 8px 0 2px; padding: 8px 10px; border-radius: 8px; background: var(--coach-tip-bg); border: 1px solid var(--gold); font: 500 14px/1.35 system-ui, sans-serif; color: #e8eef6; text-align: left; }
 .card-tip b { color: var(--gold-hi); font-weight: 800; }
 #pause:disabled { opacity: 0.35; cursor: default; }
+
+/* ─── Results grid on end-of-run cards (src/run/stats.ts) ─── */
+.results { margin: 10px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.results[hidden] { display: none; }
+.res-best { align-self: center; padding: 3px 12px; border-radius: 999px; font: italic 900 16px var(--font); letter-spacing: 0.08em; color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); animation: res-pulse 1.2s ease-in-out infinite; }
+@keyframes res-pulse { 50% { transform: scale(1.06); } }
+body.fx-reduced .res-best { animation: none; }
+.res-total { text-align: center; }
+.res-total small, .res-grid small { display: block; font: 700 11px var(--font); letter-spacing: 0.14em; color: var(--m-label); }
+.res-total b { font: italic 900 38px/1 var(--font); color: var(--sb-main); text-shadow: 0 0 14px var(--sb-main-glow); }
+.res-pips { display: flex; justify-content: center; gap: 4px; }
+.res-pips i { width: 14px; height: 8px; border-radius: 3px; background: #ffffff1f; }
+.res-pips i.on { background: var(--sb-value); box-shadow: 0 0 6px var(--sb-value-glow); }
+.res-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.res-grid div { padding: 6px 4px; border-radius: 8px; background: #ffffff0d; text-align: center; }
+.res-grid b { font: italic 800 19px var(--font); color: #f4f8ff; }
+/* End cards with results must fit short phones (390×664): scroll inside the card, tighter grid. */
+#overlay .card { max-height: calc(100% - 12px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-height: 720px) {
+  .results { gap: 5px; margin-top: 6px; }
+  .res-total b { font-size: 30px; }
+  .res-grid div { padding: 4px 3px; }
+  .res-grid b { font-size: 16px; }
+}

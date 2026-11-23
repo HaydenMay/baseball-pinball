@@ -15,6 +15,11 @@ export const PLAY = {
     /** Bonus points (follow the multiplier like any other score). */
     points: 250,
   },
+  /**
+   * Jackpot pays this share of the challenge target (critic: a flat 250 was 0.3% of points), never less
+   * than config.jackpot.points; rounded to 50. Modifiers (Big Stage ×2) apply on top.
+   */
+  jackpotShare: 0.05,
   /** Pitches per challenge that drain without ever touching the bat and don't cost a strike. */
   foulsPerChallenge: 1,
 };
@@ -22,4 +27,10 @@ export const PLAY = {
 /** Sweet spot test for a bat contact angle (see config.swing.centerAngle). */
 export function isSweetSpot(angle: number, center: number) {
   return Math.abs(angle - center) <= PLAY.sweetSpot.angle;
+}
+
+/** Jackpot base points for a challenge target (player route). */
+export function jackpotPoints(target: number | null, floor: number) {
+  if (!PLAY.enabled || !target) return floor;
+  return Math.max(floor, Math.round((target * PLAY.jackpotShare) / 50) * 50);
 }

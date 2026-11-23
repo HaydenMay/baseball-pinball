@@ -60,6 +60,7 @@ function onSimEvent(e: SimEvent) {
   view.onSimEvent(e);
   sfx.onEvent(e);
   telemetry.onEvent(e, sim.time, sim.rules.ballScore, sim.rules.pitchNumber, sim);
+  build?.onSimEvent(e);
   if (e.type === 'mult') procMult();
   if (coach) {
     if (e.type === 'swing') coach.onSwing();
@@ -231,6 +232,7 @@ function showOverlay(kicker: string, title: string, text: string, button: string
   const tipEl = $('#overlayTip');
   tipEl.innerHTML = tip;
   tipEl.hidden = !tip;
+  $('#overlayStats').hidden = true;
   overlay.hidden = false;
   readyBtn.focus({ preventScroll: true });
 }
@@ -597,6 +599,12 @@ const build: BuildUI | null = buildMode
         startPitch: () => onReady(),
         tips: coach?.book ?? null,
         onPurchase: () => sfx.ui('buy'),
+        showResults: html => {
+          const el = $('#overlayStats');
+          el.innerHTML = html;
+          el.hidden = false;
+        },
+        bestStore: player ? browserStore() : null,
         recorder,
         theme: theme.id,
         saveRun: (run, pitch) => writeSave(saveStore, { route: saveRoute, build: BUILD_INFO.commit.slice(0, 7), run: run.toSave(), ...(pitch ? { pitch } : {}) }),

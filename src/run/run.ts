@@ -14,6 +14,7 @@
  * - Selling (between challenges only) removes the whole item, frees 100% of its Power and mounts, refunds
  *   floor(actual price paid / 2) (free draft rewards refund $0), and never deletes a modifier.
  */
+import { newStats, type RunStats } from './stats.ts';
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 import { SECTION_UNLOCKS, UPPER_DECK, V2, type SectionId } from '../machines/sections.ts';
@@ -108,6 +109,8 @@ const isGroupKey = (k: string) => k.includes(':');
 export const anchorOf = (k: string) => k.replace(/-(gate|cp)$/, '');
 
 export class Run {
+  /** Results-screen stats, fed by BuildUI from sim events. */
+  stats: RunStats = newStats();
   challenge = 1;
   money = 0;
   maxPower = ECONOMY.startPower;
@@ -512,6 +515,7 @@ export class Run {
    */
   toSave(): RunSave {
     return {
+      stats: { ...this.stats },
       challenge: this.challenge, money: this.money, maxPower: this.maxPower, phase: this.phase,
       installed: this.installed.map(i => ({ uid: i.uid, offerKey: i.offerKey, placement: i.placement, via: i.via, paid: i.paid })),
       mods: structuredClone(this.mods), draft: structuredClone(this.draft), shop: structuredClone(this.shop), rerolls: this.rerolls,
@@ -543,6 +547,7 @@ export class Run {
     r.seed = Number.isFinite(s.rng) && s.rng !== 0 ? s.rng : 1; // exact (only its low 32 bits matter to random())
     r.uid = s.uid;
     r.itemSeq = s.itemSeq;
+    r.stats = { ...newStats(), ...(s.stats ?? {}) };
     const dropped: string[] = [];
     for (const it of s.installed) {
       const m = MACHINES.find(m => m.key === it.offerKey);
@@ -595,6 +600,8 @@ export type RunSave = {
   rng: number;
   uid: number;
   itemSeq: number;
+  /** Results-screen stats (absent in older saves). */
+  stats?: RunStats;
 };
 
 /** A paired-gate bundle and single gates hold the same part types: treat as the same machine for offers. */

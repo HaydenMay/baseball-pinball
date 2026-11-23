@@ -17,7 +17,7 @@ import { buildBoard, layoutFor, type FixtureData, type Layout, type Sling, type 
 import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt, rampHeight, type BankDef, type Modifier, type ModifierTable, type MultGateDef, type Pt, type RampPath, type ScoopDef, type SpinnerDef, type SplitterDef } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
 import { DECK_RALLY, UPPER_DECK } from '../machines/sections.ts';
-import { PLAY, isSweetSpot } from '../core/play-rules.ts';
+import { PLAY, isSweetSpot, jackpotPoints } from '../core/play-rules.ts';
 
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
@@ -451,7 +451,7 @@ export class Simulation {
       points = (d.ref as Bumper).points ?? config.bumper.points;
       this.pendingKicks.push({ kind: 'bumper', ref: d.ref, ball });
     } else if (d.kind === 'target') points = config.target.points;
-    else if (d.kind === 'jackpot') points = config.jackpot.points;
+    else if (d.kind === 'jackpot') points = jackpotPoints(this.rules.target, config.jackpot.points);
     else if (d.kind === 'lane') points = config.lane.points;
     else if (d.kind === 'sling') {
       const sg = (d.ref as Sling).group ?? 'main';

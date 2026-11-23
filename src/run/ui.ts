@@ -13,6 +13,9 @@ import type { Preset } from '../machines/presets.ts';
 import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
 import type { PitchCarry } from '../physics/sim.ts';
 import { panelTip, type TipBook } from './coach.ts';
+import { readBest, recordBest, statsHtml } from './stats.ts';
+import type { Store } from './save.ts';
+import type { SimEvent } from '../physics/sim.ts';
 import type { LoadResult, SaveFile } from './save.ts';
 
 export type BuildHost = {
@@ -39,6 +42,10 @@ export type BuildHost = {
   tips?: TipBook | null;
   /** A shop purchase went through (cha-ching). */
   onPurchase?: () => void;
+  /** Results grid on the end-of-run card (player route). */
+  showResults?: (html: string) => void;
+  /** Where the device best score lives (null = not kept). */
+  bestStore?: Store | null;
 };
 
 const fmt = (n: number) => n.toLocaleString();
@@ -260,12 +267,34 @@ export class BuildUI {
     }
   }
 
+  /** Feed the results-screen stats from sim events (main.ts forwards every event). */
+  onSimEvent(e: SimEvent) {
+    const st = this.run.stats, r = this.host.getSim().rules;
+    if (e.type === 'bat' && e.sweet) st.sweetSpots++;
+    else if (e.type === 'deckRally' && e.phase === 'start') st.homeRuns++;
+    else if (e.type === 'mult') st.peakMult = Math.max(st.peakMult, e.total);
+    else if (e.type === 'drain' || e.type === 'clear') st.bestPitch = Math.max(st.bestPitch, r.ballScore);
+  }
+
+  /** End-of-run results grid + device best. */
+  private results(cleared: number) {
+    const st = this.run.stats;
+    st.cleared = cleared;
+    const store = this.host.bestStore ?? null;
+    const before = readBest(store);
+    const isNew = recordBest(store, st);
+    this.host.showResults?.(statsHtml(st, ECONOMY.lastChallenge, isNew ? readBest(store) : before, isNew));
+  }
+
   /** Sim says the target was reached. */
   onClear() {
     const sim = this.host.getSim();
     const rec = this.host.recorder;
     // Finalize the challenge with the machine that actually played it, BEFORE any reward is applied.
     rec?.endChallenge(this.run, sim, 'cleared');
+    this.run.stats.total += sim.rules.score;
+    this.run.stats.cleared = this.run.challenge;
+    this.run.stats.bestPitch = Math.max(this.run.stats.bestPitch, sim.rules.ballScore);
     this.lastEarned = this.run.clear(sim.rules.maxStrikes - sim.rules.strikes);
     rec?.afterClear(this.run, this.lastEarned);
     const victory = this.run.won;
@@ -282,6 +311,7 @@ export class BuildUI {
         `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
         this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
       );
+      this.results(ECONOMY.lastChallenge);
       if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
       return;
     }
@@ -310,6 +340,8 @@ export class BuildUI {
     const sim = this.host.getSim();
     const rec = this.host.recorder;
     rec?.endChallenge(this.run, sim, 'failed');
+    this.run.stats.total += sim.rules.score;
+    const clearedBefore = this.run.challenge - 1;
     this.run.fail();
     this.host.clearRun?.();
     rec?.endRun('failed');
@@ -322,6 +354,7 @@ export class BuildUI {
       undefined,
       this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
     );
+    this.results(clearedBefore);
     // The terminal record is archived before the restart button, so it stays downloadable afterwards too.
     if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
   }

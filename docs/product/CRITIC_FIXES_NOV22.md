@@ -37,3 +37,9 @@ Player route plays recorded samples from `public/sounds/` (map and levels in `sr
 - Settings → Look: NIGHT / DAY (Day = Broadcast Classic). `?theme=` still overrides for previews. Other routes unchanged.
 - Title attract mode: rail bulbs chase through the theme's neon colors while the title is up. PINBALL logo glows (and a CSS bug that muddied it is fixed).
 - Batting boosts (Hayden's idea): **Barrel Up** (shop, $5) every 5 sweet spots +0.1×; **Squared Up** (free pick) +0.2×. The old bumper boost "Sweet Spot" is renamed **Hot Hand**.
+
+## Step 5: results screens + Jackpot (Nov 22)
+- **Results grid** on CHALLENGE FAILED and RUN COMPLETE: run total, 15 challenge pips, cleared, best pitch, home runs, sweet spots, peak multiplier, device best, and a NEW BEST badge. Stats ride in the run save; the best is per device (`bp-best`; more challenges cleared wins, then higher total). Code: `src/run/stats.ts`.
+- **Jackpot** pays 5% of the challenge target, rounded to 50, never under the old 250 (C4 400, C5 800, …). `PLAY.jackpotShare`. Big Stage ×2 still applies.
+- **Rally ×2 unchanged** on purpose (approved in V2.2): wait for the playtest.
+- End cards scroll inside the card on short phones.
