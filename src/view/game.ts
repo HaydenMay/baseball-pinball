@@ -8,11 +8,12 @@ import { MOUND, OUTER_WALL, lowerWallX, targetPoly, wallChains, type Layout, typ
 import { UPPER_DECK, deckFloorPolygon } from '../machines/sections.ts';
 import type { Simulation } from '../physics/sim.ts';
 import { checkEligibility } from '../core/swing.ts';
-import { drawGlow, underlay, Vfx } from './vfx.ts';
+import { drawGlow, readableSize, underlay, Vfx } from './vfx.ts';
 import { Camera, cameraBalls, visibleRect, type CamBall, type Rect } from './camera.ts';
 import { drawMachinesFloorDynamic, drawMachinesFloorStatic, drawMachinesRaised, onMechanismEvent } from './machines.ts';
 import { derived, type Theme } from './theme.ts';
 import { JUICE } from './juice.ts';
+import { HOT_CORNER } from '../core/bosses.ts';
 
 /** Visible world rectangle (a little beyond the rails for the frame and floodlights). */
 export const VIEW = { x0: -0.9, y0: -1.7, w: 21.8, h: 34.1 };
@@ -908,6 +909,8 @@ export class GameView {
   // ───────────────────────────── dynamic layer ─────────────────────────────
   /** Big-moment bulb chase set by the main loop from Juice (null = normal attract chase). */
   bulbChase: { color: string; left: number } | null = null;
+  /** Closer rule Hot Corner: where the ×3 is (set each frame by main.ts; null = no rule). */
+  hot: { spots: { x: number; y: number; r: number }[]; left: number } | null = null;
   /** Player route: big moments get a DOM banner (juice.ts), so in-world headlines are skipped. */
   bigMoments = false;
   /** Where the WHIFF tag appears (updated each frame from the batter's hands). */
@@ -979,6 +982,7 @@ export class GameView {
 
     this.drawBulbs(ctx);
     this.drawMachinesDynamic(ctx);
+    this.drawHotCorner(ctx);
     drawMachinesFloorDynamic(ctx, this, sim);
     this.drawBatter(ctx, sim);
     this.drawBalls(ctx, sim, dt, 'floor');
@@ -1108,6 +1112,48 @@ export class GameView {
       ctx.beginPath();
       ctx.arc(b.x, b.y, 0.07, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  /** Hot Corner marker: a pulsing neon ring and a ×3 tag on each hot part; flashes before it moves. */
+  private drawHotCorner(ctx: CanvasRenderingContext2D) {
+    const h = this.hot;
+    if (!h) return;
+    const th = this.theme;
+    const warn = h.left <= HOT_CORNER.warnSeconds;
+    const blink = warn ? (Math.sin(this.time * 18) > 0 ? 1 : 0.25) : 1;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
+    const fs = readableSize(ctx, 0.7, 16);
+    const labelled: { x: number; y: number }[] = [];
+    for (const sp of h.spots) {
+      const R = sp.r + 0.35 + pulse * 0.15;
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, th.jackpotAccent, sp.x, sp.y, R * 1.4, 0.35 * blink);
+      ctx.strokeStyle = th.jackpotAccent;
+      ctx.lineWidth = 0.16;
+      ctx.globalAlpha = 0.9 * blink;
+      ctx.setLineDash([0.45, 0.3]);
+      ctx.lineDashOffset = -this.time * 2;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, R, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = blink;
+      ctx.font = `italic 900 ${fs.toFixed(3)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = fs * 0.22;
+      ctx.strokeStyle = '#000000';
+      const ty = sp.y - R - fs * 0.6;
+      // one tag per cluster (a bank of three targets gets one ×3, not three)
+      if (!labelled.some(l => Math.hypot(l.x - sp.x, l.y - sp.y) < 2.2)) {
+        labelled.push(sp);
+        ctx.strokeText(`×${HOT_CORNER.hot}`, sp.x, ty);
+        ctx.fillStyle = th.jackpotAccent;
+        ctx.fillText(`×${HOT_CORNER.hot}`, sp.x, ty);
+      }
+      ctx.globalAlpha = 1;
     }
   }
 

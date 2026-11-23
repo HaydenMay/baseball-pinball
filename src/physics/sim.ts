@@ -18,6 +18,7 @@ import { RALLY_CHARGES, SCOOP_EJECT_SPREAD, applyModifiers, crossedLine, rampAt,
 import type { Preset } from '../machines/presets.ts';
 import { DECK_RALLY, UPPER_DECK } from '../machines/sections.ts';
 import { PLAY, isSweetSpot, jackpotPoints } from '../core/play-rules.ts';
+import { HOT_CORNER, type BossId } from '../core/bosses.ts';
 
 export type SimEvent =
   | { type: 'machine'; kind: FixtureData['kind']; id: string; x: number; y: number; points: number; nx: number; ny: number; ball: number; spins?: number }
@@ -28,6 +29,8 @@ export type SimEvent =
   | { type: 'bat'; contact: Contact; x: number; y: number; ball: number; sweet?: boolean }
   /** Player route: a swing finished without touching a ball. */
   | { type: 'whiff' }
+  /** Closer rule Hot Corner: the ×3 spot moved (or was first placed). */
+  | { type: 'hot'; key: string; label: string; x: number; y: number; first: boolean }
   | { type: 'swing' }
   | { type: 'serve' }
   | { type: 'ramp'; id: string; phase: 'enter' | 'complete' | 'rollback' | 'land'; x: number; y: number; points: number; ball: number }
@@ -67,6 +70,9 @@ export type SimEvent =
 export type SimOptions = { onEvent?: (e: SimEvent) => void; preset?: Preset; layout?: Layout; /** Seed for launch variation (fixed by default so tests are reproducible). */ seed?: number };
 
 /** Between-pitches carry-over (see Simulation.carryState). */
+/** One place the Hot Corner can sit: a part (`id:<part>`) or a group of small parts (`kind:<kind>`). */
+export type HotSpot = { key: string; label: string; spots: { x: number; y: number; r: number }[] };
+
 export type PitchCarry = {
   score: number;
   strikes: number;
@@ -80,6 +86,8 @@ export type PitchCarry = {
   rng: number;
   /** Player route: free fouls left this challenge (absent in older saves = full). */
   foulsLeft?: number;
+  /** Closer rule Hot Corner: current spot, seconds left, its RNG. */
+  hot?: { key: string; left: number; rng: number };
 };
 
 export type Ball = {
@@ -207,7 +215,56 @@ export class Simulation {
    * Bank points through the one central boundary (rules.award applies the global multiplier once) and
    * report what was actually banked for analytics. Never awards twice; returns rules.award's result.
    */
+  // ── Closer rule (src/core/bosses.ts) ──
+  /** Active Closer rule (player route; set per challenge by main.ts). */
+  boss: BossId | null = null;
+  /** Hot Corner: the ×3 spot right now (the view draws markers at `spots`). */
+  hot: (HotSpot & { left: number }) | null = null;
+  private hotRng = 1;
+
+  setBoss(id: BossId | null) {
+    this.boss = id;
+    this.hot = null;
+    this.hotRng = (this.seed ^ 0x9e3779b9) >>> 0 || 1;
+    if (id === 'hotCorner') this.moveHot(true);
+  }
+
+  /** Every place the Hot Corner can land on this board (one per part, or one per group of small parts). */
+  hotSpots(): HotSpot[] {
+    const L = this.layout, out: HotSpot[] = [];
+    for (const b of L.bumpers)
+      out.push({ key: `id:${b.id}`, label: b.style === 'glove' ? 'GLOVE' : this.deckParts.has(b.id) ? 'DECK BUMPER' : 'BUMPER', spots: [{ x: b.x, y: b.y, r: b.r }] });
+    const tg = [...L.roundTargets.filter(t => t.kind === 'target').map(t => ({ x: t.x, y: t.y, r: t.r })), ...L.boxTargets.filter(t => t.kind === 'target').map(t => ({ x: t.x, y: t.y, r: Math.max(t.hw, t.hh) }))];
+    if (tg.length) out.push({ key: 'kind:target', label: 'TARGETS', spots: tg });
+    for (const t of L.boxTargets.filter(t => t.kind === 'jackpot')) out.push({ key: `id:${t.id}`, label: 'JACKPOT', spots: [{ x: t.x, y: t.y, r: Math.max(t.hw, t.hh) }] });
+    if (L.slings.length) out.push({ key: 'kind:sling', label: 'SLINGS', spots: L.slings.map(s => ({ x: (s.face[0].x + s.face[1].x) / 2, y: (s.face[0].y + s.face[1].y) / 2, r: 0.8 })) });
+    if (L.lanes.length) out.push({ key: 'kind:lane', label: 'LANES', spots: L.lanes.map(l => ({ x: l.sensor.x, y: l.sensor.y, r: 0.5 })) });
+    for (const r of this.layout.ramps) out.push({ key: `id:${r.def.id}`, label: r.def.name.toUpperCase().replace(/ RAMP$/, '').slice(0, 12) + ' RAMP', spots: [{ x: r.mouth.x, y: r.mouth.y, r: 0.9 }] });
+    for (const sc of L.scoops) out.push({ key: `id:${sc.id}`, label: 'SCOOP', spots: [{ x: sc.x, y: sc.y, r: sc.cupR }] });
+    return out;
+  }
+
+  private moveHot(first = false) {
+    const all = this.hotSpots();
+    const pool = all.length > 1 && this.hot ? all.filter(h => h.key !== this.hot!.key) : all;
+    if (!pool.length) return;
+    this.hotRng = (Math.imul(this.hotRng, 1664525) + 1013904223) >>> 0;
+    const pick = pool[this.hotRng % pool.length];
+    this.hot = { ...pick, left: HOT_CORNER.seconds };
+    this.emit({ type: 'hot', key: pick.key, label: pick.label, x: pick.spots[0].x, y: pick.spots[0].y, first });
+  }
+
+  /** Hot Corner factor for one award (1 when no rule is active). */
+  private hotFactor(kind: string, id: string) {
+    const h = this.hot;
+    if (!h) return 1;
+    const anchor = id.replace(/-(gate|cp)$/, '');
+    const hit = h.key === `id:${anchor}` || h.key === `kind:${kind}` || (h.key === 'kind:target' && kind === 'target');
+    return hit ? HOT_CORNER.hot : HOT_CORNER.cold;
+  }
+
   private award(kind: string, id: string, base: number, modified: number, ball: Ball, part?: string, deckRally?: number) {
+    if (this.hot) modified = Math.round(modified * this.hotFactor(kind, id));
     const before = this.rules.score;
     // what this contact would have banked without the Rally factor (same rounding as rules.award)
     const plain = deckRally ? this.rules.preview(modified / deckRally) : 0;
@@ -355,6 +412,7 @@ export class Simulation {
       rallyCharges: this.rallyCharges,
       rng: this.seed,
       foulsLeft: this.foulsLeft,
+      ...(this.hot ? { hot: { key: this.hot.key, left: this.hot.left, rng: this.hotRng } } : {}),
     };
   }
 
@@ -381,6 +439,11 @@ export class Simulation {
     this.rallyCharges = c.rallyCharges;
     this.seed = c.rng >>> 0 || 1;
     this.foulsLeft = c.foulsLeft ?? PLAY.foulsPerChallenge;
+    if (c.hot && this.boss === 'hotCorner') {
+      this.hotRng = c.hot.rng >>> 0 || 1;
+      const spot = this.hotSpots().find(h => h.key === c.hot!.key);
+      if (spot) this.hot = { ...spot, left: c.hot.left };
+    }
   }
 
   private clearBalls() {
@@ -514,6 +577,7 @@ export class Simulation {
       controls.dragDelta = 0;
       this.batterX = Math.max(b.minX, Math.min(b.maxX, this.batterX));
     }
+    if (this.hot && this.rules.phase === 'live' && (this.hot.left -= dt) <= 0) this.moveHot();
     if (PLAY.enabled && !this.swingHit && this.whiffSwingId !== this.swingId && this.swingT >= config.swing.swingSeconds) {
       this.whiffSwingId = this.swingId;
       this.emit({ type: 'whiff' });

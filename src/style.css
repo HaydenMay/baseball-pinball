@@ -592,3 +592,5 @@ body.fx-reduced .res-best { animation: none; }
 /* Playtest mode (src/telemetry/playtest.ts): send-report button on end cards and the pause menu. */
 .share-btn { display: block; margin: 10px auto 0; min-height: 40px; padding: 6px 14px; border-radius: 8px; border: 1px dashed var(--ui-accent); background: transparent; color: var(--ui-accent); font: 800 13px var(--font); letter-spacing: 0.08em; cursor: pointer; }
 .share-btn[hidden] { display: none; }
+/* Status strip: long states (Closer rule status) stay on one line */
+#state { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

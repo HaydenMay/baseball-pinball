@@ -7,7 +7,7 @@ import { rallyLabel } from '../machines/sections.ts';
  * Banners are DOM text at a fixed CSS size, so they stay readable however far the camera has zoomed out.
  */
 
-export type MomentKind = 'homeRun' | 'jackpot' | 'multiball' | 'bank' | 'cleared' | 'strike' | 'foul' | 'sweet' | 'gameOver' | 'runComplete';
+export type MomentKind = 'hotMove' | 'homeRun' | 'jackpot' | 'multiball' | 'bank' | 'cleared' | 'strike' | 'foul' | 'sweet' | 'gameOver' | 'runComplete';
 
 type MomentDef = {
   /** Banner text (empty = no banner). */
@@ -45,6 +45,7 @@ export const JUICE = {
   /** Reduced Effects: shake off, flash and slow-mo toned down. */
   reducedFlash: 0.4,
   moments: {
+    hotMove: { text: 'HOT CORNER', sub: '{label} ×3', color: '#ff4fd8', size: 'mid', stop: 0, flash: 0, chase: 0.7, hold: 0.7, top: 20 },
     homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9 },
     jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7 },
     multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8 },
@@ -93,9 +94,9 @@ export class Juice {
     this.stopLeft = Math.max(this.stopLeft, s);
   }
 
-  play(kind: MomentKind, n?: number) {
+  play(kind: MomentKind, n?: number, label = '') {
     const d: MomentDef = JUICE.moments[kind];
-    const fill = (s: string) => s.replace('{n}', n === undefined ? '' : n.toLocaleString());
+    const fill = (s: string) => s.replace('{n}', n === undefined ? '' : n.toLocaleString()).replace('{label}', label);
     if (d.stop) this.hitStop(d.stop);
     if (d.slow) this.slow = { scale: this.reduced ? Math.max(d.slow[0], 0.6) : d.slow[0], left: d.slow[1] + d.stop };
     if (d.shake && !this.reduced) this.shake = { amp: d.shake[0], left: d.shake[1], max: d.shake[1] };

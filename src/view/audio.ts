@@ -241,6 +241,10 @@ export class Sfx {
           [523, 659, 784, 1046].forEach(f => this.tone(f, 0.7, 'triangle', 0.16, 0.42));
         }
         break;
+      case 'hotMove':
+        // the hot spot jumped: two quick rising pings
+        if (this.ok('m-hot', 0.5)) [988, 1319].forEach((f, i) => this.tone(f, 0.12, 'square', 0.14, i * 0.08));
+        break;
       case 'foul':
         if (this.ok('m-foul', 0.4)) this.tone(600, 0.18, 'sine', 0.25, 0, 900);
         break;

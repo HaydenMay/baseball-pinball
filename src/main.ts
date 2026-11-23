@@ -6,6 +6,7 @@ import { BRAND } from './core/brand.ts';
 import { Coach, TipBook } from './run/coach.ts';
 import { Juice, JUICE, type MomentKind } from './view/juice.ts';
 import { PLAY } from './core/play-rules.ts';
+import { HOT_CORNER } from './core/bosses.ts';
 import { ECONOMY } from './run/economy.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
@@ -80,6 +81,9 @@ function onSimEvent(e: SimEvent) {
     } else if (e.type === 'deckRally' && e.phase === 'start') {
       juice.play('homeRun');
       sfx.moment('homeRun');
+    } else if (e.type === 'hot' && !e.first && sim.rules.phase === 'live') {
+      juice.play('hotMove', undefined, e.label);
+      sfx.moment('hotMove');
     } else if (e.type === 'machine' && e.kind === 'jackpot') juice.play('jackpot', e.points);
     else if (e.type === 'multiball') juice.play('multiball');
     else if (e.type === 'bank') juice.play('bank', e.points);
@@ -189,7 +193,9 @@ function updateHud() {
   }
   const n = sim.balls.length;
   const runEnd = build?.run.phase === 'won' ? 'RUN COMPLETE' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
-  const state = paused ? 'PAUSED' : runEnd ? runEnd : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  // Closer rule status: where the ×3 is and when it moves
+  const hotState = sim.hot && r.phase === 'live' ? `×${HOT_CORNER.hot} ${sim.hot.label} ${Math.ceil(sim.hot.left)}s` : '';
+  const state = paused ? 'PAUSED' : runEnd ? runEnd : hotState ? hotState : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
   // Pause only means something during a live pitch (it used to sit there on the game-over card).
   const canPause = paused || r.phase === 'live';
   if (pauseBtn.disabled === canPause) pauseBtn.disabled = !canPause;
@@ -404,6 +410,7 @@ function tick(ms: number) {
     if (juice) {
       juice.update(delta);
       view.bulbChase = juice.chase ?? attractChase();
+      view.hot = sim.hot && sim.rules.phase !== 'over' ? sim.hot : null;
     }
     acc += delta * (juice ? juice.timeScale() : 1);
     while (acc >= STEP) {
@@ -611,8 +618,10 @@ const build: BuildUI | null = buildMode
       {
         view,
         getSim: () => sim,
-        loadMachine: (p, target) => {
+        loadMachine: (p, target, boss) => {
           sim = makeSim(p, target);
+          // Closer rule for this challenge (player route only; BuildUI decides)
+          if (boss) sim.setBoss(boss);
           view.setLayout(sim.layout);
           shown.score = shown.ball = shown.strikes = -1;
           shown.target = undefined;

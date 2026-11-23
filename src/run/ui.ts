@@ -14,6 +14,8 @@ import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
 import type { PitchCarry } from '../physics/sim.ts';
 import { panelTip, type TipBook } from './coach.ts';
 import { readBest, recordBest, statsHtml } from './stats.ts';
+import { BOSS_INFO, closerFor, type BossId } from '../core/bosses.ts';
+import { PLAY } from '../core/play-rules.ts';
 import type { Store } from './save.ts';
 import type { SimEvent } from '../physics/sim.ts';
 import type { LoadResult, SaveFile } from './save.ts';
@@ -22,7 +24,8 @@ export type BuildHost = {
   view: GameView;
   getSim: () => Simulation;
   /** Rebuild the table for this machine with a challenge target. */
-  loadMachine: (preset: Preset, target: number) => void;
+  /** `boss`: the Closer rule to run on this board (player route), null for none. */
+  loadMachine: (preset: Preset, target: number, boss?: BossId | null) => void;
   showOverlay: (kicker: string, title: string, text: string, button: string, action: () => void, info?: string, alt?: { label: string; action: () => void }) => void;
   hideOverlay: () => void;
   setTag: (text: string) => void;
@@ -193,7 +196,7 @@ export class BuildUI {
       rec.startRun({ route: location.pathname, theme: this.host.theme ?? '', runSeed: this.runSeed });
       this.recordedRun = run;
     }
-    this.host.loadMachine(run.preset(), run.target);
+    this.host.loadMachine(run.preset(), run.target, this.bossFor(run.challenge));
     this.tag();
     const note = dropped.length ? ` (${dropped.length} machine${dropped.length > 1 ? 's' : ''} no longer fit after an update and were refunded.)` : '';
     if (run.phase === 'challenge') {
@@ -241,15 +244,18 @@ export class BuildUI {
   }
 
   start() {
-    this.host.loadMachine(this.run.preset(), this.run.target);
+    const boss = this.bossFor(this.run.challenge);
+    this.host.loadMachine(this.run.preset(), this.run.target, boss);
     this.tag();
     this.save();
     this.host.showOverlay(
-      `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
+      boss ? `CLOSER · ${BOSS_INFO[boss].name} · ${this.run.challenge}/${ECONOMY.lastChallenge}` : `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
       `TARGET ${fmt(this.run.target)}`,
-      this.run.challenge === 1
-        ? 'Factory table. Reach the target within three strikes to earn an upgrade.'
-        : `Your machine: ${this.machineLine()}.`,
+      boss
+        ? `${BOSS_INFO[boss].rule}`
+        : this.run.challenge === 1
+          ? 'Factory table. Reach the target within three strikes to earn an upgrade.'
+          : `Your machine: ${this.machineLine()}.`,
       'PLAY BALL',
       () => this.host.startPitch(),
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
@@ -284,6 +290,11 @@ export class BuildUI {
     const before = readBest(store);
     const isNew = recordBest(store, st);
     this.host.showResults?.(statsHtml(st, ECONOMY.lastChallenge, isNew ? readBest(store) : before, isNew));
+  }
+
+  /** Closer rule for challenge `n` (player route only). */
+  private bossFor(n: number): BossId | null {
+    return PLAY.enabled ? closerFor(n) : null;
   }
 
   /** Sim says the target was reached. */
