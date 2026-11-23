@@ -22,5 +22,5 @@ export const SOUND_SET: Record<SampleId, { file: string; vol: number; vary: numb
   jackpot: { file: 'jackpot.mp3', vol: 0.8, vary: 0, gap: 0.2 },    // cash register, cut to the ring
   homeRun: { file: 'homerun.mp3', vol: 0.75, vary: 0, gap: 0.5 },   // level_up/chip: arcade jingle, no crowd
   cleared: { file: 'cleared.mp3', vol: 0.75, vary: 0, gap: 0.5 },   // win/fanfare (marimba)
-  gameOver: { file: 'gameover.mp3', vol: 0.8, vary: 0, gap: 0.5 },  // "wah wah wah waaah", made for this game
+  gameOver: { file: 'gameover.mp3', vol: 0.8, vary: 0, gap: 0.5 },  // lose/chip: 8-bit lose jingle
 };
