@@ -597,3 +597,9 @@ body.fx-reduced .res-best { animation: none; }
 /* Small Ball (Closer): the multiplier is frozen */
 #multwrap.locked { filter: saturate(0.4); }
 #multwrap.locked::after { content: 'LOCKED'; position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); padding: 0 6px; border-radius: 4px; font: 800 10px var(--font); letter-spacing: 0.12em; color: #1a0418; background: var(--m-btn-b); }
+/* Closer rule line (src/main.ts closerState): full-width pill at the top of the table */
+:root { --closer-line-bg: #12062af0; --closer-line-ink: #fff3a0; }
+.closer-line { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); z-index: 4; pointer-events: none; max-width: calc(100% - 16px); padding: 4px 14px; border-radius: 999px; background: var(--closer-line-bg); border: 1px solid var(--gold); color: var(--closer-line-ink); font: italic 900 17px/1.15 var(--font); letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 14px var(--energy-faint); }
+.closer-line[hidden] { display: none; }
+/* Small Ball LOCKED badge sits above the plaque art */
+#multwrap.locked::after { z-index: 3; }

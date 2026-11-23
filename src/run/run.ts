@@ -14,6 +14,7 @@
  * - Selling (between challenges only) removes the whole item, frees 100% of its Power and mounts, refunds
  *   floor(actual price paid / 2) (free draft rewards refund $0), and never deletes a modifier.
  */
+import { PLAY } from '../core/play-rules.ts';
 import { newStats, type RunStats } from './stats.ts';
 import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanisms.ts';
 import type { Preset } from '../machines/presets.ts';
@@ -323,7 +324,9 @@ export class Run {
     };
     let guard = 0;
     while (out.length < n && guard++ < 200) {
-      const machines = where === 'draft' ? MACHINES.filter(m => !out.some(o => o.key === m.key) && this.feasible(m)) : [];
+      // Player route: no ramp machines in the first free picks (one full ride is worth 3× the C2 target)
+      const earlyNoRamp = PLAY.enabled && this.challenge <= ECONOMY.noRampDraftsThrough;
+      const machines = where === 'draft' ? MACHINES.filter(m => !out.some(o => o.key === m.key) && this.feasible(m) && !(earlyNoRamp && m.family === 'ramp')) : [];
       let o: Offer | null = null;
       if (machines.length && this.random() < OFFER_WEIGHTS.draftMachineShare) {
         const ws = machines.map(m => weigh(m.key, m.family, board, inv, where));

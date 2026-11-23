@@ -5,7 +5,7 @@
  */
 import { MOUNTS, mountName } from './catalog.ts';
 import { Run, anchorOf, type Offer } from './run.ts';
-import { ECONOMY } from './economy.ts';
+import { ECONOMY, targetFor } from './economy.ts';
 import { anchorsFor } from '../view/anchors.ts';
 import type { GameView } from '../view/game.ts';
 import type { Simulation } from '../physics/sim.ts';
@@ -339,7 +339,7 @@ export class BuildUI {
         this.host.hideOverlay();
         // V2: the machine just grew. Rebuild the board only now (the clear card keeps showing the cleared
         // score in the HUD behind it), so the draft can preview the new section's mounts.
-        if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), this.run.target);
+        if (this.run.sectionGrant) this.host.loadMachine(this.run.preset(), targetFor(this.run.challenge + 1));
         this.openPanel();
       },
       `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
@@ -371,6 +371,9 @@ export class BuildUI {
   }
 
   private openPanel() {
+    // the HUD shows the NEXT challenge's target while you build (the sim is idle between challenges)
+    const rules = this.host.getSim().rules;
+    if (rules.phase !== 'live') rules.target = targetFor(this.run.challenge + 1);
     this.sel = null;
     this.mode = 'offers';
     this.msel = null;
@@ -570,7 +573,7 @@ export class BuildUI {
         if (res.ok) {
           this.host.recorder?.sale(this.run, res, dormantBefore);
           this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${res.dormant.length ? `, ${res.dormant.reduce((n, d) => n + d.names.length, 0)} boost(s) waiting` : ''}.`;
-          this.host.loadMachine(this.run.preset(), this.run.target);
+          this.host.loadMachine(this.run.preset(), targetFor(this.run.challenge + 1));
         }
         this.msel = null;
         this.confirming = false;
@@ -607,7 +610,7 @@ export class BuildUI {
         if (!wasDraft) this.host.onPurchase?.();
         this.sel = null;
         // show the new machine on the board right away
-        this.host.loadMachine(this.run.preset(), this.run.target);
+        this.host.loadMachine(this.run.preset(), targetFor(this.run.challenge + 1));
       }
     } else if (el.dataset.act === 'back') {
       this.sel = null;

@@ -26,7 +26,7 @@ export type SimEvent =
   /** One of a ramp's checkpoints paid out (index 0-based of `count`). */
   | { type: 'rampCheckpoint'; id: string; index: number; count: number; x: number; y: number; points: number; ball: number }
   | { type: 'bank'; id: string; points: number; ball: number }
-  | { type: 'bat'; contact: Contact; x: number; y: number; ball: number; sweet?: boolean }
+  | { type: 'bat'; contact: Contact; x: number; y: number; ball: number; sweet?: boolean; /** sweet-spot bonus actually scored (after Closer rules and the multiplier; on-base under Runners) */ sweetPoints?: number }
   /** Player route: a swing finished without touching a ball. */
   | { type: 'whiff' }
   /** Closer rule Hot Corner: the ×3 spot moved (or was first placed). */
@@ -283,11 +283,14 @@ export class Simulation {
     this.emit({ type: 'called', phase: 'call', key: pick.key, label: pick.label, x: pick.spots[0].x, y: pick.spots[0].y });
   }
 
-  /** Called Shot: resolve on the first non-bat contact after the bat, then ×factor for the rest of the pitch. */
+  /** Called Shot: open until this sim time after a bat contact (CALLED_SHOT.windowSec). */
+  private callWindowUntil = -1;
+
+  /** Called Shot: resolve on the first counted contact inside a post-bat window, then ×factor for the rest of the pitch. */
   private calledFactor(kind: string, id: string) {
     const c = this.called;
     if (!c) return 1;
-    if (c.status === 'pending' && this.pitchTouched && kind !== 'bat') {
+    if (c.status === 'pending' && this.time <= this.callWindowUntil && !CALLED_SHOT.ignore.includes(kind)) {
       const anchor = id.replace(/-(gate|cp)$/, '');
       const hit = c.key === `id:${anchor}` || c.key === `kind:${kind}`;
       c.status = hit ? 'hit' : 'missed';
@@ -303,7 +306,7 @@ export class Simulation {
     const banked = Math.round(onBase * (phase === 'in' ? RUNNERS.driveIn : RUNNERS.stranded));
     this.onBase = 0;
     const before = this.rules.score;
-    this.rules.addScore(banked);
+    if (banked > 0) this.rules.addScore(banked);
     const got = this.rules.score - before;
     if (got > 0) this.emit({ type: 'score', kind: 'runners', id: phase === 'in' ? 'drive-in' : 'stranded', base: onBase, modified: banked, multTenths: 10, awarded: got, ball: ball.id });
     this.emit({ type: 'runners', phase, onBase, banked: got, x, y });
@@ -434,6 +437,7 @@ export class Simulation {
     this.swingQueuedUntil = -1;
     this.pitchTouched = false;
     this.onBase = 0;
+    this.callWindowUntil = -1;
     if (this.boss === 'calledShot') this.callShot();
     // Mechanism progress (multiball charge, bank lamps) carries over between strikes; it only
     // resets when a new game or challenge starts (first pitch).
@@ -707,17 +711,19 @@ export class Simulation {
       this.rules.batHit();
       // Bat hits are ordinary scoring: they follow the global multiplier like everything else.
       this.bankRunners('in', ball, p.x, p.y);
+      if (this.called?.status === 'pending') this.callWindowUntil = this.time + CALLED_SHOT.windowSec;
       this.award('bat', 'bat', config.batHitPoints, config.batHitPoints, ball);
       this.swingHit = true;
       this.pitchTouched = true;
       const sweet = PLAY.enabled && isSweetSpot(contact.angle, config.swing.centerAngle);
+      let sweetAwarded = 0;
       if (sweet) {
         const sweetPts = PLAY.sweetSpot.points * (this.boss === 'smallBall' ? SMALL_BALL.sweet : 1);
-        this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, sweetPts, ball);
+        sweetAwarded = this.award('bat', 'sweet-spot', PLAY.sweetSpot.points, sweetPts, ball);
         // sweet-spot generators (Barrel Up / Squared Up): every N sweet spots raise the multiplier
         this.boost('bat', 'sweet-spot', p.x, p.y, this.generate('sweet-spot', 'sweet'), ball);
       }
-      this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id, ...(sweet ? { sweet } : {}) });
+      this.emit({ type: 'bat', contact, x: p.x, y: p.y, ball: ball.id, ...(sweet ? { sweet, sweetPoints: sweetAwarded } : {}) });
     }
 
     // Ramp mouths: crossing into the mouth while moving up the ramp starts the ride.

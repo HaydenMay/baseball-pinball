@@ -125,6 +125,13 @@ export class Juice {
     }
   }
 
+  /** A card is opening: take any banner down at once so it never overlaps the card. */
+  hideBanner() {
+    clearTimeout(this.bannerTimer);
+    this.bannerEl.hidden = true;
+    this.bannerEl.classList.remove('show', 'out');
+  }
+
   /** Drop everything in flight (new pitch, title, pause). */
   reset() {
     this.stopLeft = 0;

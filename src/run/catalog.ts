@@ -191,7 +191,7 @@ export const MACHINES: MachineOffer[] = [
     kind: 'machine',
     family: 'ramp',
     name: 'Long Loop',
-    desc: 'Map 1 loop ramp: climbs the right wall, circles the top, drops mid-field. Full ride: 8 checkpoints × 1,000 = 8,000 base. Replaces the mid-right factory bumper',
+    desc: 'Loop ramp: climbs the right wall, circles the top, drops mid-field. Full ride: 8 checkpoints × 1,000 = 8,000 base. Replaces the mid-right factory bumper',
     power: 3,
     price: 10,
     displaces: ['bumper-mid'],
@@ -448,7 +448,7 @@ export const MODS: ModTemplate[] = [
   { key: 'mvp', name: 'MVP', effect: '×2 points on THIS bumper', mul: 2, tier: 'draft', price: 0, family: 'bumper', scope: 'this', targets: bumperTargets },
   { key: 'clutch', name: 'Clutch', effect: '+1,000 bonus on THIS bank', add: 1000, tier: 'draft', price: 0, family: 'bank', scope: 'this', targets: bankTargets },
   // ── Standard shop modifiers ──
-  { key: 'hot-corner', name: 'Hot Corner', effect: '+100 points on THIS bumper', add: 100, tier: 'shop', price: 3, family: 'bumper', scope: 'this', targets: bumperTargets },
+  { key: 'hot-corner', name: 'Line Drive', effect: '+100 points on THIS bumper', add: 100, tier: 'shop', price: 3, family: 'bumper', scope: 'this', targets: bumperTargets },
   { key: 'power-alley', name: 'Power Alley', effect: '×1.5 points on THIS bumper', mul: 1.5, tier: 'shop', price: 4, family: 'bumper', scope: 'this', targets: bumperTargets },
   { key: 'rally-cap', name: 'Rally Cap', effect: 'ALL bumpers: ×1.25 points', mul: 1.25, tier: 'shop', price: 6, family: 'bumper', scope: 'all', targets: () => [{ key: 'bumper:*', label: 'ALL bumpers (factory, installed, bundles, future)' }] },
   { key: 'big-stage', name: 'Big Stage', effect: '×2 points', mul: 2, tier: 'shop', price: 4, family: 'jackpot', scope: 'this', targets: () => [{ key: 'jackpot', label: 'Jackpot' }] },

@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert';
 import { config } from '../src/config.ts';
 import { Simulation, type SimEvent } from '../src/physics/sim.ts';
 import { makeControls } from '../src/core/input.ts';
-import { HOT_CORNER, closerFor } from '../src/core/bosses.ts';
+import { CALLED_SHOT, HOT_CORNER, RUNNERS, closerFor } from '../src/core/bosses.ts';
 import { Run } from '../src/run/run.ts';
 
 const DT = 1 / config.physicsHz;
@@ -94,7 +94,7 @@ test('Small Ball: the multiplier never grows', () => {
   assert.equal(s.rules.multTenths, 10);
 });
 
-test('Called Shot: a part is called each pitch; hitting it first after the bat doubles the rest of the pitch; anything else misses', () => {
+test('Called Shot: within 2.5 s of a bat hit, hitting the called part first doubles the rest of the pitch; slings/lanes never count; another part misses', () => {
   const { s, ev, award } = withBoss('calledShot');
   s.ready();
   const c = s.called!;
@@ -102,21 +102,25 @@ test('Called Shot: a part is called each pitch; hitting it first after the bat d
   assert.ok(!['kind:sling', 'kind:lane'].includes(c.key), 'never calls slings or lanes');
   const ball = s.balls[0];
   const [kind, id] = c.key.startsWith('kind:') ? [c.key.slice(5), 'x'] : ['bumper', c.key.slice(3)];
-  award(kind, id, 100, 100, ball); // before any bat contact: doesn't resolve
+  award(kind, id, 100, 100, ball); // no bat contact yet: no window
   assert.equal(s.called!.status, 'pending');
-  (s as any).pitchTouched = true;
+  (s as any).callWindowUntil = s.time + CALLED_SHOT.windowSec;
+  award('sling', 'sling-l', 10, 10, ball); // slings don't count either way
+  award('lane', 'lane-left', 10, 10, ball);
+  assert.equal(s.called!.status, 'pending');
   award(kind, id, 100, 100, ball);
   assert.equal(s.called!.status, 'hit');
   const last = ev.filter(e => e.type === 'score').at(-1) as Extract<SimEvent, { type: 'score' }>;
   assert.equal(last.modified, 200);
-  assert.ok(ev.some(e => e.type === 'called' && e.phase === 'hit'));
-  // next pitch: new call, a different first contact misses
+  // next pitch: window expired = still pending; a different part inside a window misses
   s.rules.phase = 'ready';
   s.ready();
-  (s as any).pitchTouched = true;
-  award('bat', 'bat', 10, 10, s.balls[0]); // bat contact never resolves the call
-  assert.equal(s.called!.status, 'pending');
-  award('sling', 'sling-l', 10, 10, s.balls[0]);
+  const other = s.layout.bumpers.find(b => `id:${b.id}` !== s.called!.key)!;
+  (s as any).callWindowUntil = s.time - 0.01;
+  award('bumper', other.id, 10, 10, s.balls[0]);
+  assert.equal(s.called!.status, 'pending', 'outside a window nothing resolves');
+  (s as any).callWindowUntil = s.time + 1;
+  award('bumper', other.id, 10, 10, s.balls[0]);
   assert.equal(s.called!.status, 'missed');
 });
 
@@ -134,7 +138,7 @@ test('Rain Delay: the Home Run ramp cannot be entered', () => {
   assert.ok(!ev.some(e => e.type === 'ramp' && e.id === 'hr-ramp' && e.phase === 'enter'));
 });
 
-test('Runners on Base: points wait on base; a bat contact drives them in ×1.5; the last drain strands them ×0.5', () => {
+test('Runners on Base: points wait on base; a bat contact drives them in ×1.25; runners left when the last ball drains score nothing', () => {
   const { s, ev, award } = withBoss('runnersOnBase');
   s.ready();
   const ball = s.balls[0];
@@ -144,11 +148,12 @@ test('Runners on Base: points wait on base; a bat contact drives them in ×1.5; 
   assert.equal(s.rules.score, 0, 'nothing banked yet');
   assert.equal(s.onBase, 400, 'multiplier applied when they reach base');
   (s as any).bankRunners('in', ball, 0, 0);
-  assert.equal(s.rules.score, 600);
+  assert.equal(s.rules.score, 400 * RUNNERS.driveIn);
   assert.equal(s.onBase, 0);
   award('bumper', 'bumper-left', 100, 100, ball);
   (s as any).drainBall(ball);
-  assert.equal(s.rules.score, 700, '200 on base stranded at ×0.5');
+  assert.equal(s.rules.score, 400 * RUNNERS.driveIn, 'stranded runners score nothing');
+  assert.ok(ev.some(e => e.type === 'runners' && e.phase === 'stranded' && e.onBase === 200 && e.banked === 0));
   const total = ev.filter(e => e.type === 'score').reduce((n, e) => n + (e as any).awarded, 0);
   assert.equal(total, s.rules.score, 'score events reconcile');
 });

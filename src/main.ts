@@ -75,7 +75,7 @@ function onSimEvent(e: SimEvent) {
     if (e.type === 'bat') {
       juice.hitStop();
       if (e.sweet) {
-        juice.play('sweet', Math.round(PLAY.sweetSpot.points * (sim.rules.multTenths / 10)));
+        juice.play('sweet', e.sweetPoints ?? PLAY.sweetSpot.points);
         sfx.moment('sweet');
       }
     } else if (e.type === 'deckRally' && e.phase === 'start') {
@@ -90,8 +90,8 @@ function onSimEvent(e: SimEvent) {
     } else if (e.type === 'runners' && e.phase === 'in' && e.banked > 0) {
       juice.play('driveIn', e.banked);
       sfx.moment('driveIn');
-    } else if (e.type === 'runners' && e.phase === 'stranded' && e.banked > 0) {
-      view.vfx.flicker(e.x, e.y, `STRANDED +${e.banked.toLocaleString("en-US")}`, undefined, 1.2);
+    } else if (e.type === 'runners' && e.phase === 'stranded' && e.onBase > 0) {
+      view.vfx.flicker(e.x, e.y, e.banked > 0 ? `STRANDED +${e.banked.toLocaleString('en-US')}` : `${Math.round(e.onBase).toLocaleString('en-US')} STRANDED`, undefined, 1.2);
     } else if (e.type === 'machine' && e.kind === 'jackpot') juice.play('jackpot', e.points);
     else if (e.type === 'multiball') juice.play('multiball');
     else if (e.type === 'bank') juice.play('bank', e.points);
@@ -153,7 +153,13 @@ $('#machineInfo').textContent = preset.route
 
 // ─── HUD ───
 const hud = { mult: $('#mult'), multWrap: $('#multwrap'), ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes'), target: $('#target'), scoreLabel: $('#scoreLabel'), bar: $('#targetBar') };
-const shown = { mult: -1, ball: -1, score: -1, strikes: -1, state: '', target: null as number | null | undefined };
+const shown = { mult: -1, ball: -1, score: -1, strikes: -1, state: '', closer: '', target: null as number | null | undefined };
+/** Closer rule status line (top of the table). */
+const closerLine = document.createElement('div');
+closerLine.className = 'closer-line';
+closerLine.hidden = true;
+closerLine.setAttribute('aria-live', 'polite');
+document.querySelector('#stage')!.appendChild(closerLine);
 function pulse(el: HTMLElement) {
   el.classList.remove('pulse');
   void el.offsetWidth;
@@ -224,7 +230,13 @@ function updateHud() {
   // Closer rule status: where the ×3 is and when it moves
   const hotState = r.phase === 'live' ? closerState() : '';
   hud.multWrap.classList.toggle('locked', sim.boss === 'smallBall');
-  const state = paused ? 'PAUSED' : runEnd ? runEnd : hotState ? hotState : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber} · LIVE`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  // The Closer rule gets its own full-width line over the table (the strip is too narrow on a phone)
+  if (hotState !== shown.closer) {
+    shown.closer = hotState;
+    closerLine.textContent = hotState;
+    closerLine.hidden = !hotState;
+  }
+  const state = paused ? 'PAUSED' : runEnd ? runEnd : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber}`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
   // Pause only means something during a live pitch (it used to sit there on the game-over card).
   const canPause = paused || r.phase === 'live';
   if (pauseBtn.disabled === canPause) pauseBtn.disabled = !canPause;
@@ -260,6 +272,7 @@ let pitchedOnce = false;
 function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string, alt?: { label: string; action: () => void }) {
   altBtn.hidden = !alt;
   shareBtn.hidden = true;
+  juice?.hideBanner();
   if (alt) {
     altBtn.textContent = alt.label;
     altAction = alt.action;

@@ -7,6 +7,7 @@
  */
 import { ECONOMY } from './economy.ts';
 import { rallyLabel } from '../machines/sections.ts';
+import { BOSS_INFO } from '../core/bosses.ts';
 import { BRAND } from '../core/brand.ts';
 import type { LoadResult, SaveFile } from './save.ts';
 import type { Settings } from '../core/settings.ts';
@@ -21,18 +22,20 @@ export const TITLE = {
   confirmNew: 'Starting a new run ends your saved run for good.',
   help: [
     ['MOVE & SWING', 'Phone: drag with your <b>left thumb</b> to move the batter, tap with your <b>right thumb</b> to swing. Keyboard: <b>A/D</b> or <b>← →</b> to move, <b>Space</b> to swing.'],
-    ['AIM WITH TIMING', 'Swing <b>early</b> to pull the ball left, <b>on time</b> to send it up the middle, <b>late</b> to push it right.'],
+    ['AIM WITH TIMING', 'Swing <b>early</b> to pull the ball left, <b>on time</b> to send it up the middle, <b>late</b> to push it right. Nail the middle of the swing for a <b>SWEET SPOT</b> bonus.'],
+    ['WHIFFS & FOULS', 'A swing that misses (<b>WHIFF</b>) costs a moment before you can swing again, so time it instead of tapping. Once per challenge, a pitch you never touch is a <b>FOUL BALL</b>: no strike, pitch again.'],
     ['THE GOAL', 'Each challenge has a <b>target score</b>. Points bank the moment you hit something. A ball that drains is a <b>strike</b>; three strikes ends the run.'],
     ['BUILD YOUR MACHINE', 'Clear a challenge for a <b>free pick</b> (1 of 3), then visit the <b>shop</b>. Machines are real parts on the table and use <b>Power ⚡</b>. <b>Boosts</b> cost no Power and make parts score more; tap a card to see what it boosts. Sell parts any time between challenges in <b>Manage Machine</b>.'],
     ['MULTIPLIER', 'Gates and some boosts raise the <b>multiplier</b>. It applies to every point for the rest of the challenge.'],
     ['THE RUN', `${ECONOMY.lastChallenge / ECONOMY.challengesPerInning} innings × Starter, Reliever and Closer = ${ECONOMY.lastChallenge} challenges. After Inning 1 the machine grows an <b>Upper Deck</b>: ride the <b>HOME RUN</b> ramp for 3,000 and <b>${rallyLabel()}</b> on Upper Deck hits until that ball comes back down.`],
+    ['CLOSERS', `Every inning ends with a <b>Closer</b>: a bigger target and one twist. <b>${BOSS_INFO.hotCorner.name}</b>, <b>${BOSS_INFO.smallBall.name}</b>, <b>${BOSS_INFO.calledShot.name}</b>, <b>${BOSS_INFO.rainDelay.name}</b> and <b>${BOSS_INFO.runnersOnBase.name}</b>. The card before the first pitch explains the twist, and the line at the top of the table tracks it.`],
     ['SAVING', 'Your run saves automatically between pitches and challenges. Close the game anytime and continue later on this device.'],
   ] as [string, string][],
   credits: [
     ['GAME', 'Hayden May'],
     ['PHYSICS', 'planck.js (MIT License)'],
     ['FONT', 'Barlow Condensed, © The Barlow Project Authors (SIL Open Font License 1.1)'],
-    ['SOUND', 'Synthesized in the game'],
+    ['SOUND', 'Effects rendered with earshot (MIT License) from public-domain (CC0) recordings, plus sounds synthesized in the game'],
     ['BUILT WITH', 'TypeScript and Vite (MIT License)'],
   ] as [string, string][],
 };

@@ -20,11 +20,15 @@ export const HOT_CORNER = {
 /** Small Ball: the multiplier is frozen; sweet spots pay this many times their bonus. */
 export const SMALL_BALL = { sweet: 3 };
 
-/** Called Shot: a part is called before each pitch; hit it first after the bat and the pitch scores ×`factor`. */
-export const CALLED_SHOT = { factor: 2 };
+/**
+ * Called Shot: a part is called before each pitch. After every bat contact you get `windowSec` to make the
+ * called part your first real contact (slings, lanes and posts don't count either way); hit it and the
+ * rest of the pitch scores ×`factor`. Hitting another scoring part first in a window misses the call.
+ */
+export const CALLED_SHOT = { factor: 2, windowSec: 2.5, ignore: ['sling', 'lane', 'bat'] as string[] };
 
 /** Runners on Base: points wait on base; the next bat contact drives them in ×`driveIn`, a drain strands them ×`stranded`. */
-export const RUNNERS = { driveIn: 1.5, stranded: 0.5 };
+export const RUNNERS = { driveIn: 1.25, stranded: 0 };
 
 /** Shuffle Closers 2–5 per run (seeded). Off: the fixed order below. */
 export const RANDOMIZE_CLOSERS = false;
@@ -42,7 +46,7 @@ export const BOSS_INFO: Record<BossId, { name: string; rule: string; tip: string
   },
   calledShot: {
     name: 'CALLED SHOT',
-    rule: `Before each pitch a part is called. Hit it first after the bat and that whole pitch scores ×${CALLED_SHOT.factor}.`,
+    rule: `Before each pitch a part is called. Hit it within ${CALLED_SHOT.windowSec} seconds of a bat hit (before any other part) and the rest of the pitch scores ×${CALLED_SHOT.factor}.`,
     tip: '',
   },
   rainDelay: {
@@ -52,7 +56,7 @@ export const BOSS_INFO: Record<BossId, { name: string; rule: string; tip: string
   },
   runnersOnBase: {
     name: 'RUNNERS ON BASE',
-    rule: `Points wait on base. Hit the ball again to drive them in ×${RUNNERS.driveIn}. A drain strands them at ×${RUNNERS.stranded}.`,
+    rule: `Points wait on base. Hit the ball again to drive them in ×${RUNNERS.driveIn}. If the ball drains, runners left on base score nothing.`,
     tip: '',
   },
 };

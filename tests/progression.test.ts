@@ -117,9 +117,9 @@ test('power: the grant lands before the inning-ending draft is rolled, so the ne
 
 // ───────── B. Target curve ─────────
 
-test('targets: softened C1–C4, then ×1.4 per challenge from C3 = 8,000 (C5+ unchanged)', () => {
+test('targets: softened C1–C6, then ×1.4 per challenge from C3 = 8,000 (C7+ unchanged)', () => {
   assert.equal(ECONOMY.targetGrowth, 1.4);
-  const want = [1200, 2400, 4500, 8000, 15700, 22000, 30700, 43000, 60200, 84300, 118100, 165300, 231400, 324000, 453600];
+  const want = [1200, 2400, 4500, 7000, 11500, 18800, 30700, 43000, 60200, 84300, 118100, 165300, 231400, 324000, 453600];
   assert.deepEqual(Array.from({ length: 15 }, (_, i) => targetFor(i + 1)), want);
   assert.deepEqual([25, 26, 27].map(targetFor), [13119200, 18366900, 25713600]);
 });
@@ -272,4 +272,34 @@ test('card copy states 8 × 1,000 = 8,000 base and what Nitro/Toll Booth now hit
   for (const key of ['turbo-ramp', 'bridge-ramp']) assert.match(MACHINES.find(m => m.key === key)!.desc, /8 checkpoints × 1,000 = 8,000 base/);
   assert.match(MODS.find(t => t.key === 'nitro')!.effect, /final checkpoint/);
   assert.match(MODS.find(t => t.key === 'toll-booth')!.effect, /halfway checkpoint/);
+});
+
+test('player route: no ramp machines in the free picks after C1 and C2; Closer targets ×1.25', async () => {
+  const { PLAY } = await import('../src/core/play-rules.ts');
+  const { MACHINES } = await import('../src/run/catalog.ts');
+  const was = PLAY.enabled;
+  PLAY.enabled = true;
+  try {
+    const rampKeys = new Set(MACHINES.filter(m => m.family === 'ramp').map(m => m.key));
+    let early = 0, later = 0;
+    for (let seed = 1; seed <= 120; seed++) {
+      const r = new Run(seed);
+      for (let c = 1; c <= 4 && r.phase !== 'won'; c++) {
+        r.clear(2);
+        const ramps = r.draft.filter(o => o.kind === 'machine' && rampKeys.has(o.key)).length;
+        if (r.challenge <= 2) early += ramps;
+        else later += ramps;
+        const pick = r.draft.find(o => r.check(o).ok) ?? r.draft[0];
+        if (pick) r.takeDraft(pick.uid);
+        if (r.phase === 'draft') r.takeDraft(r.draft[0].uid);
+        r.next();
+      }
+    }
+    assert.equal(early, 0);
+    assert.ok(later > 0, 'ramps still show up from the C3 draft on');
+    assert.equal(targetFor(3), 5600, '4,500 × 1.25');
+    assert.equal(targetFor(4), 7000, 'non-Closers unchanged');
+  } finally {
+    PLAY.enabled = was;
+  }
 });

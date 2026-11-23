@@ -18,7 +18,7 @@ One rule per inning's Closer (C3, C6, C9, C12, C15), on the player route. Code: 
 - **Counterplay:** raw points, centered hits. Hurts multiplier-generator builds most. `SMALL_BALL`.
 
 ## Closer 3 (C9): CALLED SHOT (approved Nov 22)
-- **Rule:** at each pitch a part is called (any spot Hot Corner can use except slings and lanes). The first scoring contact after the bat decides it: the called part → the whole rest of that pitch scores **×2**; anything else → call missed (no penalty).
+- **Rule:** at each pitch a part is called (any spot Hot Corner can use except slings and lanes). After every bat contact there's a **2.5 s window**: if the called part is the first counted contact in it, the rest of that pitch scores **×2**; another scoring part first → call missed. Slings, lanes and the bat never count either way; a window that runs out leaves the call open for the next bat hit. (Nov 22 fix: the first version missed on 4 of 4 calls because a sling bounce right off the bat counted.)
 - **Telegraph:** cyan dashed ring + CALLED tag on the part until it resolves; strip "CALLED: GLOVE" → "CALLED SHOT ×2" / "CALL MISSED"; big CALLED SHOT! banner + Jackpot sound on a hit, small MISSED THE CALL on a miss.
 - **Note:** upside only, so the bigger target is the pressure. Watch the hit rate in playtests; if calls feel unreachable, bias the call toward parts the bat can aim at. `CALLED_SHOT`.
 
@@ -28,9 +28,12 @@ One rule per inning's Closer (C3, C6, C9, C12, C15), on the player route. Code: 
 - **Counterplay:** downstairs builds (ramps, targets, glove, bumpers). Only makes sense once the deck exists (Inning 2+).
 
 ## Closer 5 (C15): RUNNERS ON BASE (approved Nov 22)
-- **Rule:** nothing banks directly. Every point (at the current multiplier) goes **on base**. The next bat contact **drives them in ×1.5**; when the last ball drains they're **stranded at ×0.5**. No timer (Hayden: you don't control when the ball comes back).
+- **Rule:** nothing banks directly. Every point (at the current multiplier) goes **on base**. The next bat contact **drives them in ×1.25**; when the last ball drains, runners left on base **score nothing** (Nov 22: ×1.5 / ×0.5 was a buff for good players). No timer (Hayden: you don't control when the ball comes back).
 - **Telegraph:** card; strip "ON BASE 3,240"; DRIVEN IN! +N banner + chime on each drive-in; STRANDED +N popup at the drain.
 - **Note:** the challenge only clears on banked points, so a big rally must come back to the bat. `RUNNERS`.
+
+## Targets
+Closer targets are ×1.25 the normal curve on the player route (`ECONOMY.closerTargetScale`).
 
 ## Order and randomizing
 Fixed order (Hayden, Nov 22). `RANDOMIZE_CLOSERS` in `src/core/bosses.ts` shuffles Closers 2–5 per run (seeded); Inning 1 stays Hot Corner as the teaching boss.
