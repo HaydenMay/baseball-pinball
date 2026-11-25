@@ -6,6 +6,7 @@ import { Simulation, type SimEvent } from '../src/physics/sim.ts';
 import { makeControls } from '../src/core/input.ts';
 import { CALLED_SHOT, HOT_CORNER, RUNNERS, closerFor } from '../src/core/bosses.ts';
 import { Run } from '../src/run/run.ts';
+import { UPPER_DECK } from '../src/machines/sections.ts';
 
 const DT = 1 / config.physicsHz;
 
@@ -156,4 +157,23 @@ test('Runners on Base: points wait on base; a bat contact drives them in ×1.25;
   assert.ok(ev.some(e => e.type === 'runners' && e.phase === 'stranded' && e.onBase === 200 && e.banked === 0));
   const total = ev.filter(e => e.type === 'score').reduce((n, e) => n + (e as any).awarded, 0);
   assert.equal(total, s.rules.score, 'score events reconcile');
+});
+
+test('Called Shot is fair: only main-table parts are called, named by place; gates and spinners never settle the call', () => {
+  const { s, award } = withBoss('calledShot', true); // with the Upper Deck installed
+  const seen = new Set<string>();
+  for (let i = 0; i < 40; i++) {
+    s.rules.phase = 'ready';
+    s.ready();
+    const c = s.called!;
+    seen.add(c.label);
+    assert.ok(c.spots.every(p => p.y > UPPER_DECK.railY), `${c.label} is on the main table (visible while batting)`);
+    if (c.key.startsWith('id:') && c.label.endsWith('BUMPER')) assert.match(c.label, /LEFT|RIGHT|CENTER|TOP|MID/, `${c.label} says where`);
+  }
+  assert.ok(![...seen].some(l => l === 'DECK BUMPER'), 'deck bumpers are never called');
+  // the Jackpot Lane Gate / spinners sit in front of targets: crossing them doesn't miss the call
+  (s as any).callWindowUntil = s.time + 1;
+  award('gate', 'jl-gate', 400, 400, s.balls[0]);
+  award('spinner', 'spin-1', 40, 40, s.balls[0]);
+  assert.equal(s.called!.status, 'pending');
 });

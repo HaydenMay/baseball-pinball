@@ -275,7 +275,14 @@ export class Simulation {
 
   /** Called Shot: call a part for the pitch that is starting (slings and lanes are too random to call). */
   private callShot() {
-    const pool = this.hotSpots().filter(h => h.key !== 'kind:sling' && h.key !== 'kind:lane' && h.key !== this.called?.key);
+    // Only callable things you can see from the plate: main-table parts (the Upper Deck is off-screen while
+    // batting), named by place ("LEFT BUMPER", not "BUMPER"), never slings or lanes.
+    const onTable = (s: { y: number }) => !CALLED_SHOT.mainTableOnly || s.y > UPPER_DECK.railY + 0.5;
+    const pool = this.hotSpots()
+      .filter(h => h.key !== 'kind:sling' && h.key !== 'kind:lane' && h.key !== this.called?.key)
+      .map(h => ({ ...h, spots: h.spots.filter(onTable) }))
+      .filter(h => h.spots.length)
+      .map(h => (h.key.startsWith('id:') && h.spots.length === 1 ? { ...h, label: placeLabel(h.label, h.spots[0], this.layout.bounds) } : h));
     if (!pool.length) return;
     this.hotRng = (Math.imul(this.hotRng, 1664525) + 1013904223) >>> 0;
     const pick = pool[this.hotRng % pool.length];
@@ -1032,4 +1039,15 @@ export function gateFrame(g: MultGateDef, p: Pt) {
   const L = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) || 1;
   const t = { x: (g.b.x - g.a.x) / L, y: (g.b.y - g.a.y) / L };
   return { d: (p.x - c.x) * -t.y + (p.y - c.y) * t.x, lat: (p.x - c.x) * t.x + (p.y - c.y) * t.y, half: L / 2 };
+}
+
+/** Called Shot labels: "BUMPER" at the top left → "TOP-LEFT BUMPER" (labels that already say where stay). */
+export function placeLabel(label: string, at: { x: number; y: number }, b: { x0: number; x1: number }): string {
+  if (/LEFT|RIGHT|CENTER|DECK|LOW|TOP|MID/.test(label)) return label;
+  const fx = (at.x - b.x0) / (b.x1 - b.x0);
+  const col = fx < 0.4 ? 'LEFT' : fx > 0.6 ? 'RIGHT' : 'CENTER';
+  // rows match the card names ("Top-left bumper", "Left bumper", "Mid-right bumper")
+  const row = at.y < UPPER_DECK.railY + 5.4 ? 'TOP' : at.y > UPPER_DECK.railY + 11.5 ? 'MID' : '';
+  if (col === 'CENTER') return `${row || 'CENTER'} ${label}`;
+  return `${row ? `${row}-` : ''}${col} ${label}`;
 }

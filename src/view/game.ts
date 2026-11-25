@@ -1002,6 +1002,8 @@ export class GameView {
   /** Batter's current head angle (eased toward the ball) and when it was last updated. */
   private headLook: number = BATTER_ART.lookRest;
   private headT = 0;
+  /** Batter's hands last frame (Called Shot aim arrow starts here). */
+  private handsAt: { x: number; y: number } | null = null;
   /**
    * Player route: the factory table's catcher's-mitt bumper is drawn as a baseball bumper like every other
    * pop bumper (it was the only non-baseball one). Same body and physics; frozen routes keep the mitt.
@@ -1276,6 +1278,34 @@ export class GameView {
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
     const fs = readableSize(ctx, 0.7, 16);
     const labelled: { x: number; y: number }[] = [];
+    // Called Shot: a dotted guide from the bat to the call, with an arrowhead near the bat, so the call is
+    // an aiming target (the arrow shows where a hit has to go, not when to swing).
+    if (h.role === 'called' && this.handsAt && h.spots.length) {
+      const a = this.handsAt, t = h.spots[0];
+      const dx = t.x - a.x, dy = t.y - a.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 0.09;
+      ctx.setLineDash([0.12, 0.38]);
+      ctx.lineDashOffset = -this.time * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(a.x + ux * 1.2, a.y + uy * 1.2);
+      ctx.lineTo(t.x - ux * (t.r + 0.6), t.y - uy * (t.r + 0.6));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const hx = a.x + ux * 2.6, hy = a.y + uy * 2.6, px = -uy, py = ux;
+      ctx.globalAlpha = 0.55 + 0.45 * pulse;
+      ctx.lineWidth = 0.2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(hx - ux * 0.55 + px * 0.45, hy - uy * 0.55 + py * 0.45);
+      ctx.lineTo(hx, hy);
+      ctx.lineTo(hx - ux * 0.55 - px * 0.45, hy - uy * 0.55 - py * 0.45);
+      ctx.stroke();
+      ctx.restore();
+    }
     for (const sp of h.spots) {
       const R = sp.r + 0.35 + pulse * 0.15;
       ctx.globalCompositeOperation = 'lighter';
@@ -1472,6 +1502,7 @@ export class GameView {
   private drawBatter(ctx: CanvasRenderingContext2D, sim: Simulation) {
     const hands = sim.hands;
     this.whiffAt = { x: hands.x, y: hands.y - 1.6 };
+    this.handsAt = { x: hands.x, y: hands.y };
     const S = 1.45; // batter art scale (cosmetic only; collision comes from config.swing)
     const A = BATTER_ART;
     const bx = hands.x + A.bodyFromHands.x, by = hands.y + A.bodyFromHands.y;

@@ -25,7 +25,18 @@ export const SMALL_BALL = { sweet: 3 };
  * called part your first real contact (slings, lanes and posts don't count either way); hit it and the
  * rest of the pitch scores ×`factor`. Hitting another scoring part first in a window misses the call.
  */
-export const CALLED_SHOT = { factor: 2, windowSec: 2.5, ignore: ['sling', 'lane', 'bat'] as string[] };
+export const CALLED_SHOT = {
+  factor: 2,
+  windowSec: 2.5,
+  /**
+   * Contacts that don't settle the call: slings, lanes and the bat, plus pass-throughs the ball crosses on
+   * its way to a part (scoring gates such as the Jackpot Lane Gate in front of the jackpot, spinners).
+   * Nov 25 audit: a centre hit always "missed" by first crossing the Jackpot Lane Gate.
+   */
+  ignore: ['sling', 'lane', 'bat', 'gate', 'spinner'] as string[],
+  /** Only parts on the main table get called: the Upper Deck is off-screen while you bat. */
+  mainTableOnly: true,
+};
 
 /** Runners on Base: points wait on base; the next bat contact drives them in ×`driveIn`, a drain strands them ×`stranded`. */
 export const RUNNERS = { driveIn: 1.25, stranded: 0 };
