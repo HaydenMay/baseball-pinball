@@ -1,5 +1,7 @@
 # itch.io listing notes (technical/listing details, not the launch plan)
 
+**The ready-to-paste page kit (fields, description, tags, cover, screenshots, GIF, checklist) is [`docs/store/ITCH_PAGE.md`](../store/ITCH_PAGE.md).**
+
 ## Pricing setup (decided Nov 21, 2026)
 - Upload it as an **HTML game** and mark it mobile friendly, portrait.
 - Pricing: **free to play, suggested $0.99** (itch's donation-style option for browser games). The copy says it plainly, e.g. "Free to play. If you enjoy it, $0.99 helps me make the next one." Never imply a lock.
@@ -37,6 +39,7 @@ What the game already does:
 
 ## Other listing checklist items
 - Screenshots and GIFs at phone portrait size.
+- Done (Nov 25): page copy, cover, screenshots and GIF in `docs/store/`.
 - The controls line: "Left thumb drag to move · right thumb tap to swing · desktop: A/D + Space".
 - Credits and licenses (fonts, any sounds).
 - A privacy note if player analytics ship (D-22).
