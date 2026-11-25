@@ -24,6 +24,16 @@ const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const RAIN = { drops: 90, speed: 0.9, len: 0.6 };
 const LANE_TOP = config.batter.handsY - 1.7;
 const BAT_LINE = config.batter.handsY + config.swing.battingLine;
+/** Canvas resolution. */
+export const RENDER = {
+  /**
+   * Highest pixel density the table renders at. Phones report 3; 2 looks the same on a 6" screen at arm's
+   * length and paints ~55% fewer pixels than 3 (~36% fewer than the old 2.5 cap), which is most of a
+   * frame's cost (Nov 25 profile: drawing ~91%, game code ~5%).
+   */
+  maxDpr: 2,
+};
+
 /** Shop minimap look (see GameView.renderMap). */
 export const MINIMAP = {
   /** World units of margin around the table bounds. */
@@ -191,7 +201,7 @@ export class GameView {
   private cssW = 0;
   resize(cssWidth: number, force = false) {
     this.cssW = cssWidth;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, RENDER.maxDpr);
     const ppu = Math.max(14, Math.min(70, (cssWidth * dpr) / VIEW.w));
     if (!force && Math.abs(ppu - this.ppu) < 0.01 && this.staticLayer.width) return;
     this.ppu = ppu;

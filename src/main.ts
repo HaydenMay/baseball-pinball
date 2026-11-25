@@ -487,6 +487,31 @@ document.fonts?.ready.then(() => view.drawStatic());
 // ─── Loop: fixed-step physics, render every animation frame ───
 const STEP = 1 / config.physicsHz;
 let last = 0, acc = 0;
+/**
+ * `?fps=1`: a small on-device frame meter (average fps and the slowest 5% of frames over the last second),
+ * for checking real phones. Off otherwise.
+ */
+const fpsMeter = new URLSearchParams(location.search).get('fps') === '1' ? makeFpsMeter() : null;
+function makeFpsMeter() {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;left:6px;top:calc(6px + env(safe-area-inset-top));z-index:99;font:700 12px/1.2 ui-monospace,monospace;color:#9effa0;background:#000b;padding:3px 6px;border-radius:4px;pointer-events:none';
+  document.body.appendChild(el);
+  let frames: number[] = [], acc = 0, prev = 0;
+  return () => {
+    const now = performance.now(); // real time: the game's own frame delta is capped at 50 ms
+    const dt = prev ? (now - prev) / 1000 : 0;
+    prev = now;
+    if (!dt) return;
+    frames.push(dt * 1000);
+    acc += dt;
+    if (acc < 1) return;
+    const sorted = [...frames].sort((a, b) => a - b);
+    const avg = frames.length / acc;
+    el.textContent = `${avg.toFixed(0)} fps · slow 5% ${sorted[Math.floor(sorted.length * 0.95)]?.toFixed(0) ?? 0} ms · ${sim.balls.length} ball${sim.balls.length === 1 ? '' : 's'}`;
+    frames = [];
+    acc = 0;
+  };
+}
 function tick(ms: number) {
   const delta = last ? Math.min((ms - last) / 1000, 0.05) : 0;
   last = ms;
@@ -511,6 +536,7 @@ function tick(ms: number) {
   }
   view.draw(sim, paused ? 0 : delta);
   updateHud();
+  fpsMeter?.();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
