@@ -1043,7 +1043,8 @@ export function gateFrame(g: MultGateDef, p: Pt) {
 
 /** Called Shot labels: "BUMPER" at the top left → "TOP-LEFT BUMPER" (labels that already say where stay). */
 export function placeLabel(label: string, at: { x: number; y: number }, b: { x0: number; x1: number }): string {
-  if (/LEFT|RIGHT|CENTER|DECK|LOW|TOP|MID/.test(label)) return label;
+  // only bumpers need a place (there's one jackpot, one scoop; ramps have names)
+  if (!/BUMPER$/.test(label) || /LEFT|RIGHT|CENTER|DECK|LOW|TOP|MID/.test(label)) return label;
   const fx = (at.x - b.x0) / (b.x1 - b.x0);
   const col = fx < 0.4 ? 'LEFT' : fx > 0.6 ? 'RIGHT' : 'CENTER';
   // rows match the card names ("Top-left bumper", "Left bumper", "Mid-right bumper")

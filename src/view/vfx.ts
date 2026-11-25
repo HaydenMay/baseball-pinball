@@ -6,7 +6,7 @@ import type { Theme } from './theme.ts';
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; kind: 'spark' | 'frag' };
 type Ring = { x: number; y: number; r0: number; r1: number; life: number; max: number; color: string; stitch: boolean; width: number };
-type Flicker = { x: number; y: number; text: string; life: number; max: number; color: string };
+type Flicker = { x: number; y: number; text: string; life: number; max: number; color: string; scale?: number; outline?: string };
 type Flash = { x: number; y: number; r: number; life: number; max: number; color: string };
 
 /** Glow sprites cached by color. Bounded so theme switches can't grow it without limit. */
@@ -118,8 +118,8 @@ export class Vfx {
     this.flashes.push({ x, y, r, life: dur, max: dur, color });
   }
 
-  flicker(x: number, y: number, text: string, color = this.theme.jackpotAccent, life = 0.55) {
-    this.flickers.push({ x, y, text, life, max: life, color });
+  flicker(x: number, y: number, text: string, color = this.theme.jackpotAccent, life = 0.55, opts: { scale?: number; outline?: string } = {}) {
+    this.flickers.push({ x, y, text, life, max: life, color, ...opts });
   }
 
   /** Big bumper pop: white core, stitched ring, sparks. */
@@ -237,10 +237,11 @@ export class Vfx {
     for (const f of this.flickers) {
       const k = f.life / f.max;
       ctx.globalAlpha = Math.min(1, k * 2.2);
-      ctx.font = `italic 800 ${size.toFixed(3)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+      const fs = size * (f.scale ?? 1);
+      ctx.font = `italic 800 ${fs.toFixed(3)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
       ctx.textAlign = 'center';
-      ctx.lineWidth = 0.12 * (size / 0.62);
-      ctx.strokeStyle = '#06101dcc';
+      ctx.lineWidth = (f.outline ? 0.2 : 0.12) * (fs / 0.62);
+      ctx.strokeStyle = f.outline ?? '#06101dcc';
       ctx.strokeText(f.text, f.x, f.y);
       ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);

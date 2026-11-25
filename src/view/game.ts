@@ -34,6 +34,9 @@ export const RENDER = {
   maxDpr: 2,
 };
 
+/** WHIFF tag (a swing that missed). */
+export const WHIFF_TAG = { color: '#ffffff', outline: '#c4222b', scale: 1.4, life: 0.6, dust: 6, dustColor: '#c9b9a6' };
+
 /** Shop minimap look (see GameView.renderMap). */
 export const MINIMAP = {
   /** World units of margin around the table bounds. */
@@ -1059,7 +1062,9 @@ export class GameView {
         this.vfx.ring(e.x, e.y, 0.5, 2.4, t.energyPrimary, 0.32, true, 0.14);
       }
     } else if (e.type === 'whiff') {
-      this.vfx.flicker(this.whiffAt.x, this.whiffAt.y, 'WHIFF', t.m.trimDeep, 0.45);
+      // Readable at phone size (Nov 25 audit): bigger, white on a red outline, plus a puff of dust at the bat
+      this.vfx.flicker(this.whiffAt.x, this.whiffAt.y, 'WHIFF', WHIFF_TAG.color, WHIFF_TAG.life, { scale: WHIFF_TAG.scale, outline: WHIFF_TAG.outline });
+      this.vfx.sparks(this.whiffAt.x, this.whiffAt.y + 1.4, WHIFF_TAG.dust, 3, WHIFF_TAG.dustColor);
     } else if (e.type === 'serve') {
       this.trails.clear();
       this.lit.set('mound', 0.4);

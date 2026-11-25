@@ -26,6 +26,8 @@ export class Sfx {
   volume = 1;
   /** Overall mix level at volume 1 (the synth and sample mix were balanced at this). */
   static readonly MIX = 0.32;
+  /** Master-bus compressor settings (dB, ratio, seconds). */
+  static readonly BUS = { threshold: -18, ratio: 4, attack: 0.003, release: 0.15, knee: 6 };
 
   constructor() {
     try {
@@ -48,7 +50,16 @@ export class Sfx {
     this.ctx = new AC();
     this.master = this.ctx.createGain();
     this.master.gain.value = this.level();
-    this.master.connect(this.ctx.destination);
+    // Bus compressor (Nov 25 audit): multiball bumper chains stack dozens of hits; this keeps them from
+    // clipping and lets the headline stingers sit on top. Knobs: Sfx.BUS.
+    const comp = this.ctx.createDynamicsCompressor();
+    comp.threshold.value = Sfx.BUS.threshold;
+    comp.ratio.value = Sfx.BUS.ratio;
+    comp.attack.value = Sfx.BUS.attack;
+    comp.release.value = Sfx.BUS.release;
+    comp.knee.value = Sfx.BUS.knee;
+    this.master.connect(comp);
+    comp.connect(this.ctx.destination);
     this.loadSamples();
   }
 
