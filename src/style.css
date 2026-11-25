@@ -239,6 +239,11 @@ body {
 }
 .strip .tag { color: #7f93ad; }
 #state { color: var(--gold-hi); }
+/* one line on a phone: the run info and STRIKES never wrap; the state text gives way first */
+.strip > span { white-space: nowrap; }
+.strip .tag { flex: 0 0 auto; }
+#state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 420px) { .strip { letter-spacing: 0.05em; gap: 4px; } }
 .strikes b { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: -1px; }
 .strikes i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #ff6b5e; display: inline-block; }
 .strikes i.on { background: #ff3b30; box-shadow: 0 0 8px #ff3b30; }

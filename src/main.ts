@@ -250,7 +250,7 @@ function updateHud() {
     shown.strikes = r.strikes;
   }
   const n = sim.balls.length;
-  const runEnd = build?.run.phase === 'won' ? 'RUN COMPLETE' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
+  const runEnd = build?.run.phase === 'won' ? 'RUN WON' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
   // Closer rule status: where the ×3 is and when it moves
   const hotState = r.phase === 'live' ? closerState() : '';
   hud.multWrap.classList.toggle('locked', sim.boss === 'smallBall');
