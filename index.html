@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#060d1a" />
+  <!-- No flash of the bare page on load/refresh: keep everything hidden on a dark background until main.ts has
+       applied the theme and drawn the first real screen (it removes `booting`). Fail-safe: shown after 4 s anyway. -->
+  <style>html.booting body > * { visibility: hidden; } html.booting, html.booting body { background: #060d1a; }</style>
+  <script>document.documentElement.classList.add('booting'); setTimeout(function () { document.documentElement.classList.remove('booting'); }, 4000);</script>
   <!-- Home Screen / install: opens full screen without browser bars (manifest + icons are linked from main.ts so the
        relative paths work on every route; see src/core/install.ts) -->
   <meta name="mobile-web-app-capable" content="yes" />

@@ -822,3 +822,6 @@ if (v2 && build) {
     },
   };
 }
+
+// First real screen is drawn: show the page (index.html hides it while booting so the bare markup never flashes).
+requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('booting')));
