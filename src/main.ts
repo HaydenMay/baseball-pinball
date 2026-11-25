@@ -139,6 +139,23 @@ PLAY.enabled = player;
 sfx.useSamples = player;
 sfx.sampleRoot = assetRoot(location.pathname);
 const juice: Juice | null = player ? new Juice(stage, canvas, document.querySelector<HTMLElement>('.scoreboard')) : null;
+/**
+ * A ball is "incoming" when it's in the lower part of the table and falling toward the batter. While one is,
+ * the game never freezes or slows (it would wreck the swing timing). INCOMING tunes the zone.
+ */
+const INCOMING = { aboveHands: 14, minFallSpeed: 0.5 };
+function ballIncoming() {
+  if (sim.rules.phase !== 'live') return false;
+  const hy = config.batter.handsY;
+  return sim.balls.some(b => {
+    const p = b.body.getPosition(), v = b.body.getLinearVelocity();
+    return p.y > hy - INCOMING.aboveHands && p.y < hy + 1 && v.y > INCOMING.minFallSpeed;
+  });
+}
+if (juice) {
+  juice.canWarpTime = () => !ballIncoming();
+  (window as any).juice = juice; // inspection, like window.sim
+}
 view.bigMoments = !!juice;
 view.setGloveAsBall(player);
 /** A moment's beat is playing before its card (READY is held until the card shows). */

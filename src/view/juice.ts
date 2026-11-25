@@ -55,9 +55,9 @@ export const JUICE = {
     calledHit: { text: 'CALLED SHOT!', sub: '×2 THIS PITCH', color: '#5cf6ff', size: 'big', stop: 0.08, shake: [3, 0.16], flash: 0.2, chase: 1.2, hold: 0.7, at: 'board' },
     calledMiss: { text: 'MISSED THE CALL', color: '#9aa7b8', size: 'mid', stop: 0, flash: 0, chase: 0, hold: 0.5, at: 'board' },
     driveIn: { text: 'DRIVEN IN!', sub: '+{n}', color: '#9fe870', size: 'mid', stop: 0.05, flash: 0.1, chase: 0.6, hold: 0.45, at: 'board' },
-    homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, slow: [0.35, 0.45], shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9, at: 'board' },
+    homeRun: { text: 'HOME RUN!', sub: `RALLY ${rallyLabel()} UPSTAIRS`, color: '#ffd36b', size: 'big', stop: 0.1, shake: [4, 0.2], flash: 0.28, chase: 1.6, hold: 0.9, at: 'board' },
     jackpot: { text: 'JACKPOT!', sub: '+{n}', color: '#ffd36b', size: 'big', stop: 0.09, shake: [3, 0.18], flash: 0.22, chase: 1.3, hold: 0.7, at: 'board' },
-    multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, slow: [0.4, 0.35], shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8, at: 'board' },
+    multiball: { text: 'MULTIBALL!', color: '#5fe3ff', size: 'big', stop: 0.1, shake: [4, 0.2], flash: 0.25, chase: 1.6, hold: 0.8, at: 'board' },
     bank: { text: 'BANK COMPLETE', sub: '+{n}', color: '#ff7ad9', size: 'mid', stop: 0.07, shake: [2, 0.14], flash: 0.16, chase: 1.0, hold: 0.6, at: 'board' },
     cleared: { text: 'CLEARED!', color: '#ffd36b', size: 'big', stop: 0.12, slow: [0.3, 0.5], shake: [3, 0.2], flash: 0.3, chase: 1.8, hold: 0.8, at: 'table' },
     strike: { text: 'STRIKE {n}', color: '#ff5a5a', size: 'big', stop: 0, flash: 0.18, chase: 0, hold: 0.5, at: 'table' },
@@ -102,6 +102,14 @@ export class Juice {
     stage.append(this.flashEl, this.bannerEl);
   }
 
+  /**
+   * Time warps (hit-stop freezes, slow-mo) only when it's safe for the batter: the host says whether a ball
+   * is on its way down to the bat. Nov 25 playtest: the MULTIBALL slow-mo threw off the timing on a second
+   * ball and cost two strikes in one run. Moments during live play no longer use slow-mo at all; their
+   * freezes are skipped while a ball is incoming. Flash, shake, callout and sound always play.
+   */
+  canWarpTime: () => boolean = () => true;
+
   /** How much sim time to advance for `dt` real seconds (0 during hit-stop). */
   timeScale() {
     if (this.stopLeft > 0) return 0;
@@ -110,6 +118,7 @@ export class Juice {
 
   /** Short freeze (bat contact). */
   hitStop(s = JUICE.batStop) {
+    if (!this.canWarpTime()) return;
     this.stopLeft = Math.max(this.stopLeft, s);
   }
 
@@ -117,7 +126,7 @@ export class Juice {
     const d: MomentDef = JUICE.moments[kind];
     const fill = (s: string) => s.replace('{n}', n === undefined ? '' : n.toLocaleString()).replace('{label}', label);
     if (d.stop) this.hitStop(d.stop);
-    if (d.slow) this.slow = { scale: this.reduced ? Math.max(d.slow[0], 0.6) : d.slow[0], left: d.slow[1] + d.stop };
+    if (d.slow && this.canWarpTime()) this.slow = { scale: this.reduced ? Math.max(d.slow[0], 0.6) : d.slow[0], left: d.slow[1] + d.stop };
     if (d.shake && !this.reduced) this.shake = { amp: d.shake[0], left: d.shake[1], max: d.shake[1] };
     if (d.flash) this.flash(d.color, d.flash * (this.reduced ? JUICE.reducedFlash : 1));
     if (d.chase) this.chase = { color: d.color, left: d.chase };
