@@ -26,7 +26,14 @@ What the game already does:
   1. Tell phone players to tap itch's **fullscreen** button, then install. Check whether iOS/Android install the game page in that state.
   2. Add a "Play full screen / install" link to the game's own direct URL (GitHub Pages now, or a custom domain later), where installing works fully.
   3. Both.
-- For the itch zip, the manifest's `start_url` must point at the zip's `index.html` (`./`). Today it points at `./play/` for GitHub Pages (the release URL since Nov 23; `/build-test/` still works and shares the save). Set this per build when we package for itch (M6).
+- Done (Nov 25): `npm run package:itch` sets the zip's manifest `start_url` to `./`. GitHub Pages keeps `./play/`.
+
+## Uploading to itch (Nov 25)
+1. `npm run package:itch` → `release/moonshot-pinball-itch.zip` (about 1.5 MB). Its root `index.html` is the game (`<html data-entry="play">`, see `src/core/entry.ts`). The comparison routes aren't included.
+2. On itch: Kind of project **HTML**, upload the zip, tick **This file will be played in the browser**.
+3. Embed options: viewport about **390 × 780** (portrait); turn on **Mobile friendly** with **Portrait** orientation; turn on **Fullscreen button**.
+4. Inside the itch frame the game hides its "Add to Home Screen" tip (an install there would save itch's page). For an app-like install, link the direct URL (`…github.io/baseball-pinball/play/`) in the description.
+5. Saves are per site: a run started on the itch page and one on the GitHub URL are separate.
 
 ## Other listing checklist items
 - Screenshots and GIFs at phone portrait size.

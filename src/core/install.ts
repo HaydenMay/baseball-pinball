@@ -53,7 +53,8 @@ function dismiss() {
 
 /** Add manifest + icon links (all routes) and, on the run route, the install tip under `anchor`. */
 export function setupInstall(opts: { showTip: boolean; anchor: HTMLElement }) {
-  const root = appRootFor(location.pathname);
+  // the itch package marks its page data-entry: its files sit next to it
+  const root = document.documentElement.dataset.entry ? './' : appRootFor(location.pathname);
   const link = (rel: string, href: string) => {
     const l = document.createElement('link');
     l.rel = rel;
@@ -64,7 +65,14 @@ export function setupInstall(opts: { showTip: boolean; anchor: HTMLElement }) {
   link('apple-touch-icon', 'icons/apple-touch-icon.png');
   link('icon', 'icons/icon-192.png');
 
-  if (!opts.showTip || isStandalone() || dismissed()) return;
+  // inside a frame (the itch.io embed) an install would save the host page, not the game: no tip there
+  let framed = false;
+  try {
+    framed = window.self !== window.top;
+  } catch {
+    framed = true;
+  }
+  if (!opts.showTip || framed || isStandalone() || dismissed()) return;
   const tip = document.createElement('div');
   tip.className = 'install-tip';
   tip.hidden = true;

@@ -1,3 +1,4 @@
+import { assetRoot, routePathname } from './core/entry.ts';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800-italic.css';
@@ -18,7 +19,7 @@ import { playtestName, reportText, shareReport } from './telemetry/playtest.ts';
 import { BUILD_INFO } from './telemetry/build-info.ts';
 import { Camera, cameraBalls } from './view/camera.ts';
 import { V2 } from './machines/sections.ts';
-import { appRootFor, setupInstall } from './core/install.ts';
+import { setupInstall } from './core/install.ts';
 import { browserStore, clearSave, readSave, writeSave } from './run/save.ts';
 import { TitleScreen } from './run/title.ts';
 import { Haptics, type HapticKind } from './core/haptics.ts';
@@ -31,17 +32,18 @@ import { Sfx } from './view/audio.ts';
 import { BuildUI } from './run/ui.ts';
 
 // Map comes from the URL path: / baseline, /1 Sidewinder, /2 Overpass, /3 Turbo, /build-test/ roguelite loop.
-const buildMode = isBuildRoute(location.pathname);
+const ROUTE = routePathname(location.pathname);
+const buildMode = isBuildRoute(ROUTE);
 // Cosmetic palette. Player route (/build-test/): Night Game (neon) by default, Day (Broadcast Classic)
 // in Settings → Look. Other routes: Broadcast Classic. ?theme=<id> always wins (developer preview).
-const isPlayerRoute = buildMode && isV2Route(location.pathname, location.search);
+const isPlayerRoute = buildMode && isV2Route(ROUTE, location.search);
 function themeFor(look: 'night' | 'day') {
   if (/[?&]theme=/.test(location.search)) return themeFromSearch(location.search);
   return isPlayerRoute && look === 'night' ? NIGHT_GAME : BROADCAST_CLASSIC;
 }
 let theme = themeFor(loadSettings().look);
 applyThemeToCss(theme, document.documentElement);
-const preset = presetForPath(location.pathname);
+const preset = presetForPath(ROUTE);
 const power = validatePreset(preset);
 console.info(`[machine] ${preset.name} · power ${power.installed}/${power.max}${power.ok ? '' : ' OVER BUDGET'}`, preset.mechanisms.map(m => `${m.id}:${m.powerCost}`));
 
@@ -128,14 +130,14 @@ function makeSim(p: Preset, target: number | null) {
 }
 let sim: Simulation = makeSim(preset, null);
 const view = new GameView(canvas, theme, sim.layout);
-const v2 = isV2Route(location.pathname, location.search);
+const v2 = isV2Route(ROUTE, location.search);
 // First-time tips only on the player route (frozen/legacy routes stay as they were).
 const coach: Coach | null = v2 && buildMode ? new Coach(stage, new TipBook(browserStore())) : null;
 // Player-route batting rules (whiff lockout, sweet spot, foul ball) and big-moment presentation.
 const player = v2 && buildMode;
 PLAY.enabled = player;
 sfx.useSamples = player;
-sfx.sampleRoot = appRootFor(location.pathname);
+sfx.sampleRoot = assetRoot(location.pathname);
 const juice: Juice | null = player ? new Juice(stage, canvas, document.querySelector<HTMLElement>('.scoreboard')) : null;
 view.bigMoments = !!juice;
 view.setGloveAsBall(player);
@@ -701,7 +703,7 @@ w.playtest.downloadHtml = (which: 'current' | 'last' | number = 'current') =>
 // ─── Build-test roguelite loop (/build-test/) ───
 // Save & continue (player-facing, local to this browser; one save per run route)
 const saveStore = browserStore();
-const saveRoute = saveRouteFor(location.pathname);
+const saveRoute = saveRouteFor(ROUTE);
 const build: BuildUI | null = buildMode
   ? new BuildUI(
       {
