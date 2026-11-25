@@ -1,3 +1,4 @@
+import { neonTube } from './neon.ts';
 import { UPPER_DECK, rallyLabel } from '../machines/sections.ts';
 /**
  * Art for the special mechanisms (ramps, scoop, splitter, gate). Everything is drawn from the same
@@ -51,7 +52,7 @@ export function drawMachinesFloorStatic(ctx: CanvasRenderingContext2D, view: Gam
   for (const g of L.gates) drawGateStatic(ctx, g, view.theme);
   for (const r of L.ramps) drawRampMouthFloor(ctx, r);
   for (const sp of L.spinners) drawSpinnerStatic(ctx, sp);
-  for (const g of L.multGates) drawMultGateStatic(ctx, g);
+  for (const g of L.multGates) drawMultGateStatic(ctx, g, view.theme);
   for (const r of L.ramps) if (r.def.exit?.mode === 'drop') drawLandingMarker(ctx, r, view.theme);
 
   // Raised ramps go in their own layer, composited above floor balls each frame.
@@ -135,6 +136,7 @@ function drawRampRaised(ctx: CanvasRenderingContext2D, r: RampPath, th: Theme) {
     ctx.lineWidth = 0.03;
     poly(ctx, q);
     ctx.stroke();
+    if (th.neonKit) neonTube(ctx, th.neonKit, th.neonKit.ramp, () => poly(ctx, q), th.neonKit.width * 0.8);
   }
   // static chevrons along the ride
   ctx.strokeStyle = derived(th).chevronStatic;
@@ -405,6 +407,13 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
   ctx.setLineDash([0.12, 0.1]);
   ctx.stroke();
   ctx.setLineDash([]);
+  if (th.neonKit)
+    neonTube(ctx, th.neonKit, th.neonKit.gate, () => {
+      ctx.beginPath();
+      ctx.moveTo(g.a.x, g.a.y);
+      ctx.lineTo(g.b.x, g.b.y);
+    });
+  ctx.setLineDash([]);
   if (g.posts !== false) for (const p of [g.a, g.b]) drawChromePost(ctx, p.x, p.y, g.postR + 0.06);
   ctx.fillStyle = '#ffe8a8';
   ctx.font = `italic 800 0.4px ${FONT}`;
@@ -414,7 +423,7 @@ function drawGateStatic(ctx: CanvasRenderingContext2D, g: import('../machines/me
 }
 
 /** Multiplier gate: a lamp bar across the top of the alley with an "×" badge (sensor only, no collision). */
-function drawMultGateStatic(ctx: CanvasRenderingContext2D, g: MultGateDef) {
+function drawMultGateStatic(ctx: CanvasRenderingContext2D, g: MultGateDef, th?: Theme) {
   const y = g.a.y;
   // alley span only (the sensor reaches a touch past the rail so angled exits still count)
   const x0 = g.side === 'left' ? 0.68 : W_TABLE - 2.75, x1 = g.side === 'left' ? 2.75 : W_TABLE - 0.68;
@@ -430,6 +439,12 @@ function drawMultGateStatic(ctx: CanvasRenderingContext2D, g: MultGateDef) {
   ctx.setLineDash([0.16, 0.12]);
   ctx.stroke();
   ctx.setLineDash([]);
+  if (th?.neonKit)
+    neonTube(ctx, th.neonKit, th.neonKit.gate, () => {
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
+    });
   // badge just above the bar, in the alley mouth (the lane spinner mount sits below at y=5.6)
   const c = { x: (x0 + x1) / 2, y: y - 0.5 };
   ctx.fillStyle = '#05080f';

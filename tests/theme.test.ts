@@ -27,8 +27,12 @@ test('palettes are complete: every role present and a valid #rrggbb(aa) color', 
   const roles = leaves(BROADCAST_CLASSIC).map(([p]) => p);
   assert.ok(roles.length >= 60);
   for (const t of Object.values(THEMES)) {
-    // `neon` is an optional strength (number), not a color role
-    const ls = leaves(t).filter(([p]) => p !== 'neon');
+    // `neon` (strength) and `neonKit` (optional playfield tubes, Night Game only) aren't shared color roles
+    const ls = leaves(t).filter(([p]) => p !== 'neon' && !p.startsWith('neonKit.'));
+    if (t.neonKit) {
+      for (const c of [t.neonKit.rail, t.neonKit.lane, t.neonKit.ramp, t.neonKit.target, t.neonKit.gate, t.neonKit.core]) assert.match(c, /^#[0-9a-f]{6}$/i, `${t.name} neon color`);
+      assert.ok(t.neonKit.width > 0 && t.neonKit.glow > 0 && t.neonKit.strength > 0 && t.neonKit.strength <= 1);
+    }
     // Same shape, including material arrays of the same length (crowd may differ in length).
     const norm = (p: string) => p.replace(/^m\.crowd\.\d+$/, 'm.crowd.#');
     assert.deepEqual([...new Set(ls.map(([p]) => norm(p)))].sort(), [...new Set(roles.map(norm))].sort(), `${t.name} has exactly the theme roles`);

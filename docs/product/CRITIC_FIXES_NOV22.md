@@ -72,3 +72,7 @@ Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking
 ## Nov 24: Quick Game
 
 - **QUICK GAME** on the title screen: 2 innings (6 challenges), both Closers (C3 Hot Corner, C6 Small Ball) and the Upper Deck, starting with $4. It keeps its own best (`bp-best-quick`), the end card says QUICK BEST and NEW QUICK GAME, and a saved quick run is labelled on the title. Knobs: `QUICK_GAME` in `src/run/economy.ts`. Run length is now per run (`Run.mode`, `Run.lastChallenge`); old saves load as full runs.
+
+## Nov 24 (2): Night Game playfield neon
+
+- Neon tubes (colored glow + white-hot core) on the outer and Upper Deck walls (pink), lane guides and ramp rails (cyan), targets and the jackpot (gold), and scoring and multiplier gates (purple). Baked into the cached table layers, so there's no per-frame cost. Bumpers and slings keep their existing neon rings. Day look unchanged. Colors, width, glow and strength: `NIGHT_GAME.neonKit` (`src/view/theme.ts`); helper `src/view/neon.ts`.

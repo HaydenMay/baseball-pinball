@@ -1,3 +1,4 @@
+import type { NeonKit } from './neon.ts';
 /**
  * Semantic color tokens. Every theme-dependent color (mechanism lighting, ramps, gates, lamps, VFX,
  * trails, scoreboard digits, cabinet accent light) is pulled from a Theme. A new palette is a new
@@ -122,6 +123,8 @@ export type Theme = {
    * slingshots, so the table reads as lit neon even between hits.
    */
   neon?: number;
+  /** Playfield neon tubes (walls, lanes, ramps, targets, gates); absent = none. See src/view/neon.ts. */
+  neonKit?: NeonKit;
   /** Always-visible material set. */
   m: Materials;
 };
@@ -317,6 +320,17 @@ export const NIGHT_GAME: Theme = {
   uiAccent: '#29f0ff',
   energyOutline: null,
   neon: 1,
+  neonKit: {
+    rail: '#ff4fd8',
+    lane: '#29f0ff',
+    ramp: '#29f0ff',
+    target: '#ffe14a',
+    gate: '#b98bff',
+    core: '#ffffff',
+    width: 0.09,
+    glow: 0.32,
+    strength: 0.9,
+  },
   m: {
     backdrop: ['#0d0626', '#070317', '#020109'],
     crowd: ['#7a2a8c', '#1f4c8a', '#bcc4e0', '#1a1533', '#2a8a8f'],

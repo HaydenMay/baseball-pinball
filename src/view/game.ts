@@ -3,6 +3,7 @@
  * cheap dynamic layer (lit machines, ball, batter, bat, VFX). Shapes come straight from board.ts
  * so the art always matches the collision geometry.
  */
+import { neonTube } from './neon.ts';
 import { config } from '../config.ts';
 import { MOUND, OUTER_WALL, lowerWallX, targetPoly, wallChains, type Layout, type Pt, type BoxTarget } from '../physics/board.ts';
 import { HOME_RUN_RAMP, UPPER_DECK, deckFloorPolygon } from '../machines/sections.ts';
@@ -326,6 +327,13 @@ export class GameView {
     ctx.moveTo(rail[0].x, rail[0].y);
     ctx.lineTo(rail[1].x, rail[1].y);
     ctx.stroke();
+    const kit = this.theme.neonKit;
+    if (kit)
+      neonTube(ctx, kit, kit.lane, () => {
+        ctx.beginPath();
+        ctx.moveTo(rail[0].x, rail[0].y);
+        ctx.lineTo(rail[1].x, rail[1].y);
+      });
     for (const p of rail) {
       ctx.fillStyle = this.theme.m.trim;
       ctx.beginPath();
@@ -701,6 +709,8 @@ export class GameView {
     path(ctx, rail, false);
     ctx.stroke();
     ctx.restore();
+    const kit = this.theme.neonKit;
+    if (kit) neonTube(ctx, kit, kit.rail, () => path(ctx, rail, false));
   }
 
   /** Bulb positions along the rail (drawn dynamically so they can chase). */
@@ -856,6 +866,12 @@ export class GameView {
       ctx.arc(x, y, r * (1 - i * 0.19), 0, Math.PI * 2);
       ctx.fill();
     });
+    const kit = this.theme.neonKit;
+    if (kit)
+      neonTube(ctx, kit, kit.target, () => {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.2, 0, Math.PI * 2);
+      });
   }
 
   private drawBoxTarget(ctx: CanvasRenderingContext2D, t: BoxTarget) {
@@ -895,6 +911,7 @@ export class GameView {
       ctx.fillText('JACKPOT', t.x + 0.03, t.y + 0.07);
       ctx.fillStyle = '#fff6e0';
       ctx.fillText('JACKPOT', t.x, t.y + 0.03);
+      if (this.theme.neonKit) neonTube(ctx, this.theme.neonKit, this.theme.jackpotAccent, () => path(ctx, poly));
       return;
     }
     // wall target panel
@@ -934,6 +951,8 @@ export class GameView {
       star(ctx, panelX + 0.275, t.y, 0.22, 0.1);
       ctx.fill();
     }
+    const kit = this.theme.neonKit;
+    if (kit) neonTube(ctx, kit, kit.target, () => path(ctx, poly));
   }
 
   private drawBumperBase(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
