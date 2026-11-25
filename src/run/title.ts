@@ -119,7 +119,7 @@ export class TitleScreen {
     const quick = r.mode === 'quick' ? 'Quick Game · ' : '';
     const where = r.phase === 'challenge' ? `Inning ${inning} · Challenge ${r.challenge}` : `After challenge ${r.challenge} · ${r.phase === 'draft' ? 'free pick' : 'shop'}`;
     const mods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
-    return `${quick}${where} · ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${mods} mod${mods === 1 ? '' : 's'} · $${r.money}`;
+    return `${quick}${where} · ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${mods} boost${mods === 1 ? '' : 's'} · $${r.money}`;
   }
 
   private render() {

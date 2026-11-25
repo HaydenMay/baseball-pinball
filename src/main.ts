@@ -8,7 +8,7 @@ import { Coach, TipBook } from './run/coach.ts';
 import { Juice, JUICE, type MomentKind } from './view/juice.ts';
 import { PLAY } from './core/play-rules.ts';
 import { CALLED_SHOT, HOT_CORNER, SMALL_BALL } from './core/bosses.ts';
-import { ECONOMY } from './run/economy.ts';
+import { ECONOMY, targetFor } from './run/economy.ts';
 import { config } from './config.ts';
 import { KEY_LEFT, KEY_RIGHT, TouchInput, makeControls } from './core/input.ts';
 import { Simulation, type SimEvent } from './physics/sim.ts';
@@ -232,14 +232,16 @@ function updateHud() {
   // (The cleared score already had its moment on the clear card; pairing it with the next target read as losing.)
   const between = !!build && (build.run.phase === 'draft' || build.run.phase === 'shop') && r.phase !== 'live';
   const score = between ? 0 : r.score, ballScore = between ? 0 : r.ballScore;
-  if (r.target !== shown.target || between !== shown.between) {
-    hud.target.hidden = r.target === null;
-    hud.target.textContent = r.target === null ? '' : `/ ${r.target.toLocaleString()}`;
+  // the clear card shows before the shop swaps the sim's target, so compute the next one directly
+  const target = between && build && r.target !== null ? targetFor(build.run.challenge + 1) : r.target;
+  if (target !== shown.target || between !== shown.between) {
+    hud.target.hidden = target === null;
+    hud.target.textContent = target === null ? '' : `/ ${target.toLocaleString()}`;
     hud.scoreLabel.textContent = r.target === null ? 'SCORE' : between ? 'NEXT TARGET' : 'SCORE / TARGET';
-    shown.target = r.target;
+    shown.target = target;
     shown.between = between;
   }
-  if (r.target !== null) hud.bar.style.width = `${Math.min(100, (score / r.target) * 100)}%`;
+  if (target !== null) hud.bar.style.width = `${Math.min(100, (score / target) * 100)}%`;
   if (ballScore !== shown.ball) {
     if (ballScore > shown.ball && shown.ball >= 0) pulse(hud.ballscore);
     hud.ballscore.textContent = ballScore.toLocaleString();
@@ -255,7 +257,7 @@ function updateHud() {
     shown.strikes = r.strikes;
   }
   const n = sim.balls.length;
-  const runEnd = build?.run.phase === 'won' ? 'RUN WON' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
+  const runEnd = build?.run.phase === 'won' ? 'COMPLETE' : build?.run.phase === 'failed' ? 'GAME OVER' : '';
   // Closer rule status: where the ×3 is and when it moves
   const hotState = r.phase === 'live' ? closerState() : '';
   hud.multWrap.classList.toggle('locked', sim.boss === 'smallBall');
@@ -265,7 +267,7 @@ function updateHud() {
     closerLine.textContent = hotState;
     closerLine.hidden = !hotState;
   }
-  const state = paused ? 'PAUSED' : runEnd ? runEnd : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber}`) : r.phase === 'over' ? 'GAME OVER' : 'PRESS READY';
+  const state = paused ? 'PAUSED' : runEnd ? runEnd : r.phase === 'cleared' ? 'CLEARED!' : r.phase === 'live' ? (n > 1 ? `PITCH ${r.pitchNumber} · ${n} BALLS` : `PITCH ${r.pitchNumber}`) : r.phase === 'over' ? 'GAME OVER' : 'READY?';
   // Pause only means something during a live pitch (it used to sit there on the game-over card).
   const canPause = paused || r.phase === 'live';
   if (pauseBtn.disabled === canPause) pauseBtn.disabled = !canPause;
@@ -906,6 +908,12 @@ fitCabinet();
 addEventListener('resize', () => requestAnimationFrame(fitCabinet));
 // web fonts change the scoreboard's height once they arrive: measure again then
 document.fonts?.ready.then(() => requestAnimationFrame(fitCabinet));
+
+// Developer hints (debug overlay key, console report) only on the comparison routes or with ?debug.
+{
+  const dev = document.querySelector<HTMLElement>('.foot.dev-only');
+  if (dev) dev.hidden = player && !new URLSearchParams(location.search).has('debug');
+}
 
 // First real screen is drawn: show the page (index.html hides it while booting so the bare markup never flashes).
 requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('booting')));

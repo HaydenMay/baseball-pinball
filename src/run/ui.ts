@@ -73,6 +73,13 @@ export function cardEffect(o: Offer): string {
   return o.desc.replace(/\bALL\b/g, 'All');
 }
 
+/** Player-facing place for a boost key ("mgate@gate-l" → "Left alley top"); never shows internal ids. */
+export function placeOfKey(k: string): string {
+  const at = anchorOf(k).split('@')[1];
+  if (at) return at.split('+').map(mountName).join(' + ');
+  return 'its spot';
+}
+
 /** One- or two-line summary for a grid card; the full effect stays in the detail view. */
 export function cardSummary(o: Offer): string {
   if (o.kind !== 'modifier') return MACHINES.find(m => m.key === o.key)?.short ?? o.desc;
@@ -233,12 +240,13 @@ export class BuildUI {
       if (f.pitch) this.host.getSim().restoreCarry(f.pitch);
       rec?.startChallenge(run, this.host.getSim().rules.maxStrikes);
       const s = this.host.getSim().rules;
+      const boss = this.bossFor(run.challenge);
+      const progress = f.pitch ? `${fmt(s.score)} scored so far, ${fmt(Math.max(0, run.target - s.score))} to go · strike ${s.strikes} of ${s.maxStrikes}.` : '';
       this.host.showOverlay(
-        `${roleOf(run.challenge)} · RUN RESUMED`,
+        boss ? `CLOSER · ${BOSS_INFO[boss].name} · RUN RESUMED` : `${roleOf(run.challenge)} · RUN RESUMED`,
         `TARGET ${fmt(run.target)}`,
-        f.pitch
-          ? `${fmt(s.score)} scored so far, ${fmt(Math.max(0, run.target - s.score))} to go · strike ${s.strikes} of ${s.maxStrikes}.${note}`
-          : `Your machine: ${this.machineLine()}.${note}`,
+        // a Closer always restates its twist; a resumed pitch adds where you were
+        boss ? `${BOSS_INFO[boss].rule}${progress ? ` ${progress}` : ''}${note}` : progress ? `${progress}${note}` : `Your machine: ${this.machineLine()}.${note}`,
         'PLAY BALL',
         () => this.host.startPitch(),
         `POWER ${run.powerUsed}/${run.maxPower} · $${run.money}`,
@@ -709,7 +717,7 @@ export class BuildUI {
     const it = r.installed.find(i => i.uid === this.msel);
     if (it) {
       const info = r.saleInfo(it.uid)!;
-      const list = (xs: { key: string; names: string[] }[]) => xs.map(x => `${esc(x.names.join(', '))} <span class="dim">(${esc(x.key)})</span>`).join('<br>');
+      const list = (xs: { key: string; names: string[] }[]) => xs.map(x => `${esc(x.names.join(', '))} <span class="dim">(${esc(placeOfKey(x.key))})</span>`).join('<br>');
       detail = this.confirming
         ? `<div class="mconfirm"><b>Sell ${esc(info.name)}?</b>
             <div>Power ⚡${info.powerBefore} → ⚡${info.powerAfter} · refund $${info.refund}</div>
@@ -720,7 +728,7 @@ export class BuildUI {
             <div class="mbtns"><button class="danger" data-act="msell">SELL / DISMANTLE</button></div></div>`;
     }
     const dorm = dormant.length
-      ? `<div class="mdorm">Waiting boosts (they wake up when a matching part returns to their spot): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))} @ ${esc(k)}`).join(' · ')}</div>`
+      ? `<div class="mdorm">Waiting boosts (they wake up when a matching part returns to their spot): ${dormant.map(k => `${esc(r.mods[k].map(m => m.note).join(', '))}, at ${esc(placeOfKey(k))}`).join(' · ')}</div>`
       : '';
     this.panel.innerHTML = `<div class="shead"><button class="back" data-act="mback">◀ BACK TO ${r.phase === 'draft' ? 'FREE PICK' : 'SHOP'}</button><div class="stitle"><b>MANAGE</b></div><div class="pchips"><span class="chip power">⚡${r.powerUsed}/${r.maxPower}</span><span class="chip money">$${r.money}</span></div></div>
       ${this.saleNote ? `<div class="pgrant">${esc(this.saleNote)}</div>` : ''}
@@ -761,7 +769,10 @@ export class BuildUI {
         const res = this.run.sell(this.msel);
         if (res.ok) {
           this.host.recorder?.sale(this.run, res, dormantBefore);
-          this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${res.dormant.length ? `, ${res.dormant.reduce((n, d) => n + d.names.length, 0)} boost(s) waiting` : ''}.`;
+          this.saleNote = `Sold ${res.name}: ⚡${res.powerFreed} freed, +$${res.refund}${(() => {
+            const n = res.dormant.reduce((a, d) => a + d.names.length, 0);
+            return n ? `, ${n} boost${n === 1 ? '' : 's'} waiting` : '';
+          })()}.`;
           this.host.loadMachine(this.run.preset(), targetFor(this.run.challenge + 1));
         }
         this.msel = null;

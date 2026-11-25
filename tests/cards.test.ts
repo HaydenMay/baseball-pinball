@@ -43,3 +43,13 @@ test('card text names its target and never shows THIS/ALL jargon', () => {
     });
   assert.ok(seen > 200);
 });
+
+test('Manage never shows internal boost keys: mount ids become place names', async () => {
+  const { placeOfKey } = await import('../src/run/ui.ts');
+  const { mountName } = await import('../src/run/catalog.ts');
+  for (const k of ['mgate@gate-l', 'mgate@gate-l-gate', 'ramp@cp-r-cp']) {
+    const place = placeOfKey(k);
+    assert.ok(!/[@]|mgate|gate-l\b/.test(place), `${k} → ${place}`);
+  }
+  assert.equal(placeOfKey('mgate@gate-l'), mountName('gate-l'));
+});

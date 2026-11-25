@@ -249,6 +249,7 @@ body {
 .strikes i.on { background: #ff3b30; box-shadow: 0 0 8px #ff3b30; }
 .strip .btns { display: inline-flex; gap: 4px; }
 #pause, #mute {
+  position: relative;
   font: 800 13px var(--font);
   letter-spacing: 0.05em;
   min-width: 36px;
@@ -422,7 +423,7 @@ body.fx-reduced #buildPanel, body.fx-reduced #buildPanel * { animation: none !im
 .stitle { display: flex; flex-direction: column; line-height: 1; margin-right: auto; }
 .stitle small { font: 700 11px var(--font); letter-spacing: 0.2em; color: var(--gold); }
 .stitle b { font: italic 900 34px var(--font); letter-spacing: 0.03em; color: #fff; text-shadow: 0 0 14px color-mix(in srgb, var(--energy) 70%, transparent), 0 2px 0 #000; }
-.shead .back { margin-right: auto; font: italic 800 13px var(--font); padding: 8px 12px; border-radius: 8px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
+.shead .back { margin-right: auto; min-height: 44px; font: italic 800 13px var(--font); padding: 8px 12px; border-radius: 8px; border: 1px solid #8d6b34; background: #1f2a3c; color: #eef4f7; cursor: pointer; }
 .pchips { display: flex; gap: 6px; }
 .chip { font: italic 800 16px var(--font); padding: 5px 10px; border-radius: 999px; background: #0a1426; border: 1px solid; white-space: nowrap; }
 .chip.money { color: var(--gold-hi); border-color: var(--gold); }
@@ -601,7 +602,7 @@ body.fx-reduced #buildPanel, body.fx-reduced #buildPanel * { animation: none !im
 .title-quick small { font: 600 11px var(--font); letter-spacing: 0.04em; color: var(--m-label); text-transform: none; }
 .title-save { margin: -2px 0 4px; font: 600 12px/1.3 var(--font); color: var(--m-label); }
 .title-links { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
-.title-links button { min-height: 40px; padding: 6px 10px; font: 700 13px var(--font); letter-spacing: 0.08em; color: var(--m-label); background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 8px; cursor: pointer; }
+.title-links button { min-height: 44px; padding: 6px 10px; font: 700 13px var(--font); letter-spacing: 0.08em; color: var(--m-label); background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 8px; cursor: pointer; }
 .title-back { align-self: flex-start; min-height: 36px; padding: 4px 10px; font: 700 13px var(--font); letter-spacing: 0.06em; color: var(--m-label); background: transparent; border: 1px solid #ffffff22; border-radius: 8px; cursor: pointer; }
 .title-h { margin: 2px 0 4px; font: italic 900 30px var(--font); color: #f4f6f9; }
 .title-text { margin: 0 0 6px; font: 600 15px/1.35 var(--font); color: #d7e1ee; }
@@ -659,7 +660,7 @@ body.fx-reduced .coach-arrows, body.fx-reduced .coach-ring { animation: none; }
 .ptip { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--coach-tip-bg); border: 1px solid var(--gold); }
 .ptip p { margin: 0; flex: 1; font: 500 13px/1.3 system-ui, sans-serif; color: #e8eef6; }
 .ptip p b { color: var(--gold-hi); font-weight: 800; }
-.ptip button { flex: none; min-height: 36px; padding: 4px 10px; font: italic 800 13px var(--font); letter-spacing: 0.06em; color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); border: 0; border-radius: 7px; cursor: pointer; }
+.ptip button { flex: none; min-height: 44px; padding: 4px 10px; font: italic 800 13px var(--font); letter-spacing: 0.06em; color: var(--m-btn-text); background: linear-gradient(var(--m-btn-a), var(--m-btn-b)); border: 0; border-radius: 7px; cursor: pointer; }
 .title-mini { flex: none; min-height: 38px; padding: 4px 12px; font: 800 13px var(--font); letter-spacing: 0.06em; color: #e8eef6; background: transparent; border: 1px solid var(--gold); border-radius: 8px; cursor: pointer; }
 .title-mini:disabled { opacity: 0.45; cursor: default; }
 
@@ -747,3 +748,12 @@ body.fx-reduced .res-best { animation: none; }
 .board-flash small { font: 800 14px/1 var(--font); letter-spacing: 0.14em; color: #f4f8ff; }
 @keyframes board-pulse { 50% { filter: brightness(1.35); } }
 body.fx-reduced .board-flash.show { animation: none; }
+
+/* Audit Nov 25: 44 px touch targets. The strip's mute/pause keep their compact look; an invisible pad
+   extends the hit area. Panel buttons simply get 44 px. */
+#pause::after, #mute::after { content: ''; position: absolute; inset: -8px -4px; }
+.pmanage { min-height: 44px; }
+#buildPanel .phead .back, #buildPanel.focus .back { min-height: 44px; }
+.offers.one .obuy, #buildPanel .obuy { min-height: 44px; }
+/* the one-line machine summary under the grid was clipped through its glyphs */
+#buildPanel.full .pmachine { line-height: 1.35; padding-bottom: 2px; flex: none; }
