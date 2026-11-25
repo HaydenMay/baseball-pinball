@@ -5,7 +5,7 @@
  */
 import { MOUNTS, mountName } from './catalog.ts';
 import { Run, anchorOf, type Offer } from './run.ts';
-import { ECONOMY, targetFor } from './economy.ts';
+import { ECONOMY, inningOf, targetFor, type RunMode } from './economy.ts';
 import { anchorsFor } from '../view/anchors.ts';
 import type { GameView } from '../view/game.ts';
 import type { Simulation } from '../physics/sim.ts';
@@ -13,7 +13,7 @@ import type { Preset } from '../machines/presets.ts';
 import type { RunRecord, RunRecorder } from '../telemetry/run-recorder.ts';
 import type { PitchCarry } from '../physics/sim.ts';
 import { panelTip, type TipBook } from './coach.ts';
-import { readBest, recordBest, statsHtml } from './stats.ts';
+import { bestKeyFor, readBest, recordBest, statsHtml } from './stats.ts';
 import { BOSS_INFO, closerFor, type BossId } from '../core/bosses.ts';
 import { PLAY } from '../core/play-rules.ts';
 import { config } from '../config.ts';
@@ -149,7 +149,7 @@ export class BuildUI {
         load.reason === 'newer'
           ? 'Your saved run is from a newer version of the game. It has been kept aside; start a new run here.'
           : 'Your saved run couldn’t be read. It has been kept aside; start a new run.',
-        'NEW RUN',
+        this.run.mode === 'quick' ? 'NEW QUICK GAME' : 'NEW RUN',
         () => this.start(),
       );
     }
@@ -165,10 +165,10 @@ export class BuildUI {
   }
 
   /** Throw away the in-memory run and start a fresh one at challenge 1. */
-  newRun() {
+  newRun(mode: RunMode = this.run.mode) {
     this.closePanel();
     this.runSeed = (Math.random() * 2 ** 32) >>> 0;
-    this.run = new Run(this.runSeed);
+    this.run = new Run(this.runSeed, mode);
     (window as any).buildRun = this.run;
     this.start();
   }
@@ -177,7 +177,7 @@ export class BuildUI {
     const r = f.run;
     // show the saved machine behind the card, so "continue" visibly means *this* table
     this.peek(f);
-    const where = r.phase === 'challenge' ? `${roleOf(r.challenge)} · challenge ${r.challenge} of ${ECONOMY.lastChallenge}` : `after challenge ${r.challenge} (${r.phase === 'draft' ? 'free pick' : 'shop'})`;
+    const where = r.phase === 'challenge' ? `${roleOf(r.challenge)} · challenge ${r.challenge} of ${this.run.lastChallenge}` : `after challenge ${r.challenge} (${r.phase === 'draft' ? 'free pick' : 'shop'})`;
     const pitch = f.pitch ? ` · ${fmt(f.pitch.score)} scored, strike ${f.pitch.strikes} of 3` : '';
     const nMods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
     this.host.showOverlay(
@@ -269,7 +269,7 @@ export class BuildUI {
     this.tag();
     this.save();
     this.host.showOverlay(
-      boss ? `CLOSER · ${BOSS_INFO[boss].name} · ${this.run.challenge}/${ECONOMY.lastChallenge}` : `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
+      boss ? `CLOSER · ${BOSS_INFO[boss].name} · ${this.run.challenge}/${this.run.lastChallenge}` : `${roleOf(this.run.challenge)} · ${this.run.challenge}/${this.run.lastChallenge}`,
       `TARGET ${fmt(this.run.target)}`,
       boss
         ? `${BOSS_INFO[boss].rule}`
@@ -307,9 +307,10 @@ export class BuildUI {
     const st = this.run.stats;
     st.cleared = cleared;
     const store = this.host.bestStore ?? null;
-    const before = readBest(store);
-    const isNew = recordBest(store, st);
-    this.host.showResults?.(statsHtml(st, ECONOMY.lastChallenge, isNew ? readBest(store) : before, isNew));
+    const key = bestKeyFor(this.run.mode);
+    const before = readBest(store, key);
+    const isNew = recordBest(store, st, key);
+    this.host.showResults?.(statsHtml(st, this.run.lastChallenge, isNew ? readBest(store, key) : before, isNew, this.run.mode === 'quick' ? 'QUICK BEST' : 'DEVICE BEST'));
   }
 
   /** Closer rule for challenge `n` (player route only). */
@@ -334,15 +335,15 @@ export class BuildUI {
       rec?.endRun('completed');
       this.tag();
       this.host.showOverlay(
-        'FINAL CLOSER CLEARED · 5 INNINGS',
+        `FINAL CLOSER CLEARED · ${inningOf(this.run.lastChallenge)} INNINGS${this.run.mode === 'quick' ? ' · QUICK GAME' : ''}`,
         'RUN COMPLETE',
         `${fmt(sim.rules.score)} / ${fmt(this.run.target)} on challenge ${this.run.challenge}. Final machine: ${this.machineLine()}.`,
-        'NEW RUN',
+        this.run.mode === 'quick' ? 'NEW QUICK GAME' : 'NEW RUN',
         () => this.newRun(),
         `POWER ${this.run.powerUsed}/${this.run.maxPower} · $${this.run.money}`,
         this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
       );
-      this.results(ECONOMY.lastChallenge);
+      this.results(this.run.lastChallenge);
       if (rec) this.host.devReport?.('Download Developer Report (HTML)', () => rec.lastRun() ?? rec.snapshot());
       return;
     }
@@ -351,7 +352,7 @@ export class BuildUI {
     const grew = this.run.sectionGrant ? `The machine grew: ${this.run.sectionGrant.name} unlocked (free). ` : '';
     const inning = this.run.powerGrant ? `Inning ${this.run.powerGrant.inning} unlocked: max Power +${this.run.powerGrant.gained} (${this.run.powerGrant.maxPower} total). ` : '';
     this.host.showOverlay(
-      `${roleOf(this.run.challenge)} · ${this.run.challenge}/${ECONOMY.lastChallenge}`,
+      `${roleOf(this.run.challenge)} · ${this.run.challenge}/${this.run.lastChallenge}`,
       'CHALLENGE CLEARED',
       `${fmt(sim.rules.score)} / ${fmt(this.run.target)}. ${grew}${inning}+$${this.lastEarned} (${ECONOMY.clearBase} + ${ECONOMY.clearPerStrikeLeft} per unused strike). Pick a free upgrade.`,
       'CHOOSE REWARD',

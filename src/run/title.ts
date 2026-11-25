@@ -5,7 +5,7 @@
  * All copy lives in TITLE below so wording can be tuned without touching the logic. Colors come from the
  * theme's CSS variables (style.css `.title-*`), so a theme or art pass restyles it for free.
  */
-import { ECONOMY } from './economy.ts';
+import { ECONOMY, QUICK_GAME, inningOf, type RunMode } from './economy.ts';
 import { rallyLabel } from '../machines/sections.ts';
 import { BOSS_INFO } from '../core/bosses.ts';
 import { BRAND } from '../core/brand.ts';
@@ -20,6 +20,7 @@ export const TITLE = {
   unreadable: 'Your last saved run couldn’t be read, so it was kept aside. Start a new run.',
   newer: 'Your saved run is from a newer version of the game, so it was kept aside. Start a new run.',
   confirmNew: 'Starting a new run ends your saved run for good.',
+  quickLine: `${inningOf(QUICK_GAME.lastChallenge)} innings · ${QUICK_GAME.lastChallenge} challenges · about 10 minutes`,
   help: [
     ['MOVE & SWING', 'Phone: drag with your <b>left thumb</b> to move the batter, tap with your <b>right thumb</b> to swing. Keyboard: <b>A/D</b> or <b>← →</b> to move, <b>Space</b> to swing.'],
     ['AIM WITH TIMING', 'Swing <b>early</b> to pull the ball left, <b>on time</b> to send it up the middle, <b>late</b> to push it right. Nail the middle of the swing for a <b>SWEET SPOT</b> bonus.'],
@@ -29,6 +30,7 @@ export const TITLE = {
     ['MULTIPLIER', 'Gates and some boosts raise the <b>multiplier</b>. It applies to every point for the rest of the challenge.'],
     ['THE RUN', `${ECONOMY.lastChallenge / ECONOMY.challengesPerInning} innings × Starter, Reliever and Closer = ${ECONOMY.lastChallenge} challenges. After Inning 1 the machine grows an <b>Upper Deck</b>: ride the <b>HOME RUN</b> ramp for 3,000 and <b>${rallyLabel()}</b> on Upper Deck hits until that ball comes back down.`],
     ['CLOSERS', `Every inning ends with a <b>Closer</b>: a bigger target and one twist. <b>${BOSS_INFO.hotCorner.name}</b>, <b>${BOSS_INFO.smallBall.name}</b>, <b>${BOSS_INFO.calledShot.name}</b>, <b>${BOSS_INFO.rainDelay.name}</b> and <b>${BOSS_INFO.runnersOnBase.name}</b>. The card before the first pitch explains the twist, and the line at the top of the table tracks it.`],
+    ['QUICK GAME', `Short on time? A <b>Quick Game</b> is ${inningOf(QUICK_GAME.lastChallenge)} innings (${QUICK_GAME.lastChallenge} challenges) with both Closers and the Upper Deck, and you start with <b>$${QUICK_GAME.startMoney}</b>. It keeps its own best score.`],
     ['SAVING', 'Your run saves automatically between pitches and challenges. Close the game anytime and continue later on this device.'],
   ] as [string, string][],
   credits: [
@@ -44,7 +46,7 @@ export type TitleHost = {
   /** Continue the saved run. */
   onContinue: (f: SaveFile) => void;
   /** Start a fresh run (the save, if any, is already cleared). */
-  onNewRun: () => void;
+  onNewRun: (mode: RunMode) => void;
   clearSave: () => void;
   /** Show the saved machine behind the title (or the factory table for a new player). */
   preview: (f: SaveFile | null) => void;
@@ -67,6 +69,8 @@ export class TitleScreen {
   private save: SaveFile | null = null;
   private notice = '';
   private view: View = 'main';
+  /** Which run the START OVER? card starts. */
+  private pendingMode: RunMode = 'full';
   /** "Show tips again" pressed during this settings visit. */
   private tipsReset = false;
 
@@ -102,9 +106,10 @@ export class TitleScreen {
   private summary(f: SaveFile) {
     const r = f.run;
     const inning = Math.ceil(r.challenge / ECONOMY.challengesPerInning);
+    const quick = r.mode === 'quick' ? 'Quick Game · ' : '';
     const where = r.phase === 'challenge' ? `Inning ${inning} · Challenge ${r.challenge}` : `After challenge ${r.challenge} · ${r.phase === 'draft' ? 'free pick' : 'shop'}`;
     const mods = Object.values(r.mods).reduce((n, l) => n + l.length, 0);
-    return `${where} · ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${mods} mod${mods === 1 ? '' : 's'} · $${r.money}`;
+    return `${quick}${where} · ${r.installed.length} machine${r.installed.length === 1 ? '' : 's'} · ${mods} mod${mods === 1 ? '' : 's'} · $${r.money}`;
   }
 
   private render() {
@@ -119,10 +124,11 @@ export class TitleScreen {
         ${this.notice ? `<p class="title-notice">${this.notice}</p>` : ''}
         ${s ? `<button class="title-primary" data-t="continue">CONTINUE</button><p class="title-save">${this.summary(s)}</p>` : ''}
         <button class="${s ? 'title-secondary' : 'title-primary'}" data-t="${s ? 'confirm' : 'new'}">NEW RUN</button>
+        <button class="title-secondary title-quick" data-t="${s ? 'confirm-quick' : 'new-quick'}">QUICK GAME<small>${TITLE.quickLine}</small></button>
         <nav class="title-links"><button data-t="help">HOW TO PLAY</button><button data-t="settings">SETTINGS</button><button data-t="credits">CREDITS</button></nav>`;
     } else if (this.view === 'confirm') {
       body = `<h2 class="title-h">START OVER?</h2><p class="title-text">${TITLE.confirmNew}</p>
-        <button class="title-primary" data-t="new">START NEW RUN</button>
+        <button class="title-primary" data-t="${this.pendingMode === 'quick' ? 'new-quick' : 'new'}">START ${this.pendingMode === 'quick' ? 'QUICK GAME' : 'NEW RUN'}</button>
         <button class="title-secondary" data-t="main">KEEP MY RUN</button>`;
     } else if (this.view === 'help') {
       body = `${back}<h2 class="title-h">HOW TO PLAY</h2><div class="title-scroll">${TITLE.help.map(([h, t]) => `<section><h3>${h}</h3><p>${t}</p></section>`).join('')}</div>`;
@@ -154,11 +160,17 @@ export class TitleScreen {
         }
         return;
       case 'new':
+      case 'new-quick':
         this.host.clearSave();
         this.save = null;
         this.hide();
-        this.host.onNewRun();
+        this.host.onNewRun(t === 'new-quick' ? 'quick' : 'full');
         return;
+      case 'confirm':
+      case 'confirm-quick':
+        this.pendingMode = t === 'confirm-quick' ? 'quick' : 'full';
+        this.view = 'confirm';
+        break;
       case 'sound-on':
       case 'sound-off':
         this.host.setSound(t === 'sound-on');

@@ -3,6 +3,18 @@
  * session reach several draft/shop decisions. None of these are approved game-design numbers.
  */
 import { PLAY } from '../core/play-rules.ts';
+/** Run length: the full 5-inning run, or a 2-inning Quick Game for a short session (Nov 24). */
+export type RunMode = 'full' | 'quick';
+export const QUICK_GAME = {
+  /** 2 innings: Starter, Reliever, Closer × 2. Same targets, Closers and Upper Deck as the full run. */
+  lastChallenge: 6,
+  /** A little starting money so the short run still gets a real build (the full run starts at $0). */
+  startMoney: 4,
+};
+export function lastChallengeFor(mode: RunMode) {
+  return mode === 'quick' ? QUICK_GAME.lastChallenge : ECONOMY.lastChallenge;
+}
+
 export const ECONOMY = {
   /** Starting max Power (approved direction: 6, then +1 permanent max Power per inning). */
   startPower: 6,

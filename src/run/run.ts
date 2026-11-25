@@ -20,7 +20,7 @@ import type { MechanismDef, Modifier, ModifierTable } from '../machines/mechanis
 import type { Preset } from '../machines/presets.ts';
 import { SECTION_UNLOCKS, UPPER_DECK, V2, type SectionId } from '../machines/sections.ts';
 import { MACHINES, MODS, MOUNTS, familyOfKey, placementsOf, type BoardView, type Family, type MachineOffer, type Mount, type Placement } from './catalog.ts';
-import { ECONOMY, inningOf, targetFor } from './economy.ts';
+import { ECONOMY, QUICK_GAME, inningOf, lastChallengeFor, targetFor, type RunMode } from './economy.ts';
 import { OFFER_WEIGHTS, investment, pickWeighted, weigh } from './weights.ts';
 
 export type Installed = {
@@ -138,8 +138,18 @@ export class Run {
   private uid = 1;
   private itemSeq = 1;
 
-  constructor(seed = 1) {
+  /** Full run or Quick Game (see QUICK_GAME). */
+  mode: RunMode = 'full';
+
+  constructor(seed = 1, mode: RunMode = 'full') {
     this.seed = seed >>> 0 || 1;
+    this.mode = mode;
+    if (mode === 'quick') this.money = QUICK_GAME.startMoney;
+  }
+
+  /** The challenge that wins this run (15, or 6 in a Quick Game). */
+  get lastChallenge() {
+    return lastChallengeFor(this.mode);
   }
 
   random() {
@@ -353,7 +363,7 @@ export class Run {
     const earned = ECONOMY.clearBase + ECONOMY.clearPerStrikeLeft * strikesLeft;
     this.money += earned;
     this.history.push(`C${this.challenge} cleared (+$${earned})`);
-    if (this.challenge >= ECONOMY.lastChallenge) {
+    if (this.challenge >= this.lastChallenge) {
       // Final Closer: the run is won. No Power grant, no draft, no shop, no next challenge.
       this.phase = 'won';
       this.draft = [];
@@ -519,6 +529,7 @@ export class Run {
   toSave(): RunSave {
     return {
       stats: { ...this.stats },
+      mode: this.mode,
       challenge: this.challenge, money: this.money, maxPower: this.maxPower, phase: this.phase,
       installed: this.installed.map(i => ({ uid: i.uid, offerKey: i.offerKey, placement: i.placement, via: i.via, paid: i.paid })),
       mods: structuredClone(this.mods), draft: structuredClone(this.draft), shop: structuredClone(this.shop), rerolls: this.rerolls,
@@ -534,6 +545,7 @@ export class Run {
    */
   static fromSave(s: RunSave): { run: Run; dropped: string[] } {
     const r = new Run(1);
+    r.mode = s.mode === 'quick' ? 'quick' : 'full';
     r.challenge = s.challenge;
     r.money = s.money;
     r.maxPower = s.maxPower;
@@ -585,6 +597,8 @@ const RUN_SAVE_HISTORY = 200;
 
 /** Serialized run (see Run.toSave / Run.fromSave and src/run/save.ts). */
 export type RunSave = {
+  /** Missing in saves from before Quick Game: a full run. */
+  mode?: RunMode;
   challenge: number;
   money: number;
   maxPower: number;

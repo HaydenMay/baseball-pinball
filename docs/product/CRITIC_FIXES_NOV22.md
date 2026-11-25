@@ -68,3 +68,7 @@ Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking
 - **Batter faces the plate**: a top-down right-handed hitter in his stance (feet and shoulders toward the pitcher, chest to the plate, bill on the pitch). His torso turns through the swing. Cosmetic only: `BATTER_ART`.
 - **The catcher's-mitt bumper is a baseball bumper on /play/** (same spot, same physics; frozen routes keep the mitt). It's called the "Low-left bumper" in cards now.
 - Machine summaries group duplicates ("Bonus Bumper ×3").
+
+## Nov 24: Quick Game
+
+- **QUICK GAME** on the title screen: 2 innings (6 challenges), both Closers (C3 Hot Corner, C6 Small Ball) and the Upper Deck, starting with $4. It keeps its own best (`bp-best-quick`), the end card says QUICK BEST and NEW QUICK GAME, and a saved quick run is labelled on the title. Knobs: `QUICK_GAME` in `src/run/economy.ts`. Run length is now per run (`Run.mode`, `Run.lastChallenge`); old saves load as full runs.

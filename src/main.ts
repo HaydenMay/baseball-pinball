@@ -100,7 +100,7 @@ function onSimEvent(e: SimEvent) {
     else if (e.type === 'multiball') juice.play('multiball');
     else if (e.type === 'bank') juice.play('bank', e.points);
     else if (e.type === 'clear') {
-      const final = !!build && build.run.challenge >= ECONOMY.lastChallenge;
+      const final = !!build && build.run.challenge >= build.run.lastChallenge;
       return beat(final ? 'runComplete' : 'cleared', () => build?.onClear());
     } else if (e.type === 'drain' && e.foul) return beat('foul', onFoul);
     else if (e.type === 'drain' && e.strike) return beat(sim.rules.phase === 'over' ? 'gameOver' : 'strike', onDrain, sim.rules.strikes);
@@ -116,7 +116,7 @@ function buzzFor(e: SimEvent) {
   else if (e.type === 'deckRally' && e.phase === 'start') k = 'homeRun';
   else if (e.type === 'machine' && e.kind === 'jackpot') k = 'jackpot';
   else if (e.type === 'called' && e.phase === 'hit') k = 'calledHit';
-  else if (e.type === 'clear') k = build && build.run.challenge >= ECONOMY.lastChallenge ? 'runComplete' : 'cleared';
+  else if (e.type === 'clear') k = build && build.run.challenge >= build.run.lastChallenge ? 'runComplete' : 'cleared';
   else if (e.type === 'drain' && e.strike && !e.foul) k = sim.rules.phase === 'over' ? 'gameOver' : 'strike';
   if (k) haptics.buzz(k);
 }
@@ -772,7 +772,7 @@ const title: TitleScreen | null =
     ? new TitleScreen(
         {
           onContinue: f => build.resume(f),
-          onNewRun: () => build.newRun(),
+          onNewRun: mode => build.newRun(mode),
           clearSave: () => clearSave(saveStore, saveRoute),
           preview: f => build.peek(f),
           getSound: () => !sfx.muted,
