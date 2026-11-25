@@ -6,7 +6,22 @@
   <meta name="theme-color" content="#060d1a" />
   <!-- No flash of the bare page on load/refresh: keep everything hidden on a dark background until main.ts has
        applied the theme and drawn the first real screen (it removes `booting`). Fail-safe: shown after 4 s anyway. -->
-  <style>html.booting body > * { visibility: hidden; } html.booting, html.booting body { background: #060d1a; }</style>
+  <style>
+    html.booting body > * { visibility: hidden; }
+    html.booting, html.booting body { background: #060d1a; }
+    /* Loading spinner: a spinning baseball with a neon glow (appears after a short delay so fast loads show nothing) */
+    html.booting body::before, html.booting body::after { content: ''; position: fixed; left: 50%; top: 50%; border-radius: 50%; opacity: 0; animation: boot-in 0.25s 0.15s forwards; pointer-events: none; }
+    html.booting body::before { width: 46px; height: 46px; margin: -23px 0 0 -23px; z-index: 2;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23f4f1ea' stroke='%23d9d2c4' stroke-width='3'/%3E%3Cpath d='M28 10 C46 32 46 68 28 90' fill='none' stroke='%23d0222d' stroke-width='3.5' stroke-dasharray='5 4'/%3E%3Cpath d='M72 10 C54 32 54 68 72 90' fill='none' stroke='%23d0222d' stroke-width='3.5' stroke-dasharray='5 4'/%3E%3C/svg%3E") center / contain no-repeat;
+      animation: boot-in 0.25s 0.15s forwards, boot-spin 0.9s linear infinite; }
+    html.booting body::after { width: 64px; height: 64px; margin: -32px 0 0 -32px; z-index: 1;
+      box-shadow: 0 0 22px 4px rgba(41, 240, 255, 0.45), inset 0 0 12px rgba(41, 240, 255, 0.35);
+      animation: boot-in 0.25s 0.15s forwards, boot-pulse 1.4s ease-in-out infinite; }
+    @keyframes boot-in { to { opacity: 1; } }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
+    @keyframes boot-pulse { 50% { box-shadow: 0 0 30px 8px rgba(255, 43, 214, 0.45), inset 0 0 14px rgba(255, 43, 214, 0.35); } }
+    @media (prefers-reduced-motion: reduce) { html.booting body::before { animation: boot-in 0.25s 0.15s forwards; } }
+  </style>
   <script>document.documentElement.classList.add('booting'); setTimeout(function () { document.documentElement.classList.remove('booting'); }, 4000);</script>
   <!-- Home Screen / install: opens full screen without browser bars (manifest + icons are linked from main.ts so the
        relative paths work on every route; see src/core/install.ts) -->
