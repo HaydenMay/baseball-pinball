@@ -71,14 +71,17 @@ test('diamond: four separated bumpers (top/left/right/lower), each gap passes a 
   assert.ok(UPPER_DECK.tentPeakY - (b.y + b.r) > 2 * R);
 });
 
-test('deck slings: two real slings on the deck walls, kick inward and up; only on the V2 deck', () => {
+test('deck slings: two real slings on the deck corner diagonals, kick inward and up; only on the V2 deck', () => {
   const { s } = deck();
   const ds = s.layout.slings.filter(x => x.id.startsWith('deck-sling'));
   assert.deepEqual(ds.map(x => x.id), ['deck-sling-l', 'deck-sling-r']);
   for (const x of ds) {
     const inward = x.side === 'left' ? 1 : -1;
     assert.ok(x.kickDir.x * inward > 0.7 && x.kickDir.y < 0, `${x.id} kicks inward and up`);
-    assert.ok(x.poly.every(p => p.y < 0 && p.y > UPPER_DECK.roofY), 'inside the deck');
+    assert.ok(x.poly.every(p => p.y < UPPER_DECK.railY && p.y > UPPER_DECK.roofY), 'inside the deck');
+    // on the sloped corner floor, clear of the exit: the last stretch before the gap stays open
+    const gapEdge = x.side === 'left' ? UPPER_DECK.gaps[0].x0 : UPPER_DECK.gaps[1].x1;
+    assert.ok(x.poly.every(p => Math.abs(p.x - gapEdge) > 0.6), `${x.id} leaves the exit open`);
     assert.notEqual(x.group, 'main');
   }
   // the two original lower slings are untouched and still share the 'main' debounce
@@ -319,4 +322,21 @@ test('Rally ends on drain; every score reconciles to the scoreboard', () => {
   assert.equal(total, s.rules.score);
   const gained = scores(ev).reduce((n, e) => n + (e.rallyGain ?? 0), 0);
   assert.equal(gained, end.gained, 'per-ball gain matches the score events');
+});
+
+test('corner slings never trap a ball: balls dropped all over the deck always drain back to the table', () => {
+  let worst = 0;
+  for (let i = 0; i < 24; i++) {
+    const { s } = deck([], 100 + i);
+    const x = 1.8 + (i % 8) * 2.3, y = -7 + Math.floor(i / 8) * 2.2;
+    put(s, x, y, ((i * 7) % 11) - 5, ((i * 5) % 7) - 3);
+    let t = 0;
+    while (t < 45 && s.balls.length && s.balls[0].body.getPosition().y < UPPER_DECK.railY + 1) {
+      s.step(DT, makeControls());
+      t += DT;
+    }
+    worst = Math.max(worst, t);
+    assert.ok(t < 45, `ball ${i} from (${x.toFixed(1)}, ${y.toFixed(1)}) still in the deck after 45 s`);
+  }
+  assert.ok(worst > 0);
 });

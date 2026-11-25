@@ -61,11 +61,13 @@ export const UPPER_DECK = {
     { id: 'deck-bumper-b', x: 10, y: -2.7, r: 0.9 },
   ],
   /**
-   * V2.2: one slingshot on each side wall, low enough to leave the deck mounts above them and the sloped floor
-   * (and so both return gaps) open beneath. Each kicks inward and a little up, back across the diamond.
-   * `tilt` = upward component of the kick direction before normalizing (0 = straight inward).
+   * Nov 24: one slingshot on each sloped corner floor (the diagonals by the exits), matching the bottom
+   * slings: it kicks up and toward the center, back into the bumper diamond. `from`/`to` = how much of the
+   * diagonal it covers (0 = side wall, 1 = exit edge); the stretch by the exit stays clear so balls can
+   * still drain out. `inward` = extra sideways push toward the center added to the face normal.
+   * (V2.2 had them on the vertical side walls at y −3.7…−1.1.)
    */
-  slings: { y0: -3.7, y1: -1.1, depth: 0.95, tilt: 0.6, points: 100, kick: 17 },
+  slings: { from: 0.06, to: 0.68, depth: 0.62, inward: 0.55, points: 100, kick: 17 },
   bumperPoints: 200,
   bumperKick: 15,
   /** Deck turf tint over the table turf so it reads as a separate level (theme turf + this). */

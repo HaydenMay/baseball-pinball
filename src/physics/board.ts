@@ -60,17 +60,23 @@ export function lowerWallX(y: number) {
   return a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
 }
 
-/** V2.2 Upper Deck slings: on the deck's side walls, kicking inward and slightly up. */
+/** Upper Deck slings: on the sloped corner floors by the exits, kicking up and toward the center. */
 export function deckSlings(): Sling[] {
   const d = UPPER_DECK, c = d.slings;
-  return (['left', 'right'] as const).map(side => {
-    const sx = side === 'left' ? 1 : -1, wx = side === 'left' ? d.wallX0 : d.wallX1;
-    const a = { x: wx, y: c.y0 }, b = { x: wx, y: c.y1 };
-    const a2 = { x: wx + sx * c.depth, y: c.y0 }, b2 = { x: wx + sx * c.depth * 0.75, y: c.y1 };
-    const kl = Math.hypot(1, c.tilt);
-    const poly = side === 'left' ? [a, b, b2, a2] : [a2, b2, b, a];
-    return { id: `deck-sling-${side === 'left' ? 'l' : 'r'}`, kind: 'sling', side, poly, face: [a2, b2], kickDir: { x: sx / kl, y: -c.tilt / kl }, points: c.points, kick: c.kick, group: `deck-sling-${side}` };
-  });
+  // Built on the left diagonal (side wall corner → left gap's outer edge), then mirrored for the right.
+  const w = { x: d.wallX0, y: d.sideFloorY }, g = { x: d.gaps[0].x0, y: d.railY };
+  const at = (t: number) => ({ x: w.x + (g.x - w.x) * t, y: w.y + (g.y - w.y) * t });
+  const a = at(c.from), b = at(c.to);
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+  const n = { x: dy / len, y: -dx / len }; // up off the floor, into the deck
+  const a2 = { x: a.x + n.x * c.depth * 0.75, y: a.y + n.y * c.depth * 0.75 };
+  const b2 = { x: b.x + n.x * c.depth, y: b.y + n.y * c.depth };
+  let k = { x: n.x + c.inward, y: n.y };
+  const kl = Math.hypot(k.x, k.y);
+  k = { x: k.x / kl, y: k.y / kl };
+  const left: Sling = { id: 'deck-sling-l', kind: 'sling', side: 'left', poly: [b, a, a2, b2], face: [a2, b2], kickDir: k, points: c.points, kick: c.kick, group: 'deck-sling-left' };
+  const right: Sling = { ...left, id: 'deck-sling-r', side: 'right', poly: left.poly.map(mirror).reverse(), face: [mirror(left.face[0]), mirror(left.face[1])], kickDir: { x: -k.x, y: k.y }, group: 'deck-sling-right' };
+  return [left, right];
 }
 
 function makeSling(side: 'left' | 'right'): Sling {
