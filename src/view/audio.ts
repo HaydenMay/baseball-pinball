@@ -22,9 +22,16 @@ export class Sfx {
   private samples = new Map<SampleId, AudioBuffer>();
   private loading = false;
 
+  /** Player volume 0..1 (Settings), on top of the mix level below. Saved as `bp-volume`. */
+  volume = 1;
+  /** Overall mix level at volume 1 (the synth and sample mix were balanced at this). */
+  static readonly MIX = 0.32;
+
   constructor() {
     try {
       this.muted = localStorage.getItem('bp-muted') === '1';
+      const v = Number(localStorage.getItem('bp-volume'));
+      if (localStorage.getItem('bp-volume') !== null && Number.isFinite(v)) this.volume = Math.max(0, Math.min(1, v));
     } catch {
       /* storage unavailable */
     }
@@ -40,7 +47,7 @@ export class Sfx {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.32;
+    this.master.gain.value = this.level();
     this.master.connect(this.ctx.destination);
     this.loadSamples();
   }
@@ -90,7 +97,21 @@ export class Sfx {
     } catch {
       /* ignore */
     }
-    if (this.master) this.master.gain.value = m ? 0 : 0.32;
+    if (this.master) this.master.gain.value = this.level();
+  }
+
+  private level() {
+    return this.muted ? 0 : Sfx.MIX * this.volume * this.volume; // squared: the slider feels even to the ear
+  }
+
+  setVolume(v: number) {
+    this.volume = Math.max(0, Math.min(1, v));
+    try {
+      localStorage.setItem('bp-volume', String(this.volume));
+    } catch {
+      /* ignore */
+    }
+    if (this.master) this.master.gain.setTargetAtTime(this.level(), this.master.context.currentTime, 0.02);
   }
 
   private ok(key: string, minGap: number) {

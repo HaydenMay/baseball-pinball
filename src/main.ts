@@ -778,6 +778,12 @@ const title: TitleScreen | null =
           clearSave: () => clearSave(saveStore, saveRoute),
           preview: f => build.peek(f),
           getSound: () => !sfx.muted,
+          getVolume: () => sfx.volume,
+          setVolume: (v, preview) => {
+            sfx.unlock();
+            sfx.setVolume(v);
+            if (preview) sfx.ui('ui');
+          },
           setSound: on => {
             sfx.unlock();
             sfx.setMuted(!on);

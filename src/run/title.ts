@@ -52,6 +52,9 @@ export type TitleHost = {
   preview: (f: SaveFile | null) => void;
   getSound: () => boolean;
   setSound: (on: boolean) => void;
+  /** Volume 0..1 (optional; the slider is hidden without it). `preview` plays a short tick at the new level. */
+  getVolume?: () => number;
+  setVolume?: (v: number, preview: boolean) => void;
   getSettings: () => Settings;
   setSettings: (s: Settings) => void;
   version: string;
@@ -83,6 +86,13 @@ export class TitleScreen {
     this.el.setAttribute('aria-label', `${BRAND.name} main menu`);
     stage.appendChild(this.el);
     this.el.addEventListener('click', e => this.onClick(e));
+    // volume slider: live while dragging (no re-render, so the drag isn't interrupted), a tick on release
+    const vol = (e: Event, preview: boolean) => {
+      const t = e.target as HTMLInputElement;
+      if (t.dataset?.v === 'volume') this.host.setVolume?.(Number(t.value) / 100, preview);
+    };
+    this.el.addEventListener('input', e => vol(e, false));
+    this.el.addEventListener('change', e => vol(e, true));
   }
 
   get open() {
@@ -137,6 +147,7 @@ export class TitleScreen {
       const sound = this.host.getSound();
       body = `${back}<h2 class="title-h">SETTINGS</h2><div class="title-scroll title-settings">
         <div class="title-setting"><span>Sound</span><div class="seg"><button data-t="sound-on" class="${sound ? 'on' : ''}">ON</button><button data-t="sound-off" class="${sound ? '' : 'on'}">OFF</button></div></div>
+        ${this.host.getVolume ? `<div class="title-setting title-volume"><span>Volume</span><input type="range" min="0" max="100" step="5" value="${Math.round(this.host.getVolume() * 100)}" data-v="volume" aria-label="Volume" ${sound ? '' : 'disabled'} /></div>` : ''}
         <div class="title-setting"><span>Effects<small>Reduced = fewer sparks and flashes, no bouncing UI</small></span><div class="seg"><button data-t="fx-full" class="${st.effects === 'full' ? 'on' : ''}">FULL</button><button data-t="fx-reduced" class="${st.effects === 'reduced' ? 'on' : ''}">REDUCED</button></div></div>
         <div class="title-setting"><span>Look<small>Neon night game or classic day game</small></span><div class="seg"><button data-t="look-night" class="${st.look === 'night' ? 'on' : ''}">NIGHT</button><button data-t="look-day" class="${st.look === 'day' ? 'on' : ''}">DAY</button></div></div>
         ${this.host.canVibrate ? `<div class="title-setting"><span>Vibration<small>A buzz on bat contact and big moments</small></span><div class="seg"><button data-t="buzz-on" class="${st.haptics ? 'on' : ''}">ON</button><button data-t="buzz-off" class="${st.haptics ? '' : 'on'}">OFF</button></div></div>` : ''}
