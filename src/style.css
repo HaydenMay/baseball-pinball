@@ -423,7 +423,15 @@ body.fx-reduced #buildPanel, body.fx-reduced #buildPanel * { animation: none !im
 .chip.power { color: color-mix(in srgb, var(--energy) 55%, white); border-color: var(--energy-soft); }
 .shead .pmanage { margin-left: 0; }
 .ssub { font: 500 13px/1.3 system-ui, sans-serif; color: #a9bad0; }
-#buildPanel.full .pfoot { margin-top: auto; position: sticky; bottom: calc(-12px - env(safe-area-inset-bottom)); padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); margin-bottom: calc(-12px - env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--shop-base) 30%); }
+/* Shop list: only the cards scroll; the header and the Reroll/Next footer are fixed, so a tap on NEXT never
+   lands on a still-gliding scroll view (iOS swallows that tap to stop the scroll). */
+#buildPanel.full[data-view='list'] { overflow: hidden; }
+#buildPanel.full[data-view='list'] .offers.list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 6px; margin: 0 -2px; }
+#buildPanel.full .pfoot { flex: 0 0 auto; margin-top: auto; padding-top: 4px; }
+#buildPanel.full .pfoot button { min-height: 50px; }
+/* Instant pressed feedback on every shop button, and no double-tap-zoom delay. */
+#buildPanel button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease, filter 80ms ease; }
+#buildPanel button:not(:disabled):active { transform: scale(0.96); filter: brightness(1.25); }
 #buildPanel.full .pmachine { margin: 0 2px; }
 
 .offers.list { grid-template-columns: 1fr; gap: 10px; }
