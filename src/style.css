@@ -72,7 +72,7 @@ body {
 
 /* The cabinet: scoreboard + strip + board, all one sized column. */
 .cabinet {
-  --w: min(560px, calc((100dvh - 32px - var(--hud-h)) * var(--board-aspect)));
+  --w: min(560px, 100vw - 32px, calc((100dvh - 32px - var(--hud-h)) * var(--board-aspect)));
   width: var(--w);
   display: flex;
   flex-direction: column;
@@ -333,6 +333,21 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   .scoreboard { border-radius: 10px 10px 0 0; padding: 4px; gap: 4px; }
   #stage { border-radius: 0 0 12px 12px; }
 }
+/* Phones: dock the game to the top; spare height becomes the thumb zone (see main.ts). Knobs: --tz-*. */
+:root { --tz-a: #120a24; --tz-b: #05030c; }
+.thumbzone { display: none; }
+@media (max-width: 760px) {
+  #app { flex-direction: column; justify-content: flex-start; align-items: center; gap: 0; }
+  .cabinet { flex: none; }
+  .thumbzone {
+    display: flex; flex: 1 1 auto; min-height: 0; align-self: stretch; align-items: center; justify-content: space-between;
+    padding: 0 18px; margin: 6px 6px 0; border-radius: 14px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+    background: linear-gradient(var(--tz-a), var(--tz-b)); box-shadow: inset 0 1px 0 #ffffff14, inset 0 0 18px #000;
+    font: 700 11px var(--font); letter-spacing: 0.16em; color: #ffffff40;
+  }
+  .thumbzone span { white-space: nowrap; }
+}
+
 
 /* ── build test: score/target + between-challenge panels ── */
 .screen.main { display: flex; flex-direction: column; align-items: center; }

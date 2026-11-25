@@ -499,24 +499,43 @@ window.addEventListener('blur', () => {
 document.addEventListener('touchmove', e => {
   if (sim.rules.phase === 'live') e.preventDefault();
 }, { passive: false });
-canvas.addEventListener('pointerdown', e => {
-  sfx.unlock();
-  if (sim.rules.phase !== 'live' || paused) return;
-  e.preventDefault();
-  const r = canvas.getBoundingClientRect();
-  const kind = touch.down(e.pointerId, e.clientX - r.left, r.width);
-  if (kind) canvas.setPointerCapture(e.pointerId);
-  if (kind === 'swing') controls.swingPressed = true;
-});
-canvas.addEventListener('pointermove', e => {
-  const r = canvas.getBoundingClientRect();
-  const dx = touch.move(e.pointerId, e.clientX - r.left);
-  if (dx) controls.dragDelta += view.cssToWorld(dx, r.width) * 1.15;
-});
-for (const n of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-  canvas.addEventListener(n, e => touch.up(e.pointerId));
+/**
+ * Gameplay touch on an element. Positions are measured against the table canvas, so the thumb zone under
+ * the table splits left (drag) / right (swing) exactly like the table does.
+ */
+function bindTouch(el: HTMLElement) {
+  el.addEventListener('pointerdown', e => {
+    sfx.unlock();
+    if (sim.rules.phase !== 'live' || paused) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const kind = touch.down(e.pointerId, e.clientX - r.left, r.width);
+    if (kind) el.setPointerCapture(e.pointerId);
+    if (kind === 'swing') controls.swingPressed = true;
+  });
+  el.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    const dx = touch.move(e.pointerId, e.clientX - r.left);
+    if (dx) controls.dragDelta += view.cssToWorld(dx, r.width) * 1.15;
+  });
+  for (const n of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+    el.addEventListener(n, e => touch.up(e.pointerId));
+  }
+  el.addEventListener('contextmenu', e => e.preventDefault());
 }
-canvas.addEventListener('contextmenu', e => e.preventDefault());
+bindTouch(canvas);
+/**
+ * Thumb zone (phones): when the screen is taller than the game (Home Screen apps, itch's full screen), the
+ * game docks to the top and the leftover strip under the table becomes a control deck that takes the same
+ * input, so thumbs rest below the table instead of covering it. Zero height when there's no spare room.
+ */
+if (player) {
+  const zone = document.createElement('div');
+  zone.className = 'thumbzone';
+  zone.innerHTML = '<span class="tz-move">◀ DRAG TO MOVE ▶</span><span class="tz-swing">TAP TO SWING</span>';
+  document.querySelector('.cabinet')?.after(zone);
+  bindTouch(zone);
+}
 
 // ─── Sizing ───
 function resize() {
