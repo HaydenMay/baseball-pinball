@@ -177,7 +177,7 @@ $('#machineInfo').textContent = preset.route
 
 // ─── HUD ───
 const hud = { mult: $('#mult'), multWrap: $('#multwrap'), ballscore: $('#ballscore'), score: $('#score'), state: $('#state'), strikes: $('#strikes'), target: $('#target'), scoreLabel: $('#scoreLabel'), bar: $('#targetBar') };
-const shown = { mult: -1, ball: -1, score: -1, strikes: -1, state: '', closer: '', target: null as number | null | undefined };
+const shown = { mult: -1, ball: -1, score: -1, strikes: -1, state: '', closer: '', target: null as number | null | undefined, between: false };
 /** Closer rule status line (top of the table). */
 const closerLine = document.createElement('div');
 closerLine.className = 'closer-line';
@@ -228,22 +228,27 @@ function updateHud() {
     hud.mult.textContent = fmtMult(r.multTenths);
     shown.mult = r.multTenths;
   }
-  if (r.target !== shown.target) {
+  // Between challenges (Free Pick / shop) the scoreboard shows the NEXT challenge: its target, score 0.
+  // (The cleared score already had its moment on the clear card; pairing it with the next target read as losing.)
+  const between = !!build && (build.run.phase === 'draft' || build.run.phase === 'shop') && r.phase !== 'live';
+  const score = between ? 0 : r.score, ballScore = between ? 0 : r.ballScore;
+  if (r.target !== shown.target || between !== shown.between) {
     hud.target.hidden = r.target === null;
     hud.target.textContent = r.target === null ? '' : `/ ${r.target.toLocaleString()}`;
-    hud.scoreLabel.textContent = r.target === null ? 'SCORE' : 'SCORE / TARGET';
+    hud.scoreLabel.textContent = r.target === null ? 'SCORE' : between ? 'NEXT TARGET' : 'SCORE / TARGET';
     shown.target = r.target;
+    shown.between = between;
   }
-  if (r.target !== null) hud.bar.style.width = `${Math.min(100, (r.score / r.target) * 100)}%`;
-  if (r.ballScore !== shown.ball) {
-    if (r.ballScore > shown.ball && shown.ball >= 0) pulse(hud.ballscore);
-    hud.ballscore.textContent = r.ballScore.toLocaleString();
-    shown.ball = r.ballScore;
+  if (r.target !== null) hud.bar.style.width = `${Math.min(100, (score / r.target) * 100)}%`;
+  if (ballScore !== shown.ball) {
+    if (ballScore > shown.ball && shown.ball >= 0) pulse(hud.ballscore);
+    hud.ballscore.textContent = ballScore.toLocaleString();
+    shown.ball = ballScore;
   }
-  if (r.score !== shown.score) {
-    if (r.score > shown.score && shown.score >= 0) pulse(hud.score);
-    hud.score.textContent = r.score.toLocaleString();
-    shown.score = r.score;
+  if (score !== shown.score) {
+    if (score > shown.score && shown.score >= 0) pulse(hud.score);
+    hud.score.textContent = score.toLocaleString();
+    shown.score = score;
   }
   if (r.strikes !== shown.strikes) {
     hud.strikes.innerHTML = Array.from({ length: r.maxStrikes }, (_, i) => `<i class="${i < r.strikes ? 'on' : ''}"></i>`).join('');
@@ -279,7 +284,9 @@ altBtn.id = 'overlayAlt';
 altBtn.className = 'alt-btn';
 altBtn.hidden = true;
 let altAction: () => void = () => {};
-altBtn.addEventListener('click', () => altAction());
+altBtn.addEventListener('click', () => {
+  if (!resultGuarded()) altAction();
+});
 readyBtn.after(altBtn);
 /** Playtest mode (?playtest=<name>): a SEND PLAYTEST REPORT button on end cards and the pause menu. */
 const shareBtn = document.createElement('button');
@@ -293,7 +300,16 @@ function offerShare() {
 }
 /** Has this session thrown a pitch yet (controls hints retire after it). */
 let pitchedOnce = false;
+/**
+ * Run-end cards (game over / run won) ignore input briefly so a late swing tap can't skip straight past the
+ * results into a new run, and Space never presses their buttons (it's the swing key): Enter or a tap does.
+ */
+const RESULT_CARD = { settleMs: 600 };
+let resultCard = false;
+let resultGuardUntil = 0;
+const resultGuarded = () => resultCard && performance.now() < resultGuardUntil;
 function showOverlay(kicker: string, title: string, text: string, button: string, action: () => void = () => onReady(), info?: string, alt?: { label: string; action: () => void }) {
+  resultCard = false;
   altBtn.hidden = !alt;
   shareBtn.hidden = true;
   juice?.hideBanner();
@@ -379,7 +395,9 @@ function togglePause() {
     readyBtn.blur();
   }
 }
-readyBtn.addEventListener('click', () => overlayAction());
+readyBtn.addEventListener('click', () => {
+  if (!resultGuarded()) overlayAction();
+});
 // Menu sounds (player route): a soft tap on buttons, a card shuffle on reroll. Buy/take buttons have their own.
 if (player)
   document.addEventListener(
@@ -436,6 +454,11 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (sim.rules.phase !== 'live' || paused) {
+    // run-end card: Space (the swing key) never presses its buttons, and nothing does during the settle time
+    if (resultCard && !overlay.hidden && (k === ' ' || (k === 'enter' && resultGuarded()))) {
+      e.preventDefault();
+      return;
+    }
     // Enter always confirms the Ready card (the focused button already handles its own Enter/Space).
     if (k === 'enter' && !overlay.hidden && e.target !== readyBtn && e.target !== altBtn) {
       e.preventDefault();
@@ -753,6 +776,8 @@ const build: BuildUI | null = buildMode
         tips: coach?.book ?? null,
         onPurchase: () => sfx.ui('buy'),
         showResults: html => {
+          resultCard = true;
+          resultGuardUntil = performance.now() + RESULT_CARD.settleMs;
           const el = $('#overlayStats');
           el.innerHTML = html;
           el.hidden = false;
