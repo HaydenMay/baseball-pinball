@@ -39,44 +39,39 @@ export const MINIMAP = {
 /** Batter art (cosmetic only; collision comes from config.swing). Body-local units before the 1.45 scale. */
 export const BATTER_ART = {
   /**
-   * Angled top-down (3/4) chibi, like a top-down RPG sprite: helmet on top, body under it, feet at the bottom.
-   * He faces the plate (east) and looks up the table at the pitcher (north). Cosmetic only; the bat's collision
-   * is config.swing. Body-local units before the 1.45 scale; +x east, +y south.
+   * Straight-down chibi hitter. He faces east (the plate): shoulders and feet run north-south, toes east.
+   * The bat is drawn at its real physics angle: at rest it lies back over his right (south) shoulder and it
+   * swings around in front of him. The helmet follows the ball. Cosmetic only; collision is config.swing.
+   * Local units before the 1.45 scale; +x east, +y south.
    */
-  /** While waiting, the bat is drawn loaded up behind the helmet at this angle (radians; physics rest is 120°). */
-  loadedAngle: -1.95,
-  /** Share of the swing (by angle) spent bringing the bat down from the loaded pose into the real swing path. */
-  loadBlend: 0.22,
-  /** Lean into the swing (local units at the finish). */
-  lean: { x: 0.08, y: -0.04 },
-  /** Head direction with no ball in play: north (the pitcher). It still turns to follow the nearest ball. */
-  lookRest: -Math.PI / 2,
-  lookSwing: -Math.PI / 2 + 0.25,
-  neckMin: -Math.PI / 2 - 1.2,
-  neckMax: -Math.PI / 2 + 1.9,
+  /** Body center relative to the hands (world units): hands sit just in front of his right shoulder. */
+  bodyFromHands: { x: -0.5, y: -0.14 },
+  /** Torso turn toward the pitcher by the end of the swing (radians). */
+  torsoTurn: 0.85,
+  /** Head with no ball in play: toward the pitcher (north-east). Range is relative to east (0). */
+  lookRest: -1.15,
+  neckMin: -2.0,
+  neckMax: 1.3,
   /** How quickly the head catches up with the ball (1/s). */
   headTrack: 9,
-  head: { x: -0.06, y: -0.5 },
-  headR: 0.38,
-  torso: { x: 0.02, y: -0.06, rx: 0.33, ry: 0.32 },
-  hipY: 0.22,
-  backFoot: { x: -0.34, y: 0.66 },
-  frontFoot: { x: 0.36, y: 0.6 },
+  headR: 0.27,
+  torso: { rx: 0.31, ry: 0.52 },
+  leadFoot: { x: 0.12, y: -0.7 },
+  backFoot: { x: -0.04, y: 0.7 },
   /** Cartoon ink outline around every shape. */
   ink: '#24141b',
-  inkW: 0.055,
+  inkW: 0.05,
   jersey: '#ffffff',
-  jerseyShade: '#c9ced8',
+  jerseyShade: '#c3c9d4',
   team: '#d0222d',
-  belt: '#1b2850',
-  pants: '#f4f5f8',
+  pants: '#eef0f4',
   cleat: '#1b2850',
-  cleatHi: '#33467e',
+  cleatHi: '#3a4f8c',
   skin: '#f2b27c',
   helmet: '#d8222d',
   helmetHi: '#ff8f84',
   helmetDark: '#8e0f19',
-  bill: '#7a0b14',
+  bill: '#6e0a12',
   gloves: '#1b2850',
   glovesHi: '#3a4f8c',
 };
@@ -1449,14 +1444,14 @@ export class GameView {
     const hands = sim.hands;
     this.whiffAt = { x: hands.x, y: hands.y - 1.6 };
     const S = 1.45; // batter art scale (cosmetic only; collision comes from config.swing)
-    const bx = sim.batterBodyX, by = config.batter.handsY + 0.42;
+    const A = BATTER_ART;
+    const bx = hands.x + A.bodyFromHands.x, by = hands.y + A.bodyFromHands.y;
     const angle = sim.batAngle;
     const state = sim.swingState;
-    const A = BATTER_ART;
     const span = config.swing.restAngle - config.swing.endAngle;
     const p = Math.max(0, Math.min(1, (config.swing.restAngle - angle) / span));
 
-    // swing smear (purely visual, attached to the real bat)
+    // swing smear (purely visual, attached to the bat)
     if (state === 'active') {
       const prev = angle + span * 0.14;
       ctx.save();
@@ -1474,27 +1469,12 @@ export class GameView {
       ctx.restore();
     }
 
-    // Drawn bat angle: loaded up behind the helmet while waiting, dropping into the real swing path in the
-    // first part of the swing; the follow-through ends right back near the loaded pose.
-    const loaded = A.loadedAngle + Math.PI * 2;
-    let drawAngle: number;
-    let batInFront: boolean;
-    if (state === 'active') {
-      const t = Math.min(1, p / A.loadBlend);
-      const blend = t * t * (3 - 2 * t);
-      drawAngle = angle + (1 - blend) * (loaded - config.swing.restAngle);
-      batInFront = blend > 0.5;
-    } else {
-      drawAngle = A.loadedAngle;
-      batInFront = false;
-    }
-
     ctx.save();
     ctx.translate(bx, by);
     ctx.scale(S, S);
     const hx = (hands.x - bx) / S, hy = (hands.y - by) / S;
-    const lean = state === 'active' ? p : state === 'recover' ? 1 : 0;
-    const lx = A.lean.x * lean, ly = A.lean.y * lean;
+    const rot = -p * A.torsoTurn;
+    const rp = (x: number, y: number) => ({ x: x * Math.cos(rot) - y * Math.sin(rot), y: x * Math.sin(rot) + y * Math.cos(rot) });
     const ink = (fill: string | CanvasGradient, shape: () => void) => {
       shape();
       ctx.fillStyle = fill;
@@ -1514,99 +1494,85 @@ export class GameView {
       ctx.lineWidth = w;
       ctx.stroke();
     };
-    const bat = () => {
-      ctx.save();
-      ctx.scale(1 / S, 1 / S);
-      this.drawBat(ctx, hx * S, hy * S, drawAngle);
-      ctx.restore();
-    };
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // ground shadow under the feet
-    ctx.fillStyle = 'rgba(0,0,0,0.33)';
+    // ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(0.02, 0.62, 0.62, 0.26, 0, 0, Math.PI * 2);
+    ctx.ellipse(0.08, 0.06, 0.5, 0.82, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // legs (white pants, red stripe) and cleats; the back heel lifts as he turns through the swing
-    const T = A.torso;
-    for (const [f, hipX, side] of [[A.backFoot, -0.14, -1], [A.frontFoot, 0.16, 1]] as const) {
-      const hip = { x: T.x + hipX + lx * 0.5, y: A.hipY };
-      const kx = (hip.x + f.x) / 2 + side * 0.08, ky = (hip.y + f.y) / 2 - 0.04;
-      limb(hip.x, hip.y, kx, ky, f.x, f.y - 0.06, 0.24, A.pants);
-      ctx.strokeStyle = A.team;
-      ctx.lineWidth = 0.04;
-      ctx.beginPath();
-      ctx.moveTo(hip.x + side * 0.08, hip.y);
-      ctx.quadraticCurveTo(kx + side * 0.08, ky, f.x + side * 0.08, f.y - 0.08);
-      ctx.stroke();
+    // legs + cleats: feet under the shoulders, toes east; the back foot pivots as he turns
+    for (const [f, twist] of [[A.leadFoot, 0], [A.backFoot, -p * 0.9]] as const) {
+      limb(0, f.y * 0.3, f.x * 0.5 + 0.05, f.y * 0.65, f.x, f.y, 0.22, A.pants);
       ctx.save();
-      ctx.translate(f.x + 0.06, f.y);
-      if (side < 0) ctx.rotate(-0.5 * lean);
+      ctx.translate(f.x + 0.05, f.y);
+      ctx.rotate(twist);
       ink(A.cleat, () => {
         ctx.beginPath();
-        ctx.ellipse(0.02, 0, 0.22, 0.12, 0, 0, Math.PI * 2);
+        ctx.ellipse(0.03, 0, 0.21, 0.12, 0, 0, Math.PI * 2);
       });
       ctx.fillStyle = A.team;
       ctx.beginPath();
-      ctx.ellipse(-0.13, 0.01, 0.07, 0.09, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = A.cleatHi;
-      ctx.beginPath();
-      ctx.ellipse(0.08, -0.04, 0.08, 0.03, 0, 0, Math.PI * 2);
+      ctx.ellipse(-0.11, 0, 0.07, 0.09, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 0.035;
       ctx.beginPath();
-      ctx.moveTo(0, -0.08);
-      ctx.lineTo(0, 0.08);
+      ctx.moveTo(0.04, -0.075);
+      ctx.lineTo(0.04, 0.075);
       ctx.stroke();
       ctx.restore();
     }
 
-    // torso: chest to the plate (east), belt at the bottom, red piping and sleeve trim
-    const tx = T.x + lx, ty = T.y + ly;
-    const j = ctx.createLinearGradient(tx - T.rx, 0, tx + T.rx, 0);
+    // torso: shoulders north-south, chest east (front placket with red piping), back shaded
+    ctx.save();
+    ctx.rotate(rot);
+    const T = A.torso;
+    const j = ctx.createLinearGradient(-T.rx, 0, T.rx, 0);
     j.addColorStop(0, A.jerseyShade);
-    j.addColorStop(0.55, A.jersey);
+    j.addColorStop(0.6, A.jersey);
     j.addColorStop(1, A.jersey);
     ink(j, () => {
       ctx.beginPath();
-      ctx.ellipse(tx, ty, T.rx, T.ry, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, T.rx, T.ry, 0, 0, Math.PI * 2);
     });
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(tx, ty, T.rx, T.ry, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = A.belt;
-    ctx.fillRect(tx - T.rx, ty + T.ry * 0.62, T.rx * 2, 0.09);
-    ctx.fillStyle = A.team;
-    ctx.fillRect(tx + T.rx * 0.35, ty + T.ry * 0.62 + 0.02, 0.07, 0.05);
     ctx.strokeStyle = A.team;
     ctx.lineWidth = 0.045;
     ctx.beginPath();
-    ctx.moveTo(tx + T.rx * 0.45, ty - T.ry);
-    ctx.quadraticCurveTo(tx + T.rx * 0.75, ty, tx + T.rx * 0.5, ty + T.ry * 0.62);
+    ctx.moveTo(T.rx * 0.55, -T.ry * 0.75);
+    ctx.quadraticCurveTo(T.rx * 0.95, 0, T.rx * 0.55, T.ry * 0.75);
     ctx.stroke();
+    for (const sy of [-1, 1]) {
+      ink(A.jersey, () => {
+        ctx.beginPath();
+        ctx.ellipse(0.02, sy * (T.ry - 0.06), 0.15, 0.12, 0, 0, Math.PI * 2);
+      });
+      ctx.strokeStyle = A.team;
+      ctx.lineWidth = 0.04;
+      ctx.beginPath();
+      ctx.ellipse(0.02, sy * (T.ry - 0.06), 0.1, 0.075, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
 
-    // shoulders (sleeves) and arms out front to the hands
-    const shB = { x: tx - 0.2, y: ty - 0.16 }, shF = { x: tx + 0.2, y: ty - 0.2 };
-    limb(shB.x, shB.y, (shB.x + hx) / 2, Math.max(shB.y, hy) + 0.16, hx, hy, 0.16, A.skin);
-    if (!batInFront) bat();
+    // arms from both shoulders to the hands in front of his chest
+    for (const sh of [rp(0.08, -(T.ry - 0.06)), rp(0.08, T.ry - 0.06)]) {
+      limb(sh.x, sh.y, (sh.x + hx) / 2 + 0.1, (sh.y + hy) / 2, hx, hy, 0.15, A.skin);
+    }
 
-    // helmet (seen from behind and above): ear flap, the bill peeking out where he looks, glossy dome
-    let want = A.lookRest + (A.lookSwing - A.lookRest) * p;
-    const H = { x: A.head.x + lx, y: A.head.y + ly };
-    const hw = { x: bx + H.x * S, y: by + H.y * S };
+    // helmet: follows the nearest ball; bill shows where he looks, ear flap on his left (pitcher-side) ear
+    const head = rp(-0.08, -0.02);
+    const hw = { x: bx + head.x * S, y: by + head.y * S };
+    let want = A.lookRest;
     let best = Infinity;
     for (const b of sim.balls) {
       const d = Math.hypot(b.pos.x - hw.x, b.pos.y - hw.y);
       if (d < best) {
         best = d;
         let a = Math.atan2(b.pos.y - hw.y, b.pos.x - hw.x);
-        if (a > Math.PI / 2) a -= Math.PI * 2;
+        if (a > Math.PI * 0.75) a -= Math.PI * 2; // behind-left wraps to the north side
         want = Math.max(A.neckMin, Math.min(A.neckMax, a));
       }
     }
@@ -1618,55 +1584,43 @@ export class GameView {
     const dx = Math.cos(look), dy = Math.sin(look);
     ink(A.bill, () => {
       ctx.beginPath();
-      ctx.ellipse(H.x + dx * R * 0.86, H.y + dy * R * 0.86, 0.16, 0.25, look, 0, Math.PI * 2);
+      ctx.ellipse(head.x + dx * R * 0.92, head.y + dy * R * 0.92, 0.15, 0.21, look, 0, Math.PI * 2);
     });
-    const hg = ctx.createRadialGradient(H.x - 0.12, H.y - 0.14, 0.03, H.x, H.y, R);
+    const flap = look - Math.PI / 2;
+    ink(A.helmet, () => {
+      ctx.beginPath();
+      ctx.ellipse(head.x + Math.cos(flap) * R * 0.85, head.y + Math.sin(flap) * R * 0.85, 0.1, 0.14, flap, 0, Math.PI * 2);
+    });
+    const hg = ctx.createRadialGradient(head.x - 0.1, head.y - 0.11, 0.02, head.x, head.y, R);
     hg.addColorStop(0, A.helmetHi);
     hg.addColorStop(0.45, A.helmet);
     hg.addColorStop(1, A.helmetDark);
     ink(hg, () => {
       ctx.beginPath();
-      ctx.arc(H.x, H.y, R, 0, Math.PI * 2);
+      ctx.arc(head.x, head.y, R, 0, Math.PI * 2);
     });
-    // ear flap on the pitcher-facing (left) ear: lower-left of the dome from behind; it turns with the head
-    const flapA = look - Math.PI / 2 + 0.9;
-    ink(A.helmet, () => {
-      ctx.beginPath();
-      ctx.arc(H.x + Math.cos(flapA) * R * 0.78, H.y + Math.sin(flapA) * R * 0.78, 0.13, 0, Math.PI * 2);
-    });
-    ctx.fillStyle = A.helmetDark;
-    ctx.beginPath();
-    ctx.arc(H.x + Math.cos(flapA) * R * 0.78, H.y + Math.sin(flapA) * R * 0.78, 0.045, 0, Math.PI * 2);
-    ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.beginPath();
-    ctx.ellipse(H.x - 0.13, H.y - 0.15, 0.11, 0.055, -0.7, 0, Math.PI * 2);
+    ctx.ellipse(head.x - 0.1, head.y - 0.12, 0.09, 0.045, -0.7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = A.helmetDark;
     ctx.beginPath();
-    ctx.arc(H.x - 0.01, H.y - 0.24, 0.025, 0, Math.PI * 2);
+    ctx.arc(head.x, head.y, 0.035, 0, Math.PI * 2);
     ctx.fill();
 
-    // near arm over everything, then the batting gloves on the handle
-    ink(A.jersey, () => {
-      ctx.beginPath();
-      ctx.ellipse(shF.x, shF.y, 0.15, 0.13, 0, 0, Math.PI * 2);
-    });
-    ctx.strokeStyle = A.team;
-    ctx.lineWidth = 0.045;
-    ctx.beginPath();
-    ctx.ellipse(shF.x, shF.y, 0.1, 0.085, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    limb(shF.x + 0.05, shF.y + 0.05, (shF.x + hx) / 2 + 0.06, (shF.y + hy) / 2 + 0.1, hx, hy, 0.16, A.skin);
-    if (batInFront) bat();
+    // bat at its real angle (resting over the right shoulder, swinging around in front), gloves on the handle
+    ctx.save();
+    ctx.scale(1 / S, 1 / S);
+    this.drawBat(ctx, hx * S, hy * S, angle);
+    ctx.restore();
     ink(A.gloves, () => {
       ctx.beginPath();
-      ctx.ellipse(hx, hy, 0.15, 0.12, Math.atan2(hy - ty, hx - tx), 0, Math.PI * 2);
+      ctx.ellipse(hx, hy, 0.14, 0.11, angle, 0, Math.PI * 2);
     });
     ctx.strokeStyle = A.glovesHi;
-    ctx.lineWidth = 0.035;
+    ctx.lineWidth = 0.03;
     ctx.beginPath();
-    ctx.arc(hx, hy, 0.07, -2.4, -0.8);
+    ctx.ellipse(hx, hy, 0.07, 0.05, angle, Math.PI * 1.1, Math.PI * 1.8);
     ctx.stroke();
     ctx.restore();
   }
