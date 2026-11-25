@@ -120,6 +120,26 @@ export class Run {
   phase: Phase = 'challenge';
   draft: Offer[] = [];
   shop: Offer[] = [];
+  /**
+   * Presentation only (Nov 25 shop grid): the shop's slot order as rolled, and what was bought from it
+   * this visit, so a bought card keeps its slot with a PURCHASED stamp instead of disappearing.
+   * `shop` stays the list of offers still for sale; prices, stock and rules don't look at these.
+   */
+  shopOrder: number[] = [];
+  shopBought: Offer[] = [];
+
+  /** The shop's fixed slots in rolled order: each still for sale or already bought this visit. */
+  get shopSlots(): { offer: Offer; bought: boolean }[] {
+    const order = this.shopOrder.length ? this.shopOrder : this.shop.map(o => o.uid);
+    const slots: { offer: Offer; bought: boolean }[] = [];
+    for (const uid of order) {
+      const forSale = this.shop.find(o => o.uid === uid);
+      const bought = this.shopBought.find(o => o.uid === uid);
+      if (forSale) slots.push({ offer: forSale, bought: false });
+      else if (bought) slots.push({ offer: bought, bought: true });
+    }
+    return slots;
+  }
   rerolls = 0;
   /** Log of what was taken, for the playtest report. */
   history: string[] = [];
@@ -421,6 +441,8 @@ export class Run {
     this.phase = 'shop';
     this.rerolls = 0;
     this.shop = this.roll(ECONOMY.shopSize, 'shop');
+    this.shopOrder = this.shop.map(o => o.uid);
+    this.shopBought = [];
   }
 
   /** Buy from the shop. No purchase cap: money is the only limit. */
@@ -434,6 +456,7 @@ export class Run {
     if (!r.ok) return r;
     this.money -= o.price;
     this.shop = this.shop.filter(s => s.uid !== uid);
+    this.shopBought.push(o);
     this.history.push(`  buy $${o.price}: ${label(o, mountId)}`);
     return r;
   }
@@ -443,7 +466,10 @@ export class Run {
     if (this.phase !== 'shop' || this.money < this.rerollPrice) return false;
     this.money -= this.rerollPrice;
     this.rerolls++;
+    // a reroll restocks all four slots, bought ones included (unchanged rule); their stamps clear
     this.shop = this.roll(ECONOMY.shopSize, 'shop');
+    this.shopOrder = this.shop.map(o => o.uid);
+    this.shopBought = [];
     return true;
   }
 
@@ -532,7 +558,7 @@ export class Run {
       mode: this.mode,
       challenge: this.challenge, money: this.money, maxPower: this.maxPower, phase: this.phase,
       installed: this.installed.map(i => ({ uid: i.uid, offerKey: i.offerKey, placement: i.placement, via: i.via, paid: i.paid })),
-      mods: structuredClone(this.mods), draft: structuredClone(this.draft), shop: structuredClone(this.shop), rerolls: this.rerolls,
+      mods: structuredClone(this.mods), draft: structuredClone(this.draft), shop: structuredClone(this.shop), shopOrder: [...this.shopOrder], shopBought: structuredClone(this.shopBought), rerolls: this.rerolls,
       history: this.history.slice(-RUN_SAVE_HISTORY), powerGrant: this.powerGrant && { ...this.powerGrant },
       v2: this.v2, sections: [...this.sections], sectionGrant: this.sectionGrant && { ...this.sectionGrant },
       rng: this.seed, uid: this.uid, itemSeq: this.itemSeq,
@@ -553,6 +579,8 @@ export class Run {
     r.mods = structuredClone(s.mods);
     r.draft = structuredClone(s.draft);
     r.shop = structuredClone(s.shop);
+    r.shopOrder = [...(s.shopOrder ?? [])];
+    r.shopBought = structuredClone(s.shopBought ?? []);
     r.rerolls = s.rerolls;
     r.history = [...s.history];
     r.powerGrant = s.powerGrant && { ...s.powerGrant };
@@ -586,6 +614,8 @@ export class Run {
     this.powerGrant = null;
     this.sectionGrant = null;
     this.shop = [];
+    this.shopOrder = [];
+    this.shopBought = [];
     return true;
   }
 }
@@ -607,6 +637,9 @@ export type RunSave = {
   mods: ModifierTable;
   draft: Offer[];
   shop: Offer[];
+  /** Shop grid slots (optional: older saves just show what's for sale). */
+  shopOrder?: number[];
+  shopBought?: Offer[];
   rerolls: number;
   history: string[];
   powerGrant: Run['powerGrant'];

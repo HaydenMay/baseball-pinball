@@ -429,6 +429,62 @@ body.fx-reduced #buildPanel, body.fx-reduced #buildPanel * { animation: none !im
 .chip.power { color: color-mix(in srgb, var(--energy) 55%, white); border-color: var(--energy-soft); }
 .shead .pmanage { margin-left: 0; }
 .ssub { font: 500 13px/1.3 system-ui, sans-serif; color: #a9bad0; }
+/* ── Shop / Free Pick 2×2 grid (Nov 25). Four fixed, equal slots: text never stretches a card, a purchase
+   never moves one. Knobs: --gcard-min-h (shortest a card may get before the grid scrolls inside itself),
+   --g-machine / --g-boost (kind accents). */
+:root { --gcard-min-h: 200px; --g-machine: #29f0ff; --g-boost: #c48bff; }
+#buildPanel.full[data-view='list'] .offers.grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(var(--gcard-min-h), 1fr));
+  gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px; margin: 0 -2px;
+}
+.gcard {
+  position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: 0; overflow: hidden;
+  padding: 8px 8px 8px; border-radius: 12px; color: #eef3fa;
+  background: linear-gradient(170deg, #241a3d, #120c22 70%); border: 1px solid #3b2f5c;
+  box-shadow: inset 0 2px 0 var(--gk, transparent);
+}
+.gcard.machine { --gk: var(--g-machine); border-color: color-mix(in srgb, var(--g-machine) 35%, #3b2f5c); }
+.gcard.modifier { --gk: var(--g-boost); border-color: color-mix(in srgb, var(--g-boost) 35%, #3b2f5c); }
+.gcard.offer { cursor: pointer; }
+.gcard.offer:active { transform: scale(0.98); }
+.gcard.recent { outline: 2px solid var(--ui-accent); outline-offset: -1px; }
+.ghead { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.gtag { font: 700 10px var(--font); letter-spacing: 0.12em; color: var(--gk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gcost { flex: none; font: italic 800 14px var(--font); padding: 1px 7px; border-radius: 999px; color: var(--gold-hi); border: 1px solid var(--gold); background: #1a1424; }
+.gcost.free { color: #b6ff6a; border-color: #6fbf3a; }
+.gcost.short { color: #ff8d84; border-color: #ff5a4e; }
+.gname { font: italic 800 16px/1.05 var(--font); letter-spacing: 0.01em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.1em; }
+.gsum { font: 500 12px/1.25 system-ui, sans-serif; color: #c9d3e6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+.gmap { position: relative; flex: 1 1 auto; min-height: 50px; display: flex; justify-content: center; align-items: center; margin: 2px 0; }
+.gmap .omap { height: 100%; width: auto; max-width: 100%; aspect-ratio: 20 / 29; border-radius: 6px; border: 1px solid #ffffff1f; background: #050b16; }
+.gpeek { position: absolute; right: 0; bottom: 0; font: 700 9px var(--font); letter-spacing: 0.12em; padding: 2px 5px; border-radius: 4px; background: #0b0717d9; color: var(--ui-accent); }
+.gact { flex: none; }
+.gact .obuy { width: 100%; margin: 0; min-height: 40px; font-size: 14px; padding: 6px 4px; }
+.gact .obuy.gwarn { background: #2b1f0c; color: var(--gold-hi); border: 1px solid var(--gold); }
+.gcard.dim .gname, .gcard.dim .gsum, .gcard.dim .gmap { opacity: 0.6; }
+.gdone { display: flex; align-items: center; justify-content: center; min-height: 40px; border-radius: 6px; font: italic 800 14px var(--font); letter-spacing: 0.05em; color: #b6ff6a; background: #b6ff6a14; border: 1px solid #b6ff6a55; }
+/* purchased: same slot, same size, dimmed but readable, stamped */
+.gcard.bought > :not(.gstamp):not(.gact) { opacity: 0.42; }
+.gstamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.gstamp span { transform: rotate(-12deg); font: italic 900 19px var(--font); letter-spacing: 0.08em; color: #b6ff6a; padding: 4px 10px; border: 3px solid #b6ff6a; border-radius: 8px;
+  background: #0c1408d0; box-shadow: 0 0 18px #b6ff6a55; text-shadow: 0 0 8px #b6ff6a88; }
+.gcard.stamp-new .gstamp span { animation: g-stamp 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes g-stamp { from { transform: rotate(-12deg) scale(1.8); opacity: 0; } to { transform: rotate(-12deg) scale(1); opacity: 1; } }
+/* Free Pick: the 4th slot explains, it never looks buyable */
+.gcard.ginfo { justify-content: center; align-items: flex-start; gap: 6px; padding: 12px; background: transparent; border: 1px dashed #5c4b85; box-shadow: none; }
+.ginfo b { font: italic 900 18px/1 var(--font); letter-spacing: 0.04em; color: #fff; }
+.ginfo p { margin: 0; font: 500 12.5px/1.35 system-ui, sans-serif; color: #b9c4da; }
+.ginfo-free { font: 700 10px var(--font); letter-spacing: 0.14em; color: #b6ff6a; }
+.gcard.gempty { align-items: center; justify-content: center; background: transparent; border: 1px dashed #3b2f5c; box-shadow: none; font: 700 11px var(--font); letter-spacing: 0.14em; color: #6f6590; }
+#buildPanel.v-anim[data-view='list'] .offers.grid .gcard { animation: shop-card-in 0.42s cubic-bezier(0.2, 1.2, 0.4, 1) both; animation-delay: calc(var(--i, 0) * var(--shop-card-stagger) + 80ms); }
+#buildPanel.full .pmachine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; margin: 0 2px; }
+.stitle b { font-size: clamp(24px, 7.5vw, 34px); white-space: nowrap; }
+@media (max-height: 700px) {
+  #buildPanel.full { gap: 6px; padding-top: 10px; }
+  .stitle small { font-size: 10px; }
+  .chip { font-size: 14px; padding: 4px 8px; }
+}
+
 /* Shop list: only the cards scroll; the header and the Reroll/Next footer are fixed, so a tap on NEXT never
    lands on a still-gliding scroll view (iOS swallows that tap to stop the scroll). */
 #buildPanel.full[data-view='list'] { overflow: hidden; }

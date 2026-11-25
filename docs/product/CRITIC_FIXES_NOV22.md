@@ -76,3 +76,12 @@ Upper Deck Rally lowered from ×2 to ×1.5 (`DECK_RALLY.factor`), still stacking
 ## Nov 24 (2): Night Game playfield neon
 
 - Neon tubes (colored glow + white-hot core) on the outer and Upper Deck walls (pink), lane guides and ramp rails (cyan), targets and the jackpot (gold), and scoring and multiplier gates (purple). Baked into the cached table layers, so there's no per-frame cost. Bumpers and slings keep their existing neon rings. Day look unchanged. Colors, width, glow and strength: `NIGHT_GAME.neonKit` (`src/view/theme.ts`); helper `src/view/neon.ts`.
+
+## Nov 25: fixed 2×2 Shop and Free Pick grid
+
+- Shop and Free Pick are a fixed 2×2 grid: four equal slots that never resize or move. Each card shows its kind (Machine in cyan, Boost in purple, with ⚡ Power for machines), cost (`$`, FREE, or red when you can't afford it), name, a one-line summary (`short` in the catalog for machines), a table thumbnail and one action (BUY / TAKE / CHOOSE SPOT ▸ / MAKE ROOM ▸ / NEED $X). Tapping a card opens the existing detail view (big minimap, full text, spot choice, See it on the table). When you come back, that card is outlined.
+- **Purchased state:** a bought card stays in its slot, dimmed with a PURCHASED stamp, and can't be bought again. `Run.shopOrder` / `shopBought` / `shopSlots` are presentation only and saved, so a reload mid-shop keeps the stamps. A reroll still restocks all four slots at its rising price (rule unchanged) and clears the stamps.
+- **Free Pick:** three choices plus a non-interactive CHOOSE 1 OF 3 panel.
+- "BUNDLE:" wording replaced with player-facing text.
+- The desktop cabinet now measures the real HUD height (`fitCabinet` in main.ts). It used to overflow 800 px-tall windows by ~34 px, scrolling the page and hiding the shop footer.
+- Checked at 360×640, 375×667, 390×844, 430×932 and 1280×800: equal cards, no page scroll, footer visible. Knobs: `--gcard-min-h`, `--g-machine`, `--g-boost`.

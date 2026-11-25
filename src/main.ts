@@ -857,5 +857,30 @@ if (v2 && build) {
   };
 }
 
+/**
+ * The cabinet's width comes from the viewport height minus the HUD (scoreboard + strip). The CSS guesses the
+ * HUD height, but the scoreboard scales with the cabinet, so on desktop it ran ~34 px tall and the page
+ * scrolled (and the shop footer fell off screen). Measure the real HUD and settle in a couple of passes.
+ */
+function fitCabinet() {
+  const cab = document.querySelector<HTMLElement>('.cabinet');
+  const sb = document.querySelector<HTMLElement>('.scoreboard'), strip = document.querySelector<HTMLElement>('.strip');
+  const stage = document.querySelector<HTMLElement>('#stage');
+  if (!cab || !sb || !strip || !stage) return;
+  // the stage's own vertical border is outside its aspect-ratio box: count it with the HUD
+  const cs = getComputedStyle(stage);
+  const border = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+  for (let i = 0; i < 4; i++) {
+    const hud = Math.ceil(sb.offsetHeight + strip.offsetHeight + border);
+    const cur = parseFloat(cab.style.getPropertyValue('--hud-h')) || 0;
+    if (Math.abs(hud - cur) < 1) break;
+    cab.style.setProperty('--hud-h', `${hud}px`);
+  }
+}
+fitCabinet();
+addEventListener('resize', () => requestAnimationFrame(fitCabinet));
+// web fonts change the scoreboard's height once they arrive: measure again then
+document.fonts?.ready.then(() => requestAnimationFrame(fitCabinet));
+
 // First real screen is drawn: show the page (index.html hides it while booting so the bare markup never flashes).
 requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('booting')));

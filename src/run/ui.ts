@@ -3,7 +3,7 @@
  * Panels sit in the lower part of the stage so the board (and the placement preview) stays visible.
  * Live play is never covered: panels only open when no ball is in play.
  */
-import { MOUNTS, mountName } from './catalog.ts';
+import { MACHINES, MOUNTS, mountName } from './catalog.ts';
 import { Run, anchorOf, type Offer } from './run.ts';
 import { ECONOMY, inningOf, targetFor, type RunMode } from './economy.ts';
 import { anchorsFor } from '../view/anchors.ts';
@@ -66,10 +66,17 @@ export const BOOST = 'BOOST';
  * never needs a separate "Applies to" line or THIS/ALL jargon. The board highlight shows where.
  */
 export function cardEffect(o: Offer): string {
-  if (o.kind !== 'modifier') return o.desc;
+  // machines: current catalog text (offers kept in older saves may carry retired wording)
+  if (o.kind !== 'modifier') return MACHINES.find(m => m.key === o.key)?.desc ?? o.desc;
   const where = o.target.label.split(',')[0].replace(/ \((full ride|complete all 3)\)$/, '');
   if (o.scope === 'this') return (/THIS [a-z]+/.test(o.desc) ? o.desc.replace(/THIS [a-z]+/, where) : `${o.desc} on ${where}`).replace(/ Ramp ramp/g, ' Ramp');
   return o.desc.replace(/\bALL\b/g, 'All');
+}
+
+/** One- or two-line summary for a grid card; the full effect stays in the detail view. */
+export function cardSummary(o: Offer): string {
+  if (o.kind !== 'modifier') return MACHINES.find(m => m.key === o.key)?.short ?? o.desc;
+  return cardEffect(o);
 }
 
 /** Shop presentation knobs (CSS has the timings: --shop-in, --shop-card-stagger). */
@@ -93,6 +100,9 @@ export class BuildUI {
   private confirming = false;
   /** Shop/free pick showing the real table (panel shrunk to a bottom bar) instead of the full-screen menu. */
   private peeking = false;
+  /** Grid: the card just bought (its stamp animates once) and the card last opened (outlined on return). */
+  private justBought = -1;
+  private lastOpened = -1;
   /** Which full-screen view was drawn last, so entrance animations only play when the view changes. */
   private lastView = '';
   /** Spots for the big animated minimap (detail / manage), redrawn every frame while it's on screen. */
@@ -486,7 +496,8 @@ export class BuildUI {
       }
     };
     for (const c of this.panel.querySelectorAll<HTMLCanvasElement>('canvas.omap')) {
-      const o = this.offers().find(o => o.uid === Number(c.dataset.uid));
+      const uid = Number(c.dataset.uid);
+      const o = this.offers().find(o => o.uid === uid) ?? this.run.shopBought.find(o => o.uid === uid);
       if (!o) continue;
       fit(c);
       this.host.view.renderMap(c, sim, this.offerSpots(o).spots, 0.6);
@@ -503,6 +514,58 @@ export class BuildUI {
       this.mapRaf = requestAnimationFrame(tick);
     };
     this.mapRaf = requestAnimationFrame(tick);
+  }
+
+  /**
+   * Shop / Free Pick grid card (Nov 25): fixed slot, compact hierarchy (kind + cost, name, one-line effect,
+   * table thumbnail, one action). Full text, spot choice and the big minimap live in the detail view.
+   */
+  private gridCard(o: Offer, bought: boolean, slot: number) {
+    const r = this.run, isShop = r.phase === 'shop';
+    const kind = o.kind === 'machine' ? 'MACHINE' : 'BOOST';
+    const power = o.kind === 'machine' ? ` · ⚡${o.power}` : '';
+    if (bought) {
+      return `<div class="gcard ${o.kind} bought ${this.justBought === o.uid ? 'stamp-new' : ''}" style="--i:${slot}" aria-label="${esc(o.name)}, purchased">
+        <div class="ghead"><span class="gtag">${kind}${power}</span><span class="gcost">$${o.price}</span></div>
+        <div class="gname">${esc(o.name)}</div>
+        <div class="gsum">${esc(cardSummary(o))}</div>
+        <div class="gmap"><canvas class="omap" data-uid="${o.uid}" aria-hidden="true"></canvas></div>
+        <div class="gact"><span class="gdone">✓ PURCHASED</span></div>
+        <div class="gstamp" aria-hidden="true"><span>PURCHASED</span></div>
+      </div>`;
+    }
+    const chk = r.check(o);
+    const afford = !isShop || o.price <= r.money;
+    const needsSpot = o.kind === 'machine' && chk.ok && chk.mounts.length > 1;
+    let btn: string;
+    if (o.kind === 'machine' && !chk.ok) btn = chk.fixable ? `<button class="obuy gwarn" data-act="manage" data-uid="${o.uid}">MAKE ROOM ▸</button>` : `<button class="obuy" disabled>NO ROOM</button>`;
+    else if (!afford) btn = `<button class="obuy" disabled>NEED $${o.price}</button>`;
+    else if (needsSpot) btn = `<button class="obuy" data-act="open" data-uid="${o.uid}">CHOOSE SPOT ▸</button>`;
+    else btn = `<button class="obuy" data-act="take" data-uid="${o.uid}">${isShop ? `BUY $${o.price}` : 'TAKE'}</button>`;
+    const cost = isShop ? `<span class="gcost ${afford ? '' : 'short'}">$${o.price}</span>` : '<span class="gcost free">FREE</span>';
+    const note = o.kind === 'machine' && !chk.ok && chk.fixable ? 'Needs room on the table' : '';
+    return `<div class="offer gcard ${o.kind} ${!chk.ok || !afford ? 'dim' : ''} ${this.lastOpened === o.uid ? 'recent' : ''}" data-uid="${o.uid}" style="--i:${slot}" role="button" aria-label="${esc(o.name)}: details">
+      <div class="ghead"><span class="gtag">${kind}${power}</span>${cost}</div>
+      <div class="gname">${esc(o.name)}</div>
+      <div class="gsum">${esc(note || cardSummary(o))}</div>
+      <div class="gmap"><canvas class="omap" data-uid="${o.uid}" aria-hidden="true"></canvas><span class="gpeek">DETAILS ▸</span></div>
+      <div class="gact">${btn}</div>
+    </div>`;
+  }
+
+  /** The 2×2 grid: four shop slots (bought ones stay, stamped), or three free picks plus an instruction panel. */
+  private grid() {
+    const r = this.run;
+    const cells: string[] = [];
+    if (r.phase === 'draft') {
+      r.draft.slice(0, 3).forEach((o, i) => cells.push(this.gridCard(o, false, i)));
+      while (cells.length < 3) cells.push(`<div class="gcard gempty" style="--i:${cells.length}"></div>`);
+      cells.push(`<div class="gcard ginfo" style="--i:3"><b>CHOOSE 1 OF ${r.draft.length}</b><p>Your free upgrade. Tap a card to preview its effect and where it goes on the table.</p><span class="ginfo-free">FREE</span></div>`);
+    } else {
+      r.shopSlots.forEach((sl, i) => cells.push(this.gridCard(sl.offer, sl.bought, i)));
+      while (cells.length < ECONOMY.shopSize) cells.push(`<div class="gcard gempty" style="--i:${cells.length}"><span>SOLD OUT</span></div>`);
+    }
+    return `<div class="offers grid">${cells.join('')}</div>`;
   }
 
   private card(o: Offer, inList = false) {
@@ -559,7 +622,7 @@ export class BuildUI {
     const manageBtn = `<button class="pmanage" data-act="manage">MANAGE</button>`;
     const chips = `<div class="pchips"><span class="chip money">$${r.money}</span><span class="chip power">⚡${r.powerUsed}/${r.maxPower}</span></div>`;
     const head = `<div class="shead"><div class="stitle"><small>${draft ? `CHALLENGE ${r.challenge} CLEARED` : `BEFORE CHALLENGE ${r.challenge + 1}`}</small><b>${draft ? 'FREE PICK' : 'SHOP'}</b></div>${chips}${manageBtn}</div>
-      <div class="ssub">${draft ? `Choose 1 of ${r.draft.length}. Tap a card to see where it goes.` : 'Buy as many as you can afford. Tap a card to see where it goes.'}</div>`;
+      ${draft ? '' : '<div class="ssub">Buy as many as you like · tap a card for details</div>'}`;
     // Small, non-blocking reward line when this clear finished an inning.
     const grant =
       (r.powerGrant ? `<div class="pgrant">INNING ${r.powerGrant.inning} UNLOCKED — MAX POWER +${r.powerGrant.gained} (${r.powerGrant.maxPower} TOTAL)</div>` : '') +
@@ -594,13 +657,14 @@ export class BuildUI {
         <button class="speek" data-act="peek">SEE IT ON THE TABLE ▸</button>`;
     } else {
       view = 'list';
-      this.panel.innerHTML = `${head}${grant}${tip}<div class="offers list">${this.offers().map(o => this.card(o, true)).join('') || '<div class="empty">Sold out. Reroll or head to the next challenge.</div>'}</div>
+      this.panel.innerHTML = `${head}${grant}${tip}${this.grid()}
       <div class="pmachine">Machine: ${this.machineLine()}</div>${foot}`;
     }
     this.setView(view);
     this.preview();
     this.drawMaps();
     this.tag();
+    this.justBought = -1; // the stamp animates on the render right after the purchase only
   }
 
   /** Full-screen vs docked bar, and an entrance animation whenever the view changes. */
@@ -734,6 +798,8 @@ export class BuildUI {
       if (res.ok) {
         if (!wasDraft) this.host.onPurchase?.();
         this.sel = null;
+        this.justBought = wasDraft ? -1 : uid;
+        this.lastOpened = -1;
         // show the new machine on the board right away
         this.host.loadMachine(this.run.preset(), targetFor(this.run.challenge + 1));
       }
@@ -745,6 +811,7 @@ export class BuildUI {
       this.peeking = false;
     } else if (el.dataset.act === 'open') {
       this.sel = { uid };
+      this.lastOpened = uid;
     } else if (el.dataset.act === 'reroll') {
       const price = this.run.rerollPrice, moneyBefore = this.run.money;
       if (this.run.reroll() && this.host.recorder) {
@@ -760,6 +827,7 @@ export class BuildUI {
       return;
     } else if (el.classList.contains('offer')) {
       if (this.sel?.uid !== uid) this.sel = { uid };
+      this.lastOpened = uid;
     }
     this.render();
   }
