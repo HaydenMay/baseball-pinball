@@ -149,7 +149,7 @@ export class BuildUI {
         load.reason === 'newer'
           ? 'Your saved run is from a newer version of the game. It has been kept aside; start a new run here.'
           : 'Your saved run couldn’t be read. It has been kept aside; start a new run.',
-        this.run.mode === 'quick' ? 'NEW QUICK GAME' : 'NEW RUN',
+        'NEW RUN',
         () => this.start(),
       );
     }
@@ -381,7 +381,7 @@ export class BuildUI {
       'THREE STRIKES',
       'CHALLENGE FAILED',
       `${fmt(sim.rules.score)} of ${fmt(this.run.target)} on challenge ${this.run.challenge}. Machine: ${this.machineLine()}.`,
-      'NEW RUN',
+      this.run.mode === 'quick' ? 'NEW QUICK GAME' : 'NEW RUN',
       () => this.newRun(),
       undefined,
       this.host.toTitle ? { label: 'MAIN MENU', action: () => this.host.toTitle!() } : undefined,
