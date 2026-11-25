@@ -344,7 +344,8 @@ kbd, code { background: #1b273b; border-radius: 3px; padding: 0 4px; font-size: 
   box-shadow: 0 -12px 30px #000a;
   font-family: var(--font);
 }
-#buildPanel[hidden] { display: none; }
+/* !important: the full-screen shop sets display:flex, which would otherwise keep a closed panel on screen */
+#buildPanel[hidden] { display: none !important; }
 .phead { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
 .phead b { font: italic 800 20px var(--font); color: var(--gold-hi); letter-spacing: 0.06em; }
 .phead span { font-size: 13px; color: #a9bad0; }

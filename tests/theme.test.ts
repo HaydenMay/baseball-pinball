@@ -109,3 +109,9 @@ test('routes are path-based and unaffected by ?theme=', () => {
   }
   assert.ok(isBuildRoute('/baseball-pinball/build-test/'));
 });
+
+test('a closed shop panel is really hidden: [hidden] beats the full-screen display:flex', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(css, /#buildPanel\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
+});
